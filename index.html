@@ -10706,6 +10706,7 @@
      * nothing — the first block cannot rise and the last cannot fall.
      */
     function trainingMoveBlock(sessionId, blockId, delta) {
+      if (typeof trainingEditingLocked === 'function' && trainingEditingLocked(sessionId)) return false;
       const blocks = state.trainingBlocks?.[sessionId];
       if (!Array.isArray(blocks) || blocks.length < 2) return false;
       const from = blocks.findIndex(b => b && String(b.id) === String(blockId));
@@ -10757,6 +10758,9 @@
     }
 
     function addTimeBlock(sessionId) {
+      // A finished session takes no more blocks. The completed view offers no
+      // way to call this; the guard covers every other route to it.
+      if (typeof trainingEditingLocked === 'function' && trainingEditingLocked(sessionId)) return;
       state.trainingBlocks = state.trainingBlocks || {};
       const blocks = state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId] || [];
       const block = trainingNewBlock(sessionId, blocks[blocks.length - 1]);
@@ -10898,6 +10902,7 @@
     }
 
     function removeTimeBlock(sessionId, blockId) {
+      if (typeof trainingEditingLocked === 'function' && trainingEditingLocked(sessionId)) return;
       if (!state.trainingBlocks?.[sessionId]) return;
       // Compare ids as strings: the onclick passes a string, but a block's stored
       // id may be a number (legacy/server-shaped data). A strict !== would never
@@ -10917,6 +10922,7 @@
       syncPublishedSessionEdit(sessionId);
     }
     function updateTimeBlock(sessionId, blockId, field, val) {
+      if (typeof trainingEditingLocked === 'function' && trainingEditingLocked(sessionId)) return;
       const blocks = state.trainingBlocks?.[sessionId];
       if (!blocks) return;
       const b = blocks.find(b => String(b.id) === String(blockId));
@@ -18813,6 +18819,141 @@
       return !!(session && (session.type === 'Match' || session.id === 'game'));
     }
 
+    /**
+     * WHEN A SESSION WAS SCHEDULED TO START — a real moment, or null.
+     *
+     * Date and time are resolved the way the rest of the planner already
+     * resolves them, so no second convention is introduced: the date from the
+     * occurrence identity the content lives under (`slot_x-YYYYMMDD`, which
+     * every week including the current one carries), falling back to the
+     * schedule row's own ISO date; the time from the row, falling back to the
+     * slot's. Both are validated — production rows hold junk like "19.45" and
+     * "" — and junk falls through to the next source rather than parsing into
+     * an arbitrary moment.
+     *
+     * The time is a WALL CLOCK: nothing in the model carries an offset, and a
+     * club that trains at 19:00 trains at 19:00 wherever the coach is
+     * standing. It is therefore read against the device's own clock, which is
+     * how the planner already renders dates.
+     *
+     * A session with no time at all is scheduled for its DAY: it stays open
+     * until that day is over rather than being locked at an invented hour.
+     * A session with no date has no scheduled moment and is never locked.
+     */
+    function trainingScheduledStartAt(session) {
+      if (!session) return null;
+      const id = String(session.id || '');
+      const ck = (typeof trainingContentKey === 'function') ? trainingContentKey(id) : id;
+      const rowDate = String(session.date || '').slice(0, 10);
+      const dateISO = trainingDateFromSessionId(ck)
+        || (trainingDateLabel(rowDate) ? rowDate : '');
+      if (!dateISO) return null;
+      const hhmm = v => /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(v || '').trim()) ? String(v).trim() : '';
+      const slot = ((typeof _trainingSchedule !== 'undefined' && _trainingSchedule && _trainingSchedule.slots) || [])
+        .find(sl => sl && String(sl.id) === String(ck).replace(/-\d{8}$/, '')) || null;
+      const t = hhmm(session.startTime) || hhmm(slot && slot.startTime);
+      const [y, mo, d] = dateISO.split('-').map(Number);
+      if (!t) return new Date(y, mo - 1, d, 23, 59, 59, 999);
+      const [hh, mi] = t.split(':').map(Number);
+      return new Date(y, mo - 1, d, hh, mi, 0, 0);
+    }
+
+    /**
+     * THE completion rule, in one place: a session is completed once its
+     * scheduled start is strictly BEHIND now. A session starting at this very
+     * moment is still being planned — the coach may well be typing into it.
+     *
+     * Deliberately not "date < today": Tuesday's 17:45 session is finished by
+     * 18:30 while Tuesday's 20:30 session is not, and the day-only comparison
+     * gets both of those wrong. Nothing is stored — the schedule and the clock
+     * already say it, and a written-back flag would only be another thing that
+     * could disagree with them.
+     */
+    function isTrainingSessionCompleted(session, now) {
+      const at = trainingScheduledStartAt(session);
+      if (!at) return false;
+      const t = now instanceof Date ? now.getTime() : (typeof now === 'number' ? now : Date.now());
+      return at.getTime() < t;
+    }
+
+    /**
+     * Is this planner key's session finished? Asked by the block mutators, so
+     * a completed session cannot be edited even if a handler is reached by
+     * some route other than the planner card (a stale tab, a console, an
+     * event bound before the session's start passed).
+     */
+    function trainingEditingLocked(sessionId) {
+      const id = String(sessionId || '');
+      if (!id) return false;
+      const rows = (typeof state !== 'undefined' && state && state.schedule) || [];
+      const pid = (typeof trainingProtocolId === 'function') ? trainingProtocolId(id) : id;
+      const row = rows.find(r => r && String(r.id) === id) || rows.find(r => r && String(r.id) === pid) || null;
+      return isTrainingSessionCompleted({ id, date: row ? row.date : '', startTime: row ? row.startTime : '' });
+    }
+
+    /**
+     * A finished session, as a record rather than a form. Same facts the
+     * planner held — title, when and where, publication, every block with its
+     * focus and lead coach — laid out to be read in one glance, with no
+     * control that could change any of it.
+     */
+    function trainingCompletedSessionHTML(session, contentKey) {
+      const sess    = session || {};
+      const ck      = String(contentKey || sess.id || '');
+      const blocks  = ((typeof state !== 'undefined' && state && state.trainingBlocks) || {})[ck] || [];
+      const at      = trainingScheduledStartAt(sess);
+      const dateISO = trainingDateFromSessionId(ck)
+        || (trainingDateLabel(String(sess.date || '').slice(0, 10)) ? String(sess.date).slice(0, 10) : '');
+      const time    = at && !(at.getHours() === 23 && at.getMinutes() === 59)
+        ? String(at.getHours()).padStart(2, '0') + ':' + String(at.getMinutes()).padStart(2, '0') : '';
+      const venue   = String(sess.location || sess.venue || '').trim();
+      const when    = [trainingOccurrenceLongLabel(dateISO) || trainingDateLabel(dateISO, true), time, venue]
+        .filter(Boolean).map(esc).join(' · ');
+      const status  = sess.published ? 'Published' : 'Draft';
+      const coaches = [...new Set(blocks.map(b => String((b && b.coach) || '').trim()).filter(Boolean))];
+      const focus   = [...new Set(blocks.map(b => String((b && (b.keyFocus || b.tag)) || '').trim()).filter(Boolean))];
+      const meta    = [blocks.length + ' block' + (blocks.length === 1 ? '' : 's')]
+        .concat(coaches.length ? [coaches.length + ' coach' + (coaches.length === 1 ? '' : 'es')] : []);
+
+      return `
+        <div class="card tp-done" style="margin-bottom:14px;border-left:3px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <div style="min-width:0">
+              <div class="eyebrow" style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Completed session</div>
+              <h2 style="margin:3px 0 0;font-size:17px">${esc(coachTrainingSessionLabel(sess))}</h2>
+              ${when ? `<p class="muted" style="margin-top:3px;font-size:12.5px">${when}</p>` : ''}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+              <span class="pill" style="font-size:11px">${esc(status)}</span>
+              ${blocks.length ? `<button class="btn" type="button" id="tp-pdf-btn" style="font-size:12px" onclick="trainingDownloadPdf('${esc(ck)}')">Download PDF</button>` : ''}
+            </div>
+          </div>
+          <p class="muted" style="margin:10px 0 0;font-size:12px">${esc(meta.join(' · '))}${
+            focus.length ? ' · ' + focus.slice(0, 4).map(esc).join(' · ') + (focus.length > 4 ? ' …' : '') : ''}</p>
+          ${blocks.length ? `
+          <div style="margin-top:12px;display:grid;gap:6px">
+            ${blocks.map(b => {
+              const bb = b || {};
+              const bTime = String(bb.time || '').trim();
+              const bAct  = String(bb.activity || '').trim();
+              const bFoc  = String(bb.keyFocus || bb.tag || '').trim();
+              const bCo   = String(bb.coach || '').trim();
+              return `<div style="display:grid;grid-template-columns:62px 1fr;gap:10px;padding:8px 10px;border-radius:8px;background:var(--panel-2)">
+                <div style="font-size:12px;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums">${esc(bTime || '—')}</div>
+                <div style="min-width:0">
+                  <div style="font-size:13px;font-weight:700;word-break:break-word">${esc(bAct || 'Untitled block')}</div>
+                  ${(bFoc || bCo) ? `<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;font-size:11px">
+                    ${bFoc ? `<span style="padding:2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:700">${esc(bFoc)}</span>` : ''}
+                    ${bCo ? `<span class="muted">${esc(bCo)}</span>` : ''}
+                  </div>` : ''}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>` : `
+          <p class="muted" style="margin:12px 0 0;font-size:12.5px">No session plan was recorded for this session.</p>`}
+        </div>`;
+    }
+
     let _trainingPubLoadedAt = 0;
     /**
      * THE ATTENDANCE REGISTER for one training occurrence — the only one.
@@ -18944,6 +19085,10 @@
       const key       = sessionKey(sessId);
       const available = state.players.filter(p=>p[key]==="available");
       const weekBlocks = schedSessions.reduce((n,s) => n + ((state.trainingBlocks||{})[trainingContentKey(s.id)]?.length||0), 0);
+      // A session whose scheduled start has passed is a RECORD, not a form:
+      // the planner card below is replaced by the completed view. Nothing is
+      // stored to say so — the schedule and the clock already do.
+      const sessDone  = isTrainingSessionCompleted(sessObj || { id: sessId });
 
       const twNav = `
         <div class="tw-nav" role="group" aria-label="Training week">
@@ -18997,7 +19142,9 @@
           }).join("")}
         </div>
 
-        <!-- Full-width session planner table -->
+        <!-- Full-width session planner table — or, once its scheduled start
+             has passed, the read-only record of what the session was. -->
+        ${sessDone ? trainingCompletedSessionHTML(sessObj || { id: sessId }, ck) : `
         <div class="card" style="margin-bottom:14px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
             <div>
@@ -19071,7 +19218,7 @@
               return prevNote + dupBtn + legacy;
             })()}
           </div>`}
-        </div>
+        </div>`}
 
         <!-- ATTENDANCE — one register, shared with History so a past
              session opens exactly the same thing.
