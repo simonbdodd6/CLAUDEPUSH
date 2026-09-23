@@ -87,6 +87,10 @@ test('a signed-out player recovers their password in the browser and logs in wit
   try { browser = await chromium.launch(); } catch { return t.skip('no browser available'); }
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const BASE = `http://127.0.0.1:${server.address().port}`;
+  // Reset links are built from the application's CONFIGURED url and never from
+  // the request Host, so a harness that is not production has to say where it
+  // is. (Before that rule, the link simply inherited this server's host.)
+  process.env.APP_URL = BASE;
   const api = async body => { const r = await realFetch(BASE + '/api/identity', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, data: await r.json().catch(() => ({})) }; };
   try {
     // Seed: a club, and a player approved through a join request.
@@ -122,7 +126,7 @@ test('a signed-out player recovers their password in the browser and logs in wit
     const mail = outbox.find(m => /Reset your CoachEasier password/.test(m.subject || ''));
     assert.ok(mail, 'the reset email is produced'); assert.equal(mail.to, PLAYER);
     const link = ((mail.text || '').match(/https?:\/\/\S+/) || [])[0] || '';
-    assert.ok(link.startsWith(BASE + '/?reset='), 'the link points at the host that served the form');
+    assert.ok(link.startsWith(BASE + '/?reset='), 'the link points at the configured application URL');
 
     await page.goto(link, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#reset-modal', { state: 'visible', timeout: 20000 });

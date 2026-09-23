@@ -8,12 +8,21 @@ const DEFAULT_FROM = 'CoachEasier <noreply@coacheasier.com>';
 // a coach who hits "reply" is never silently dropped even before the env var is set.
 const DEFAULT_REPLY_TO = 'support@coacheasier.com';
 
-export function appBaseUrl(req = {}) {
-  const host = req.headers?.['x-forwarded-host'] || req.headers?.host;
-  if (host) {
-    const proto = req.headers?.['x-forwarded-proto'] || 'https';
-    return `${proto}://${host}`;
-  }
+/**
+ * THE APPLICATION'S OWN URL — never the caller's claim about it.
+ *
+ * The links built on this carry single-use tokens (password reset, email
+ * verification). While the request's Host chose their origin, a request
+ * reaching this function with an attacker's Host would put that host into the
+ * victim's email, and the victim clicking their own reset link would hand the
+ * token over. api/invite.js has always built its links from the configured URL
+ * alone; this is the same rule for the ones that were still trusting the
+ * request. `req` is kept so no call site changes — it is deliberately unused.
+ *
+ * Set APP_URL when the application is served from anywhere but production
+ * (local development, a preview deployment, the end-to-end harness).
+ */
+export function appBaseUrl(req = {}) {            // eslint-disable-line no-unused-vars
   return process.env.APP_URL || 'https://www.coacheasier.com';
 }
 

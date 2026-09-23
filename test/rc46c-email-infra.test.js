@@ -87,17 +87,26 @@ test('no secret leakage: the API key is in the Authorization header only, never 
   } finally { restore(); }
 });
 
-test('production URL generation: appBaseUrl uses request host, then APP_URL, then www.coacheasier.com', () => {
-  // 1. Forwarded host wins (real request behind Vercel proxy).
-  assert.equal(
-    appBaseUrl({ headers: { 'x-forwarded-host': 'www.coacheasier.com', 'x-forwarded-proto': 'https' } }),
-    'https://www.coacheasier.com');
-  // 2. No host header → APP_URL env.
+test('production URL generation: appBaseUrl uses APP_URL, then www.coacheasier.com — NEVER the request host', () => {
+  // The links built on this carry single-use tokens, so their origin is the
+  // application's own, not whatever the caller claims to be. (This test used
+  // to assert the opposite: the forwarded host won, which let a request with
+  // an attacker's Host put that host into a victim's reset email.)
+  // 1. APP_URL wins over ANY host header, hostile or not.
   process.env.APP_URL = 'https://www.coacheasier.com';
-  try { assert.equal(appBaseUrl({ headers: {} }), 'https://www.coacheasier.com'); } finally { restore(); }
-  // 3. No host header and no APP_URL → safe production default.
+  try {
+    assert.equal(
+      appBaseUrl({ headers: { 'x-forwarded-host': 'attacker.example', 'x-forwarded-proto': 'https' } }),
+      'https://www.coacheasier.com');
+    assert.equal(appBaseUrl({ headers: { host: 'attacker.example' } }), 'https://www.coacheasier.com');
+    assert.equal(appBaseUrl({ headers: {} }), 'https://www.coacheasier.com');
+  } finally { restore(); }
+  // 2. No APP_URL → the safe production default, still never the host.
   delete process.env.APP_URL;
-  try { assert.equal(appBaseUrl({ headers: {} }), 'https://www.coacheasier.com'); } finally { restore(); }
+  try {
+    assert.equal(appBaseUrl({ headers: { 'x-forwarded-host': 'attacker.example' } }), 'https://www.coacheasier.com');
+    assert.equal(appBaseUrl({ headers: {} }), 'https://www.coacheasier.com');
+  } finally { restore(); }
 });
 
 test('missing RESEND_API_KEY: skipped, no network, unchanged return contract', async () => {
