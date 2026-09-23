@@ -8660,6 +8660,12 @@
       if (_availReadFailed === next) return;
       _availReadFailed = next;
       if (typeof renderMessageCenter === 'function') renderMessageCenter();
+      // The Overview reads the same answers and must not contradict the board,
+      // so it repaints on the same transitions — only when it is the section on
+      // screen, and only on a transition, so no render pass is added to a
+      // normal load.
+      if (typeof coachSectionActive === 'function' && coachSectionActive('overview')
+          && typeof renderCoachOverview === 'function') renderCoachOverview();
     }
 
     /** The last live read failed. True even while known answers are still held. */
@@ -15173,9 +15179,20 @@
           detail:`${tonightSess.title || 'Training'} · ${tonightCon} confirmed`,
           cta:'Plan session', action:`homeOpenTraining('${tonightId}')` });
       }
-      // Non-responders — only after request sent
+      // Non-responders — only after request sent, and only when the answers are
+      // actually known. A failed /api/availability read makes every player look
+      // like a non-responder, so this item used to say "18 players haven't
+      // replied" — with a Chase all button — at the same moment the Availability
+      // screen was honestly saying it could not load. Same machinery, same
+      // answer on both screens: see availabilityReadUnknown().
+      const availUnknown = typeof availabilityReadUnknown === 'function' && availabilityReadUnknown();
       const requestEverSent = (state.availabilityRequests || []).some(r => r.status === 'sent');
-      if (requestEverSent) {
+      if (availUnknown) {
+        items.push({ score:55, level:'warning', icon:'',
+          text:'Availability could not be loaded',
+          detail:"This week's replies are not known — nobody has been marked as no reply.",
+          cta:'Try again', action:`availRefreshNow()` });
+      } else if (requestEverSent) {
         // Two defects met here and inflated this number badly on a real club:
         //
         //  · state.players is the WHOLE CLUB on every coach's device, so a
@@ -16523,13 +16540,24 @@
       // is arithmetically true and reads as a broken placeholder, which is how
       // this card was reported. Say the real thing instead: the squad exists,
       // the answers do not.
+      // The same question the board asks before printing a number: do we know
+      // this group's answers at all? Typeof-guarded because this renderer is
+      // extracted and executed on its own by the dashboard suites.
+      const availUnknown = typeof availabilityReadUnknown === 'function' && availabilityReadUnknown();
+      // The card treatment the Recent activity card above already uses for the
+      // same situation, pointing at the refresh the Availability screen owns.
+      // stopPropagation because these two cards ARE links (card(..., action)):
+      // without it the retry bubbles to the card and navigates to Availability
+      // instead of retrying in place. The Recent activity card above has no
+      // action, which is why its identical retry never needed this.
+      const availUnavailableBody = `<p class="ovw-empty"><strong>Availability unavailable</strong>Availability could not be loaded, so this is not a record of a squad that has not replied. <button type="button" class="ovw-retry" onclick="event.stopPropagation();availRefreshNow()">Try again</button></p>`;
       const noReplies      = ctx => ctx.kind !== 'none' && ctx.responded === 0;
       const noRepliesBodyOf = ctx => `<p class="ovw-empty"><strong>No responses yet</strong>${
         esc(ctx.label)} — none of the ${ctx.total} player${ctx.total === 1 ? ' has' : 's have'} replied.${
         canI('publish_training') ? ' Send an availability request to ask them.' : ''}</p>`;
       const availNoReplies = noReplies(av);
 
-      const availabilityBody = av.kind === 'none' ? availEmpty('a training session') : availNoReplies ? noRepliesBodyOf(av) : `
+      const availabilityBody = availUnknown ? availUnavailableBody : av.kind === 'none' ? availEmpty('a training session') : availNoReplies ? noRepliesBodyOf(av) : `
         <div>
           <div class="ovw-meta" style="margin-bottom:12px">${esc(av.label)}</div>
           <div class="ovw-stat-row">
@@ -16549,7 +16577,7 @@
       // The match card names its fixture and carries that fixture's position
       // warnings — both used to live on the shared card above.
       const mWarn = warningsOf(avM);
-      const squadAvailBody = avM.kind === 'none' ? availEmpty('a fixture') : noReplies(avM) ? noRepliesBodyOf(avM) : `
+      const squadAvailBody = availUnknown ? availUnavailableBody : avM.kind === 'none' ? availEmpty('a fixture') : noReplies(avM) ? noRepliesBodyOf(avM) : `
         <div class="ovw-meta" style="margin-bottom:10px">${esc(avM.label)}${mWarn.critical || mWarn.warning
           ? ` · <span style="color:${mWarn.critical ? 'var(--status-unavailable)' : 'var(--status-maybe)'};font-weight:700">${warningText(mWarn)}</span>` : ''}</div>
         <div class="ovw-donut-wrap">
@@ -16609,7 +16637,7 @@
         <div class="ovw-row">
           ${card('Upcoming fixture', upcomingFx.length > 1 ? `<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">${upcomingFx.length}</span>` : '', fixtureBody, "setSection('coach','fixtures')", 'Upcoming fixture — open Fixtures')}
           ${card('Training', tonightSess ? '<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">Tonight</span>' : '', trainingBody, "setSection('coach','training')", 'Training — open Training')}
-          ${card('Training Availability', av.kind !== 'none' && !availNoReplies ? `<span style="font-size:12px;font-weight:800;color:var(--status-available)">${av.availPct}%</span>` : '', availabilityBody, "setSection('coach','message')", 'Training Availability — open Availability')}
+          ${card('Training Availability', !availUnknown && av.kind !== 'none' && !availNoReplies ? `<span style="font-size:12px;font-weight:800;color:var(--status-available)">${av.availPct}%</span>` : '', availabilityBody, "setSection('coach','message')", 'Training Availability — open Availability')}
         </div>
         <div class="ovw-row" style="margin-top:14px">
           ${card('Recent activity', '', activityBody, null, null)}
