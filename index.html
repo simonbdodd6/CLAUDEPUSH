@@ -11893,6 +11893,14 @@
         // Stale-reply guard on BOTH dimensions: a slow response for the old
         // fixture OR the old side is discarded, never applied.
         if (String(matchCentreFixtureId()) !== String(id) || matchCentreSideId() !== side) return;
+        // The sheet as it reads before hydration. setMatchCentreFixture has
+        // already rendered the selection, so a fixture whose stored draft is
+        // empty (or matches what is on screen) leaves nothing to repaint — and
+        // that render re-ran every section renderer, restarting the loader
+        // cycle. Display fields, the squad, the bench, the published flag and
+        // the substitutions are all inside the snapshot, so any real hydration
+        // still paints.
+        const _beforeSheet = JSON.stringify([state.matchCentre || {}, state.formationNames || {}, state.benchPlayers || []]);
         // The sheet now authoritatively belongs to this fixture — whether a
         // stored draft exists (adopted below) or not (legitimately empty and
         // ready for new work). Saves/flushes are unlocked from here on.
@@ -11937,7 +11945,7 @@
         const fx = matchCentreSelectedFixture();
         if (fx) mcApplyFixtureDisplay(fx);   // real fixture data wins for display
         saveState('Fixture loaded');
-        render();
+        if (_beforeSheet !== JSON.stringify([state.matchCentre || {}, state.formationNames || {}, state.benchPlayers || []])) render();
       } catch (e) { console.warn('[mcHydrateSelectedFixture]', e); }
     }
 
@@ -19138,7 +19146,15 @@
       if (_mTab === 'notes')      { _renderMatchNotes();      return; }
       if (_mTab === 'summary')    { _renderMatchSummary();    return; }
 
-      if (autopilotOn() && isCoach()) autopilotFillMatchFromFixture();
+      // Autopilot's fixture pick is a WRITE (selection, sheet clear, hydration),
+      // so it belongs to the section the coach is looking at — the Overview
+      // renderer's copy is already gated the same way. Ungated it fired from a
+      // cold Availability load: renderMatchday ran off-screen, picked the next
+      // fixture, and setMatchCentreFixture + mcHydrateSelectedFixture each
+      // called render(), re-entering every renderer. Two measured passes, for
+      // a screen nobody was on. Entering Match Day renders, so the fill still
+      // happens on arrival.
+      if (autopilotOn() && isCoach() && coachSectionActive('matchday')) autopilotFillMatchFromFixture();
       // Coach Draft Compare (Phase 2): keep the other-coaches' draft list fresh
       // (self-throttled; re-renders when new data arrives). Coach-only.
       if (isCoach() && coachSectionActive('matchday')) loadCoachDraftsList();
@@ -22546,6 +22562,14 @@
       const scope = attendanceReadScope();
       if (scope === 'none') { _attendance = { denied: true, sessions: {} }; _attendanceGroup = gid; return; }
       _attendanceLoading = true;
+      // The register as it reads right now. A forced reload (a mark, a poll,
+      // re-entering the section) usually comes back byte-identical, and
+      // repainting on an identical answer re-runs every section renderer.
+      // Nothing here suppresses a real change: the first load (null → loaded),
+      // a failure, a new mark and a group switch all differ.
+      const _beforeAtt = JSON.stringify([_attendance, _attendanceGroup, _attendanceFailed, _attendanceReason, _attendanceSelfKey]);
+      const _attChanged = () =>
+        _beforeAtt !== JSON.stringify([_attendance, _attendanceGroup, _attendanceFailed, _attendanceReason, _attendanceSelfKey]);
       try {
         // A self read names no group. The player's group comes from their own
         // membership, server-side, so there is no parameter here to tamper with.
@@ -22554,7 +22578,7 @@
         if (!res.ok) {
           _attendance = null; _attendanceFailed = gid;
           _attendanceReason = await res.json().then(d => String(d?.error || '')).catch(() => '');
-          render();
+          if (_attChanged()) render();
           return;
         }
         const data = await res.json();
@@ -22565,7 +22589,7 @@
         if (scope === 'self' && !_attendanceSelfKey) {
           _attendance = null; _attendanceFailed = gid;
           _attendanceReason = 'Your player record could not be identified.';
-          render();
+          if (_attChanged()) render();
           return;
         }
         _attendance = { scope, sessions: (data && typeof data.sessions === 'object') ? data.sessions : {},
@@ -22576,7 +22600,7 @@
         _attendanceGroup = gid;
         _attendanceFailed = null;
         _attendanceReason = '';
-        render();
+        if (_attChanged()) render();
       } catch { _attendance = null; _attendanceFailed = gid; _attendanceReason = ''; }
       finally { _attendanceLoading = false; }
     }
@@ -24624,6 +24648,13 @@
           loadTrainingSchedule(true).catch(() => {});
           return null;
         }
+        // The slot table the screen is already drawn from. A forced reload (a
+        // schedule save, the pump, re-entering Training) normally answers with
+        // the same slots, and repainting on an identical answer re-runs every
+        // section renderer. The first load (null → slots) and a group change
+        // both differ, so neither is suppressed.
+        const _schedChanged = _trainingScheduleGroupId !== gid ||
+          JSON.stringify(_trainingSchedule) !== JSON.stringify(data);
         _trainingSchedule = data;
         _trainingScheduleGroupId = gid;
         // The slot table just arrived, so dated occurrence keys are now
@@ -24631,7 +24662,7 @@
         // checked against unresolvable keys — release the 20s throttle so the
         // next planner render refetches and adopts against the real keys.
         _trainingPubLoadedAt = 0;
-        render();
+        if (_schedChanged) render();
         return _trainingSchedule;
       } catch { _trainingScheduleAttempted = false; return null; }
       })();
@@ -42423,6 +42454,14 @@
           if (clubStateOwned() && (state.players || []).length) queueRosterSync();
           return;
         }
+        // What the screen shows BEFORE adoption. A returning device almost
+        // always already holds exactly this roster (it was persisted from the
+        // same server), so the cold-load reply changes nothing — and an
+        // unconditional render() there re-ran every section renderer, which is
+        // how a loader completion turns into another round of loaders. Same
+        // compare-before-repaint rule the medical and published-state loaders
+        // already use.
+        const _beforeRoster = JSON.stringify([state.players || [], state.users || []]);
         // Adopt the server roster; photos are device-local, so carry over any
         // photo this device already has for the same player id.
         const localPhotos = Object.fromEntries(
@@ -42441,7 +42480,11 @@
         ensureOwnPlayerRecord();
         _rosterLastSyncedFp = rosterFingerprint();
         saveState('Roster loaded from server');
-        render();
+        // The synced baseline and the persisted copy are updated either way —
+        // only the REPAINT is conditional, and any real difference (a player
+        // added elsewhere, a removal, a renamed position, the dual-role own
+        // record restored above) still paints immediately.
+        if (_beforeRoster !== JSON.stringify([state.players || [], state.users || []])) render();
       } catch(e) { console.warn('[loadRosterFromServer]', e); }
     }
 
