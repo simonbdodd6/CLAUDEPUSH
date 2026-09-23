@@ -20416,7 +20416,7 @@
             <div class="card" style="padding:14px 18px;margin-top:8px">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
                 <strong style="font-size:13px;color:var(--ink)">Sent invites</strong>
-                <button class="btn ghost" type="button" style="font-size:12px;padding:2px 8px" onclick="loadInviteList()">↺ Refresh</button>
+                <button class="btn ghost" type="button" style="font-size:12px;padding:2px 8px" onclick="loadInviteList(true)">↺ Refresh</button>
               </div>
               <div id="invite-list-panel">
                 <p class="muted" style="font-size:13px">Loading…</p>
@@ -45043,7 +45043,7 @@
         }
         if (nameEl) nameEl.value = '';
         if (emailEl) emailEl.value = '';
-        loadInviteList();
+        loadInviteList(true);
       } catch(e) {
         showToast('Could not create invite — ' + e.message);
       } finally {
@@ -45152,15 +45152,42 @@
         : 'Players claim the link with an email and password to get a permanent account.';
     }
 
-    async function loadInviteList() {
-      const panel = document.getElementById('invite-list-panel');
-      if (!panel) return;
-      panel.innerHTML = '<p class="muted" style="font-size:13px">Loading…</p>';
+    // The /api/invite list request in flight, keyed to the identity AND club
+    // it was made for: { key, promise }. renderPlayers() calls loadInviteList()
+    // on EVERY render pass (a background sync of accepted invites), and the
+    // panel's two <details ontoggle> re-fire on every rebuild — so the boot
+    // cascade issued eleven identical requests inside ~60 ms. Concurrent
+    // callers now share one request; the latch clears when it settles.
+    let _inviteListInFlight = null;
+
+    function inviteListContextKey() {
+      return `${currentUser()?.id || ''}|${state.stateTeamId || ''}`;
+    }
+
+    async function loadInviteList(force) {
+      if (!document.getElementById('invite-list-panel')) return;
+      const key = inviteListContextKey();
+      // In-flight sharing. A render-driven caller joins the request already out
+      // for this identity+club. A caller that has just WRITTEN (create, revoke,
+      // the Refresh button) passes force: its answer must post-date the write.
+      // typeof-guarded so sandboxes that extract this function alone still run.
+      const inFlight = typeof _inviteListInFlight !== 'undefined' ? _inviteListInFlight : null;
+      if (!force && inFlight && inFlight.key === key) return inFlight.promise;
+      // The panel is resolved when the reply is PAINTED, not when the request
+      // leaves: every render rebuilds it, and the element captured at the start
+      // would be a detached node by the time the list arrives.
+      const paint = html => { const panel = document.getElementById('invite-list-panel'); if (panel) panel.innerHTML = html; };
+      // A reply for an identity or club no longer in force is dropped, never
+      // painted into the new context's panel.
+      const stale = () => inviteListContextKey() !== key;
+      paint('<p class="muted" style="font-size:13px">Loading…</p>');
+      const promise = (async () => {
       try {
         await ensureServerSessionForCurrentUser();
         const res  = await fetch('/api/invite');
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'Could not load invites');
+        if (stale()) return;
         const list = data.invites || [];
 
         // Invite auto-sync removed: the server identity API (GET /api/identity) is
@@ -45168,11 +45195,11 @@
         // the whitelist and re-added legacy accounts after every invite list load.
 
         if (!list.length) {
-          panel.innerHTML = `<p class="muted" style="font-size:13px;padding:8px 0">No invites yet. Generate one above and send the link to a player or staff member.</p>`;
+          paint(`<p class="muted" style="font-size:13px;padding:8px 0">No invites yet. Generate one above and send the link to a player or staff member.</p>`);
           return;
         }
         const roleEmoji = { player:'', coach:'', admin:'', medical:'' };
-        panel.innerHTML = list.map(inv => {
+        paint(list.map(inv => {
           const isPending  = inv.status === 'pending';
           const isAccepted = inv.status === 'accepted';
           const statusColor = isAccepted ? '#34d399' : isPending ? '#fbbf24' : '#475569';
@@ -45198,9 +45225,18 @@
                 ` : ''}
               </div>
             </div>`;
-        }).join('');
+        }).join(''));
       } catch(e) {
-        panel.innerHTML = `<p style="color:#f87171;font-size:13px">Could not load invites</p>`;
+        if (!stale()) paint(`<p style="color:#f87171;font-size:13px">Could not load invites</p>`);
+      }
+      })();
+      const latch = { key, promise };
+      if (typeof _inviteListInFlight !== 'undefined') _inviteListInFlight = latch;
+      try { return await promise; }
+      finally {
+        // Only the request that set the latch clears it — a forced request that
+        // replaced it while this one was out must not be un-latched.
+        if (typeof _inviteListInFlight !== 'undefined' && _inviteListInFlight === latch) _inviteListInFlight = null;
       }
     }
 
@@ -45208,7 +45244,7 @@
       if (!(await ceConfirm('Revoke this invite?', 'The link stops working immediately.', { confirmLabel: 'Revoke', danger: true }))) return;
       try {
         await fetch('/api/invite', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token }) });
-        loadInviteList();
+        loadInviteList(true);
         showToast('Invite revoked');
       } catch(e) { showToast('Could not revoke invite'); }
     }
