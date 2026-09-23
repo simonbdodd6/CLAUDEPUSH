@@ -70,6 +70,7 @@ function scope({ group = 'g1' } = {}) {
     ${fn('availabilitySetReadFailed')}
     ${fn('availabilityLastReadFailed')}
     ${fn('availabilityReadUnknown')}
+    ${fn('playerAvailabilityReadUnknown')}
     ${fn('refreshLiveAvailability')}
     return {
       queue: r => SEQ.push(r), calls, chip,
@@ -170,6 +171,146 @@ test('a read for another group is UNKNOWN, not empty (unchanged group contract)'
   assert.equal(s.known() !== null, true);
 });
 
+// ── Dual role: a coach who also plays ──────────────────────────────────────
+// Both REAL reads in one scope: the player's self-read (which latches
+// _playerAvailKnown for the session) and the coach board's roster read. The
+// self-read knows nothing about the squad, so it must never stand in for a
+// coach board read that failed.
+function dualScope() {
+  return new Function(`"use strict";
+    const SEQ = [];
+    const calls = { fetches: 0, boardRenders: 0, playerRenders: 0, urls: [] };
+    function fetch(url) {
+      calls.fetches++; calls.urls.push(String(url));
+      const r = SEQ.shift() || { ok: true, body: {} };
+      if (r.throws) return Promise.reject(new Error('offline'));
+      return Promise.resolve({ ok: r.ok !== false, status: r.ok === false ? 500 : 200, json: async () => r.body });
+    }
+    let _resolvedAvailability = {}, _resolvedAvailabilityGroup = null;
+    let _availLastSync = null, _availReadFailed = false, _availRosterLinkedAt = 0;
+    let _liveAvailabilityInFlight = null;
+    let _playerAvailFetched = false, _playerAvailKnown = false;
+    const state = { activeView: 'player', activePlayerSection: 'availability', activeCoachSection: 'message',
+      operationalGroupId: 'g1', players: [{ name: 'P1', userId: 'u1' }, { name: 'P2', userId: 'u2' }] };
+    const PLAYER = { id: 'p1', userId: 'u1', name: 'P1' };
+    function getPlayer() { return PLAYER; }
+    function findLiveAvailabilityRecords() { return []; }
+    function mergeServerAvailabilityIntoRecord(rec, responses) { return Object.keys(responses || {}).length > 0; }
+    const chip = { textContent: '', className: '' };
+    const document = { getElementById: () => chip };
+    function operationalGroups() { return [{ id: 'g1' }]; }
+    async function ensureCoachRosterIdentityLinked() {}
+    function saveState() {}
+    function renderMessageCenter() { calls.boardRenders++; }
+    function renderPlayerAvailabilityV2() { calls.playerRenders++; }
+    function renderPlayerHome() {}
+    function renderAudiencePicker() {} function renderPushStatusCard() {}
+    function loadLiveSchedules() {} function loadLiveTemplates() {} function loadLiveLog() {}
+    function setTimeout() { return 1; }
+    ${fn('sessionKey')}
+    ${fn('liveAvailabilityPlayerKeys')}
+    ${fn('currentResolvedAvailability')}
+    ${fn('availabilitySetReadFailed')}
+    ${fn('availabilityLastReadFailed')}
+    ${fn('availabilityReadUnknown')}
+    ${fn('playerAvailabilityReadUnknown')}
+    ${fn('refreshLiveAvailability')}
+    ${fn('fetchMyAvailabilityFromServer')}
+    ${fn('playerAvailRetryNow')}
+    return {
+      queue: r => SEQ.push(r), calls, chip, state,
+      asPlayer: () => { state.activeView = 'player'; },
+      asCoach: () => { state.activeView = 'coach'; },
+      selfRead: () => fetchMyAvailabilityFromServer(),
+      selfRetry: () => playerAvailRetryNow(),
+      board: o => refreshLiveAvailability(o),
+      unknown: () => availabilityReadUnknown(),
+      playerUnknown: () => playerAvailabilityReadUnknown(),
+      failed: () => availabilityLastReadFailed(),
+      known: () => currentResolvedAvailability(),
+      latch: () => _playerAvailKnown,
+    };
+  `)();
+}
+const SELF = { responses: { fx_sat: { response: 'available', reason: '' } } };
+
+test('dual role: a good player self-read does NOT stand in for a coach board that then 500s', async () => {
+  const s = dualScope();
+  // 1. As a player, the self-read succeeds.
+  s.asPlayer();
+  s.queue({ ok: true, body: SELF });
+  await s.selfRead(); await wait(20);
+  assert.equal(s.latch(), true, 'the session-wide self-read latch is set');
+  assert.equal(s.failed(), false); assert.equal(s.unknown(), false, 'the player screens know their answers');
+  assert.equal(s.known(), null, 'but the coach map holds nothing — the self-read says nothing about the squad');
+
+  // 2. Switch to the coach Availability board; its read fails.
+  s.asCoach();
+  s.queue({ ok: false, body: {} });
+  await s.board(); await wait(30);
+  assert.match(s.calls.urls[1], /resolveRoster=1/, 'the coach board read really ran');
+  assert.equal(s.failed(), true, 'the failure is recorded');
+  assert.equal(s.known(), null, 'no squad answers exist');
+  assert.equal(s.unknown(), true, 'so the board is UNKNOWN — the failure state, not a fabricated "No reply" squad');
+  assert.equal(s.calls.boardRenders, 1, 'and the board repainted into it');
+
+  // 3. Recovery: a good board read clears it, exactly as for a single-role coach.
+  s.queue({ ok: true, body: DATA });
+  await s.board(); await wait(30);
+  assert.equal(s.unknown(), false, 'recovered'); assert.equal(s.failed(), false);
+  assert.match(JSON.stringify(s.known()), /"tue"/);
+});
+
+test('dual role: a coach board 500 with NO prior self-read is the same failure state (unchanged)', async () => {
+  const s = dualScope();
+  s.asCoach();
+  s.queue({ ok: false, body: {} });
+  await s.board(); await wait(30);
+  assert.equal(s.latch(), false); assert.equal(s.unknown(), true);
+});
+
+test('dual role: the player screens keep their own knowledge — the coach failure does not leak back', async () => {
+  const s = dualScope();
+  s.asPlayer();
+  s.queue({ ok: true, body: SELF });
+  await s.selfRead(); await wait(20);
+  s.asCoach();
+  s.queue({ ok: false, body: {} });
+  await s.board(); await wait(30);
+  assert.equal(s.unknown(), true, 'coach board: unknown');
+  // Back to the player capacity: the self-read still succeeded this session and
+  // the answers it merged are still on the device, so the player screens are
+  // NOT in the failure state (existing "keep what is known" semantics).
+  s.asPlayer();
+  assert.equal(s.playerUnknown(), false, 'player screens: still known');
+  assert.equal(s.failed(), true, 'even though the last read (the board) failed');
+});
+
+test('dual role: a FAILED self-read is still the player failure state, and a later good board read does not hide it from a player', async () => {
+  const s = dualScope();
+  s.asPlayer();
+  s.queue({ ok: false, body: {} });
+  await s.selfRead(); await wait(20);
+  assert.equal(s.playerUnknown(), true, 'player: unknown after a failed self-read (unchanged)');
+  s.queue({ ok: true, body: SELF });
+  await s.selfRetry(); await wait(20);
+  assert.equal(s.playerUnknown(), false, 'and the explicit player retry clears it (unchanged)');
+});
+
+test('each read owns its own question — the board can never consult the player latch', () => {
+  const board  = fn('availabilityReadUnknown');
+  const player = fn('playerAvailabilityReadUnknown');
+  // The invariant, structurally: the board's question cannot see the latch at
+  // all, whichever shell happens to be on screen.
+  assert.doesNotMatch(board, /_playerAvailKnown/, 'the coach board question never consults the player self-read');
+  assert.doesNotMatch(board, /activeView/, 'and does not depend on which shell is displayed');
+  assert.match(board, /currentResolvedAvailability\(\) === null/, 'its knowledge is the roster map');
+  assert.match(player, /!\(typeof _playerAvailKnown !== 'undefined' && _playerAvailKnown\)/, 'the player question owns the latch');
+  assert.doesNotMatch(player, /currentResolvedAvailability/, 'and never depends on the squad map a player cannot populate');
+  assert.doesNotMatch(fn('fetchMyAvailabilityFromServer'), /_playerAvailKnown = false/, 'the latch itself is unchanged: set once, never cleared');
+  assert.doesNotMatch(fn('refreshLiveAvailability'), /_playerAvailKnown/, 'the coach board read neither reads nor writes it');
+});
+
 // ── Render + action contracts ──────────────────────────────────────────────
 test('2. the board prints no "to chase" count and offers no "Chase all" when the read failed', () => {
   const board = fn('renderMessageCenterV2');
@@ -266,6 +407,104 @@ function boardServer(mode) {
     catch { res.statusCode = 404; res.end(); }
   });
   return { srv, state };
+}
+
+/**
+ * The reported dual-role journey, end to end in a real browser: a coach who
+ * also plays reads their own availability successfully, switches to the coach
+ * shell, and the board read 500s. The board must say so rather than convict
+ * the squad of silence on the strength of one player's own answer.
+ */
+function dualServer() {
+  const st = { self: 'ok', board: 'fail' };
+  const PLAYERS = Array.from({ length: 18 }, (_, i) => ({ id: 'p' + i, userId: 'u_p' + i, name: 'Player ' + i, position: 'Prop', playerGroupId: GRP }));
+  PLAYERS[0] = { id: 'p0', userId: 'u1', name: 'Coach Player', position: 'Prop', playerGroupId: GRP };
+  const DUAL = { ok: true, user: { id: 'u1', name: 'Coach Player', email: 'cp@s.test', role: 'coach', platformRole: '' },
+    teamMember: { teamId: TEAM, userId: 'u1', role: 'coach', staffLevel: 'head', status: 'active', playerGroupId: GRP },
+    permissions: ['reports', 'messaging', 'manage_players', 'manage_coaches', 'training', 'matchday', 'publish_training'],
+    memberships: [{ teamId: TEAM, teamName: 'Stub RFC', role: 'coach', staffLevel: 'head', canonicalRole: 'head_coach', current: true }],
+    operational: { player: { groups: [{ id: GRP, name: 'Seniors', developmentCategory: 'adult' }], defaultGroupId: GRP, mustChoose: false },
+                   staff:  { groups: [{ id: GRP, name: 'Seniors', developmentCategory: 'adult' }], defaultGroupId: GRP, mustChoose: false } } };
+  const srv = http.createServer((req, res) => {
+    const u = req.url || '/';
+    const send = o => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
+    if (u.startsWith('/api/availability')) {
+      if (u.includes('myResponse=1')) {
+        if (st.self === 'fail') { res.statusCode = 500; return send({ error: 'boom' }); }
+        return send({ responses: { fx_sat: { response: 'available', reason: '' } } });
+      }
+      if (st.board === 'fail') { res.statusCode = 500; return send({ error: 'boom' }); }
+      return send({ resolved: {}, roster: PLAYERS });
+    }
+    if (u.startsWith('/api/identity')) return send(DUAL);
+    if (u.startsWith('/api/publish?resource=fixtures')) return send({ ok: true, fixtures: FIXTURES });
+    if (u.startsWith('/api/publish?resource=matchday-teams')) return send({ ok: true, groups: [{ id: GRP, name: 'Seniors', status: 'active' }], teams: [] });
+    if (u.startsWith('/api/publish?resource=training-schedule')) return send({ ok: true, schedule: { slots: [] } });
+    if (u.startsWith('/api/publish?resource=roster')) return send({ ok: true, players: PLAYERS });
+    if (u.startsWith('/api/publish')) return send({ ok: true, club: { id: TEAM, name: 'Stub RFC' } });
+    if (u.startsWith('/api/chat')) return send({ ok: true, conversations: [] });
+    if (u.startsWith('/api/')) return send({ ok: true });
+    const f = u === '/' ? path.join(ROOT, 'index.html') : path.join(ROOT, u.split('?')[0]);
+    try { res.setHeader('content-type', f.endsWith('.html') ? 'text/html' : /\.m?js$/.test(f) ? 'text/javascript' : f.endsWith('.css') ? 'text/css' : 'application/octet-stream'); res.end(fs.readFileSync(f)); }
+    catch { res.statusCode = 404; res.end(); }
+  });
+  return { srv, st, PLAYERS };
+}
+
+for (const view of ['desktop', 'phone']) {
+  test(`browser (${view}): dual role — a good self-read never lets the board convict the squad`, async (t) => {
+    if (!chromium) return t.skip('playwright not installed');
+    let browser;
+    try { browser = await chromium.launch(); } catch { return t.skip('no browser available'); }
+    const { srv, st, PLAYERS } = dualServer();
+    await new Promise(r => srv.listen(0, '127.0.0.1', r));
+    const BASE = `http://127.0.0.1:${srv.address().port}`;
+    try {
+      const ctx = await browser.newContext({ ...(view === 'phone' ? devices['Pixel 5'] : { viewport: { width: 1440, height: 900 } }), serviceWorkers: 'block' });
+      await ctx.addInitScript(seed => localStorage.setItem('coach-eye-real-workflow-mvp-state-v1', JSON.stringify(seed)),
+        { activeView: 'player', activePlayerSection: 'availability', stateTeamId: TEAM, clubName: 'Stub RFC', currentUserId: 'u1',
+          users: [{ id: 'u1', name: 'Coach Player', email: 'cp@s.test', role: 'coach', playerId: 'p0' }], operationalGroupId: GRP,
+          players: PLAYERS, fixtures: FIXTURES, messages: [], onboardingDismissed: true,
+          availabilityRequests: [{ sessionId: 'fx_sat', status: 'sent', sentAt: '2026-09-22T09:00:00Z' }] });
+      const page = await ctx.newPage();
+      const errors = []; page.on('pageerror', e => errors.push(e.message));
+
+      // The player self-read lands (200) while the board read 500s.
+      await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => { try { return _playerAvailKnown === true; } catch { return false; } }, null, { timeout: 20000 });
+      // Even here, with the player shell on screen, the board markup must not
+      // have been built out of answers nobody has.
+      assert.equal(await page.evaluate(() => document.querySelectorAll('#coach-message .msg-kpi.chase').length), 0,
+        'no fabricated "No reply N" tile, even in markup the player cannot see');
+      assert.equal(await page.evaluate(() => document.querySelectorAll('#coach-message [onclick*="chaseAllNonResponders"]').length), 0,
+        'and no Chase all built from a failed request');
+      // The player's OWN answers are still known — the board's failure is not theirs.
+      assert.equal(await page.evaluate(() => playerAvailabilityReadUnknown()), false, 'the player screens keep what their self-read told them');
+      assert.doesNotMatch(await page.evaluate(() => (document.getElementById('player-availability')?.innerText || '')),
+        /Availability unavailable/, 'so the player screen is not in the failure state');
+
+      // The reported journey: switch to the coach shell.
+      await page.evaluate(() => { try { setView('coach'); } catch { state.activeView = 'coach'; } try { setSection('coach', 'message'); } catch {} });
+      await page.waitForFunction(() => /Availability could not be loaded/.test(document.getElementById('coach-message')?.innerText || ''), null, { timeout: 20000 });
+      const board = await page.evaluate(() => (document.getElementById('coach-message')?.innerText || '').replace(/\s+/g, ' '));
+      assert.match(board, /Availability could not be loaded/, 'the board says what happened');
+      const claims = await page.evaluate(() => [...document.querySelectorAll('#coach-message *')]
+        .filter(e => e.children.length === 0 && e.offsetParent !== null && /No reply|to chase|Chase all|replied to all/i.test(e.innerText || ''))
+        .map(e => (e.className || e.tagName) + ' :: ' + (e.innerText || '').trim().slice(0, 40)));
+      assert.deepEqual(claims, [], 'and convicts nobody: no count, no chase list, no Chase all');
+      assert.ok(await page.evaluate(() => document.querySelectorAll('#coach-message .ovw-retry, #avail-refresh-ts').length > 0), 'retry remains available');
+
+      // Recovery: the board read succeeds and the real board returns.
+      st.board = 'ok';
+      await page.evaluate(() => availRefreshNow());
+      await page.waitForFunction(() => !/Availability could not be loaded/.test(document.getElementById('coach-message')?.innerText || ''), null, { timeout: 20000 });
+      assert.match(await page.evaluate(() => (document.getElementById('coach-message')?.innerText || '')), /No reply/,
+        'the normal board is back once the read lands');
+
+      assert.deepEqual(errors, [], 'no page errors');
+      await ctx.close();
+    } finally { await browser.close(); srv.close(); }
+  });
 }
 
 for (const view of ['desktop', 'phone']) {

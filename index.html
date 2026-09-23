@@ -8696,13 +8696,35 @@
      * poll retries. Only the no-knowledge case is a failure STATE.
      */
     function availabilityReadUnknown() {
-      // Two reads answer this question, one per capacity: the coach board's
-      // resolved roster map, and the player's own self-read. EITHER counts as
-      // knowledge — otherwise a player, who never populates the coach map,
-      // would fall into the failure state even after a good self-read, which
-      // is exactly the "do not erase real answers on a failed refresh" rule.
+      // THE COACH BOARD'S question, and only it: a read failed and we hold no
+      // answers FOR THE SQUAD. Its knowledge is the resolved roster map and
+      // nothing else.
+      //
+      // It deliberately does not consult the player's self-read latch. That
+      // latch says "this one player's own answers arrived" — a fact about one
+      // person, which says nothing about the other seventeen. A dual-role user
+      // (a coach who also plays) whose self-read succeeded and whose board
+      // then 500s holds NO squad answers, so letting the latch answer here
+      // fabricated "No reply 18", "0/18 replied", "18 to chase" and offered
+      // Chase all, out of a request that never landed.
+      return availabilityLastReadFailed() && currentResolvedAvailability() === null;
+    }
+
+    /**
+     * THE PLAYER SCREENS' question: a read failed and THIS player's own
+     * answers are not known. Their knowledge is their own self-read, which is
+     * the only read a player makes — they never populate the roster map, so
+     * asking the board's question above would put every player into the
+     * failure state after a perfectly good self-read.
+     *
+     * Two questions, two readers, neither standing in for the other. Scoped by
+     * who is asking rather than by which shell happens to be on screen: the
+     * coach board is rendered on every pass, including while the player portal
+     * is displayed, so a view test would have left that markup fabricated
+     * (hidden, but one CSS change away from being read).
+     */
+    function playerAvailabilityReadUnknown() {
       return availabilityLastReadFailed()
-        && currentResolvedAvailability() === null
         && !(typeof _playerAvailKnown !== 'undefined' && _playerAvailKnown);
     }
     function resolvedAnswerFor(player, sessionId) {
@@ -21151,9 +21173,9 @@
       const allAvailable = sessions.length > 0 && sessions.every(s => (player[sessionKey(s.id)] || 'no-reply') === 'available');
       const confirmedCount = sessions.filter(s => (player[sessionKey(s.id)] || 'no-reply') !== 'no-reply').length;
       const pendingCount = sessions.length - confirmedCount;
-      // Do we actually know this player's answers? Same predicate the coach
-      // screens use (e9deb7a0) — now also armed by the player's own self-read.
-      const availUnknown = typeof availabilityReadUnknown === 'function' && availabilityReadUnknown();
+      // Do we actually know THIS PLAYER's answers? Their own self-read is the
+      // only read that can say so (e9deb7a0, scoped by capacity).
+      const availUnknown = typeof playerAvailabilityReadUnknown === 'function' && playerAvailabilityReadUnknown();
 
       document.getElementById("player-availability").innerHTML = `
         <div style="max-width:600px;margin:0 auto;padding:0 2px">
@@ -21229,7 +21251,7 @@
       // player answered on another device, so it does not say "No reply". The
       // three buttons stay: answering works whether or not the read did.
       const unknownAnswer = status === 'no-reply' && !pending
-        && typeof availabilityReadUnknown === 'function' && availabilityReadUnknown();
+        && typeof playerAvailabilityReadUnknown === 'function' && playerAvailabilityReadUnknown();
       const borderColors = { available:'#16a34a', unavailable:'#dc2626', maybe:'#d97706', 'no-reply':'var(--line)' };
       const border = borderColors[status] || 'var(--line)';
 
@@ -29359,7 +29381,7 @@
         // "Not replied" is a claim about the player. After a failed self-read
         // this device does not know, and says so — the Set availability button
         // below is unchanged, so the way to answer is still one tap away.
-        'no-reply':  { status, label: (typeof availabilityReadUnknown === 'function' && availabilityReadUnknown())
+        'no-reply':  { status, label: (typeof playerAvailabilityReadUnknown === 'function' && playerAvailabilityReadUnknown())
                         ? 'Not known' : 'Not replied', color: '#94a3b8' },
       };
       return map[status] || { status, label: status, color: '#94a3b8' };

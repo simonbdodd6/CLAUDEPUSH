@@ -62,10 +62,11 @@ function scope() {
     ${fn('availabilitySetReadFailed')}
     ${fn('availabilityLastReadFailed')}
     ${fn('availabilityReadUnknown')}
+    ${fn('playerAvailabilityReadUnknown')}
     ${fn('fetchMyAvailabilityFromServer')}
     ${fn('playerAvailRetryNow')}
     return { calls, queue: r => SEQ.push(r), run: () => fetchMyAvailabilityFromServer(), retry: () => playerAvailRetryNow(),
-      unknown: () => availabilityReadUnknown(), failed: () => availabilityLastReadFailed(),
+      unknown: () => playerAvailabilityReadUnknown(), failed: () => availabilityLastReadFailed(),
       merged: () => merged, fetched: () => _playerAvailFetched };
   `)();
 }
@@ -136,8 +137,7 @@ test('7. recovery: a failed read followed by a successful one returns to normal'
 });
 
 test('the knowledge half of the predicate covers BOTH reads', () => {
-  const pred = fn('availabilityReadUnknown');
-  assert.match(pred, /currentResolvedAvailability\(\) === null/, 'the coach board read still counts');
+  const pred = fn('playerAvailabilityReadUnknown');
   assert.match(pred, /!\(typeof _playerAvailKnown !== 'undefined' && _playerAvailKnown\)/, 'and so does the player self-read');
   assert.match(fn('fetchMyAvailabilityFromServer'), /_playerAvailKnown = true;/, 'which a successful self-read sets');
 });
@@ -159,12 +159,12 @@ test('the player screens ask the SAME question as the coach screens', () => {
   for (const [where, body] of [['the availability screen', fn('renderPlayerAvailabilityV2')],
                                ['the session card', fn('availabilityCardV2')],
                                ['the Home badge', fn('playerPortalAvailabilityStatus')]]) {
-    assert.match(body, /typeof availabilityReadUnknown === 'function' && availabilityReadUnknown\(\)/,
+    assert.match(body, /typeof playerAvailabilityReadUnknown === 'function' && playerAvailabilityReadUnknown\(\)/,
       `${where} reads the existing predicate, typeof-guarded`);
   }
   assert.equal((src.match(/_availReadFailed = /g) || []).length, 2, 'still one flag, assigned only by the setter');
   assert.doesNotMatch(fn('renderPlayerAvailabilityV2'), /_availReadFailed/, 'no surface reads the raw flag');
-  assert.doesNotMatch(fn('availabilityCardModel'), /availabilityReadUnknown/, 'and the data model keeps its no-reply spelling');
+  assert.doesNotMatch(fn('availabilityCardModel'), /[Aa]vailabilityReadUnknown/, 'and the data model keeps its no-reply spelling');
 });
 
 test('3. the banner states the failure, offers the player retry, and withholds the bulk answer', () => {
