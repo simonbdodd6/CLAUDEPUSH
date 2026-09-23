@@ -13906,6 +13906,10 @@
 
     // ─── AUTH ────────────────────────────────────────────────────────────────
     let authTab = 'closed'; // 'closed' | 'open' | 'open-join' — not persisted
+    // The login panel's own inline validation. #authPanel is rewritten wholesale
+    // by renderNav() on every render pass, so a message written straight into
+    // the DOM is gone at the next one — it has to be state the template reads.
+    let _resetFieldError = '';                                   // not persisted
     let _identityPendingRequests = [];
     let _identityRequestsLoading = false;
     let _serverSessionPromise = null;
@@ -13950,7 +13954,15 @@
           case 410: return context === 'invite'
             ? 'This invite has expired. Ask your coach for a new link.'
             : 'This link has expired. Please request a new one.';
-          case 429: return 'Too many attempts. Please wait a few minutes and try again.';
+          // The rate limiter states the REAL wait ("Wait 47 minutes, then
+          // double-check the exact email spelling"). The generic line below
+          // said "a few minutes" while the window is an hour, so a player
+          // waited, tried again, and concluded the button was broken. Only
+          // that one sentence is echoed — it carries no host, key or account
+          // detail, and any other 429 body still gets the generic copy.
+          case 429: return (e && typeof e.message === 'string' && /^Too many attempts\./.test(e.message))
+            ? e.message
+            : 'Too many attempts. Please wait a few minutes and try again.';
           default: return 'Something went wrong. Please try again.';
         }
       }
@@ -14117,10 +14129,19 @@
       const field = document.getElementById('identityLoginEmail');
       const email = (field?.value || '').trim();
       if (!email) {
-        field?.focus();
+        // This used to be a toast and nothing else: two seconds, at the bottom
+        // of the screen, under the phone keyboard. A player who has forgotten
+        // their password taps recovery FIRST, before typing anything, and saw
+        // the button do nothing at all — which is exactly what one reported.
+        // The message now sits against the field, in panel state, and stays
+        // there until an address is typed.
+        _resetFieldError = 'Enter your email address first.';
+        renderNav();
+        document.getElementById('identityLoginEmail')?.focus();
         showToast('Enter your email above, then tap Forgot password.');
         return;
       }
+      _resetFieldError = '';                  // a real attempt clears the prompt
       const btn = document.getElementById('identityResetBtn');
       if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
       try {
@@ -14138,6 +14159,19 @@
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Forgot password?'; }
       }
+    }
+
+    /**
+     * Clear the "enter your email" prompt as soon as one is being typed.
+     * By direct DOM write, never a render: renderNav() replaces #authPanel
+     * wholesale, which would destroy the very field the player is typing into.
+     */
+    function clearResetFieldError() {
+      if (!_resetFieldError) return;
+      _resetFieldError = '';
+      const el = document.getElementById('identity-reset-error');
+      if (el) el.hidden = true;
+      document.getElementById('identityLoginEmail')?.removeAttribute('aria-invalid');
     }
 
     function loginAs(userId) {
@@ -14275,7 +14309,8 @@
         </div>
         <div style="display:grid;gap:10px">
           <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Email
-            <input id="identityLoginEmail" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="you@club.com" style="font-size:14px;padding:9px 11px;font-weight:400" onkeydown="if(event.key==='Enter')loginIdentityAccount()"></label>
+            <input id="identityLoginEmail" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="you@club.com" style="font-size:14px;padding:9px 11px;font-weight:400"${_resetFieldError ? ' aria-invalid="true"' : ''} aria-describedby="identity-reset-error" oninput="clearResetFieldError()" onkeydown="if(event.key==='Enter')loginIdentityAccount()"></label>
+          <p id="identity-reset-error" role="alert"${_resetFieldError ? '' : ' hidden'} style="margin:-4px 0 0;font-size:12.5px;font-weight:700;color:var(--status-unavailable)">${esc(_resetFieldError || 'Enter your email address first.')}</p>
           <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Password
             <input id="identityLoginPassword" type="password" name="password" autocomplete="current-password" placeholder="Your password" style="font-size:14px;padding:9px 11px;font-weight:400" onkeydown="if(event.key==='Enter')loginIdentityAccount()"></label>
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:14px;min-height:42px">Log in</button>
