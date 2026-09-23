@@ -94,7 +94,7 @@ function statusScope() {
     const state = { activeView: 'player', operationalGroupId: '' };
     function currentResolvedAvailability() { return null; }
     ${fn('availabilityLastReadFailed')}
-    ${fn('availabilityReadUnknown')}
+    ${fn('playerAvailabilityReadUnknown')}
     ${fn('playerPortalAvailabilityStatus')}
     return { status: (p, id) => playerPortalAvailabilityStatus(p, id),
              fail: () => { _availReadFailed = true; _playerAvailKnown = false; } };
