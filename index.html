@@ -8666,6 +8666,13 @@
       // normal load.
       if (typeof coachSectionActive === 'function' && coachSectionActive('overview')
           && typeof renderCoachOverview === 'function') renderCoachOverview();
+      // The player reads the same answers through their own self-read, and
+      // their screens state them just as plainly, so they repaint on the same
+      // transitions — again only when on screen, and only on a transition.
+      if (typeof state !== 'undefined' && state.activeView === 'player') {
+        if (state.activePlayerSection === 'availability' && typeof renderPlayerAvailabilityV2 === 'function') renderPlayerAvailabilityV2();
+        if (state.activePlayerSection === 'home' && typeof renderPlayerHome === 'function') renderPlayerHome();
+      }
     }
 
     /** The last live read failed. True even while known answers are still held. */
@@ -8689,7 +8696,14 @@
      * poll retries. Only the no-knowledge case is a failure STATE.
      */
     function availabilityReadUnknown() {
-      return availabilityLastReadFailed() && currentResolvedAvailability() === null;
+      // Two reads answer this question, one per capacity: the coach board's
+      // resolved roster map, and the player's own self-read. EITHER counts as
+      // knowledge — otherwise a player, who never populates the coach map,
+      // would fall into the failure state even after a good self-read, which
+      // is exactly the "do not erase real answers on a failed refresh" rule.
+      return availabilityLastReadFailed()
+        && currentResolvedAvailability() === null
+        && !(typeof _playerAvailKnown !== 'undefined' && _playerAvailKnown);
     }
     function resolvedAnswerFor(player, sessionId) {
       const want = normalizeSessionId(sessionId);
@@ -20800,12 +20814,42 @@
     // Called once when the player opens the Availability section so they see the latest
     // server state even on a fresh page load (before any manual response).
     let _playerAvailFetched = false;
+    // A self-read has SUCCEEDED this session, so for this player an absent
+    // answer now genuinely means "not answered" rather than "not told".
+    // The player's half of availabilityReadUnknown's knowledge test.
+    let _playerAvailKnown = false;
+    /**
+     * A FAILED READ IS NOT AN EMPTY WEEK — the player's side of the same rule.
+     *
+     * This used to collapse a 500, an offline fetch and a real "you have not
+     * answered anything" into one silent `return`. On a device holding no
+     * local answers (a new phone, a cleared browser, a player who answered
+     * somewhere else) the screen then told the player things it did not know:
+     * "1 session needs your answer", "0 of 1 confirmed", a No reply chip, and
+     * "Not replied" on Home. The server always answers a real read with a
+     * `responses` object — empty when there is genuinely nothing — so ok-ness
+     * is what separates the two, and the existing failure flag records it.
+     *
+     * The once-per-session latch is deliberately NOT released on failure:
+     * renderPlayerAvailabilityV2 calls this, so releasing it would re-fetch on
+     * every render. The retry is explicit — playerAvailRetryNow().
+     */
     async function fetchMyAvailabilityFromServer() {
       if (_playerAvailFetched) return; // only auto-fetch once per session
       _playerAvailFetched = true;
+      let data = null, ok = false;
       try {
-        const data = await fetch('/api/availability?myResponse=1').then(r => r.ok ? r.json() : null).catch(() => null);
-        if (!data?.responses) return;
+        const res = await fetch('/api/availability?myResponse=1');
+        ok = Boolean(res && res.ok);
+        if (ok) data = await res.json().catch(() => null);
+      } catch { ok = false; }
+      if (!ok || !data?.responses) {
+        if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(true);
+        return;
+      }
+      _playerAvailKnown = true;
+      if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(false);
+      try {
         const player = getPlayer();
         const liveRecords = findLiveAvailabilityRecords(state.players, player);
         // Merge, never overwrite: only adopt server values for sessions the
@@ -20817,6 +20861,16 @@
         });
         if (changed) { saveState('Server availability loaded'); renderPlayerAvailabilityV2(); }
       } catch { /* non-critical — player already sees local state */ }
+    }
+
+    /**
+     * The player's retry. availRefreshNow() is the COACH board's refresh (a
+     * resolveRoster read a player may not make), so this is its player-side
+     * counterpart: the same self-read, asked again.
+     */
+    function playerAvailRetryNow() {
+      _playerAvailFetched = false;
+      fetchMyAvailabilityFromServer();
     }
 
     // ─── AvailabilityV2 — clean, fully independent per-session cards ───────────
@@ -21091,6 +21145,9 @@
       const allAvailable = sessions.length > 0 && sessions.every(s => (player[sessionKey(s.id)] || 'no-reply') === 'available');
       const confirmedCount = sessions.filter(s => (player[sessionKey(s.id)] || 'no-reply') !== 'no-reply').length;
       const pendingCount = sessions.length - confirmedCount;
+      // Do we actually know this player's answers? Same predicate the coach
+      // screens use (e9deb7a0) — now also armed by the player's own self-read.
+      const availUnknown = typeof availabilityReadUnknown === 'function' && availabilityReadUnknown();
 
       document.getElementById("player-availability").innerHTML = `
         <div style="max-width:600px;margin:0 auto;padding:0 2px">
@@ -21108,7 +21165,20 @@
             return contextMatchCentre().published ? renderPublishedTeamSheetCard(player) : '';
           })()}
 
-          <!-- Summary banner -->
+          <!-- Summary banner. Every word of it — "needs your answer", "N of M
+               confirmed", and the Yes to all it offers — is a statement about
+               answers this device may simply not have been told about. When the
+               self-read failed it says that instead, and the cards below still
+               let the player answer, because answering does not depend on the
+               read that failed. -->
+          ${availUnknown ? `
+          <div style="border:1.5px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px;background:var(--panel)">
+            <strong style="font-size:16px;display:block;margin-bottom:3px">Availability unavailable</strong>
+            <span style="font-size:12px;color:var(--muted)">Your answers could not be loaded, so any you have already sent are not shown here — nothing has been lost, and you can still answer below.</span>
+            <div style="margin-top:12px"><button type="button" onclick="playerAvailRetryNow()"
+              style="min-height:44px;padding:0 20px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;
+                border:2px solid var(--accent);background:transparent;color:var(--accent)">Try again</button></div>
+          </div>` : `
           <div style="border:1.5px solid ${allAvailable ? '#16a34a' : pendingCount > 0 ? 'var(--line)' : 'var(--accent)'};border-radius:14px;padding:18px 20px;margin-bottom:16px;background:${allAvailable ? 'rgba(var(--accent-rgb), 0.08)' : 'var(--panel)'}">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
               <div>
@@ -21121,7 +21191,7 @@
                 Yes to all
               </button>` : ''}
             </div>
-          </div>
+          </div>`}
 
           <!-- D1b Pass 3a — week navigation. Mobile-first: two big targets and
                the week between them, no calendar. Players are not capped at the
@@ -21149,6 +21219,11 @@
 
     function availabilityCardV2(model, session) {
       const { key, status, reason, isOpenReasonPicker, pending } = model;
+      // An unanswered card after a FAILED self-read does not know whether this
+      // player answered on another device, so it does not say "No reply". The
+      // three buttons stay: answering works whether or not the read did.
+      const unknownAnswer = status === 'no-reply' && !pending
+        && typeof availabilityReadUnknown === 'function' && availabilityReadUnknown();
       const borderColors = { available:'#16a34a', unavailable:'#dc2626', maybe:'#d97706', 'no-reply':'var(--line)' };
       const border = borderColors[status] || 'var(--line)';
 
@@ -21208,7 +21283,7 @@
               ${meta ? `<div class="avail-player-card-meta">${esc(meta)}</div>` : ''}
               ${session.deadline ? `<div class="avail-player-card-meta" style="margin-top:3px;color:var(--amber)">Reply by ${esc(session.deadline)}</div>` : ''}
             </div>
-            <span class="avail-status-chip" style="border:1px solid ${border};color:${border === 'var(--line)' ? 'var(--muted)' : border};background:${status === 'no-reply' ? 'transparent' : border + '20'}">${statusLabel(status)}${pending ? ' · not sent' : ''}</span>
+            <span class="avail-status-chip" style="border:1px solid ${border};color:${border === 'var(--line)' ? 'var(--muted)' : border};background:${status === 'no-reply' ? 'transparent' : border + '20'}">${unknownAnswer ? 'Not known' : statusLabel(status)}${pending ? ' · not sent' : ''}</span>
           </div>
           ${pending ? `<div class="avail-pending-note" role="status">
             <span aria-hidden="true">⏳</span>
@@ -29275,7 +29350,11 @@
         unavailable: { status, label: 'Not available', color: '#f87171' },
         injured:     { status, label: 'Injured',       color: '#f87171' },
         maybe:       { status, label: 'Maybe',         color: '#fbbf24' },
-        'no-reply':  { status, label: 'Not replied',   color: '#94a3b8' },
+        // "Not replied" is a claim about the player. After a failed self-read
+        // this device does not know, and says so — the Set availability button
+        // below is unchanged, so the way to answer is still one tap away.
+        'no-reply':  { status, label: (typeof availabilityReadUnknown === 'function' && availabilityReadUnknown())
+                        ? 'Not known' : 'Not replied', color: '#94a3b8' },
       };
       return map[status] || { status, label: status, color: '#94a3b8' };
     }
