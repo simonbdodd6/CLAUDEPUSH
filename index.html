@@ -16203,18 +16203,24 @@
      *  occurrence id. Counting the bare schedule id against such a group read
      *  an almost-empty store: production U18 held 48 available under
      *  slot_…-20260903 while bare `thu` held 1 — and Overview said 1. */
-    function tonightAvailabilityEventId(sessionId) {
+    function tonightAvailabilityEventId(sessionId, dateIso) {
       const sid = String(sessionId || '');
       if (!sid || sid === 'game') return sid;
       ensureTrainingSchedule();
       const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
-      const today = availToday();
-      const weekStart = availWeekStart(today);
+      // The date asked about; TONIGHT by default, which is the only question
+      // this had to answer when it was written. The player's Home card asks
+      // about its next training, which may be any future date, and the answer
+      // is the same rule either way — so it takes a date rather than growing a
+      // second resolver beside it. (The name is the original one on purpose:
+      // five suites extract it by name to test the Overview.)
+      const day = String(dateIso || availToday()).slice(0, 10);
+      const weekStart = availWeekStart(day);
       for (const slot of slots) {
-        if (availSlotDateInWeek(slot, weekStart) !== today) continue;
-        // Post-cutover: tonight's identity is the DATED occurrence, never the
-        // slot's legacy sessionId — the bare store is history, not tonight.
-        return availTrainingEventId(slot, today);
+        if (availSlotDateInWeek(slot, weekStart) !== day) continue;
+        // Post-cutover: the occurrence's identity is the DATED one, never the
+        // slot's legacy sessionId — the bare store is history, not that date.
+        return availTrainingEventId(slot, day);
       }
       return sid;
     }
@@ -29531,7 +29537,12 @@
         const fd = new Date(nextFx.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
         const daysAway = Math.round((new Date(nextFx.date+'T12:00:00') - new Date(today+'T12:00:00')) / 86400000);
         const cntLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : daysAway + ' days';
-        const avail    = playerPortalAvailabilityStatus(player, 'game');
+        // A dated fixture IS its own availability session (availabilityEventsForWeek
+        // gives a match event the fixture's own id), which is where the player's
+        // answer is stored and what the Availability screen reads. The literal
+        // 'game' here read the LEGACY bare store, inert since the dated cutover,
+        // so a player who had answered was still told "Not replied" on Home.
+        const avail    = playerPortalAvailabilityStatus(player, nextFx.id);
         nextFxCard = pCard(
           pCardHead('Next Fixture') +
           '<div style="font-size:16px;font-weight:800">vs ' + esc(nextFx.opposition || 'TBC') + '</div>' +
@@ -29561,7 +29572,11 @@
         const td = new Date(nextTrain.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
         const daysAway = Math.round((new Date(nextTrain.date+'T12:00:00') - new Date(today+'T12:00:00')) / 86400000);
         const cntLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : daysAway + ' days';
-        const avail    = playerPortalAvailabilityStatus(player, nextTrain.id);
+        // Same correction for training: the schedule row's id is the legacy bare
+        // one ('tue'), so resolve the dated occurrence for the row's own date —
+        // through the one resolver the Overview already uses for tonight, which
+        // now takes the date it is asked about.
+        const avail    = playerPortalAvailabilityStatus(player, tonightAvailabilityEventId(nextTrain.id, nextTrain.date));
         const blocks   = nextTrain.published ? ((state.trainingBlocks || {})[nextTrain.id] || []) : [];
         nextTrainCard = pCard(
           pCardHead('Next Training') +
