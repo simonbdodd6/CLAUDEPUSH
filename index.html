@@ -8647,6 +8647,44 @@
       if (_resolvedAvailabilityGroup !== (state.operationalGroupId || '')) return null;
       return _resolvedAvailability;
     }
+
+    /**
+     * Record whether the live availability read is currently failing, and
+     * repaint the board ONCE on each transition so it can change what it says
+     * — including the recovery transition, where a poll that returns a
+     * genuinely empty week would otherwise leave the error state on screen.
+     * Only on a transition: a poll that keeps failing must not keep rendering.
+     */
+    function availabilitySetReadFailed(failed) {
+      const next = Boolean(failed);
+      if (_availReadFailed === next) return;
+      _availReadFailed = next;
+      if (typeof renderMessageCenter === 'function') renderMessageCenter();
+    }
+
+    /** The last live read failed. True even while known answers are still held. */
+    function availabilityLastReadFailed() {
+      return typeof _availReadFailed !== 'undefined' && Boolean(_availReadFailed);
+    }
+
+    /**
+     * We do NOT know this group's availability: a read failed AND no answers
+     * are held for the group in force.
+     *
+     * A row with no answer is spelled 'no-reply' (sessionRows), which is the
+     * right answer to "did this player reply?" and the WRONG answer to "did
+     * the server tell us?". A 500 therefore painted a full squad as No reply,
+     * counted them all as "to chase" and offered to chase them — fabricating a
+     * fact about every player out of a failed request. Where a number would be
+     * that fabrication, the board says what actually happened instead.
+     *
+     * A failure AFTER a good read is different and stays as it was: the
+     * answers we hold are real, the chip says the refresh failed, and the next
+     * poll retries. Only the no-knowledge case is a failure STATE.
+     */
+    function availabilityReadUnknown() {
+      return availabilityLastReadFailed() && currentResolvedAvailability() === null;
+    }
     function resolvedAnswerFor(player, sessionId) {
       const want = normalizeSessionId(sessionId);
       let mine = null;
@@ -17680,6 +17718,16 @@
       const injuryFlags    = opPlayers.filter(p => allSessionIds.some(id =>
         (resolvedAnswerFor(p, id) || {}).reason === 'injury' || p[sessionKey(id) + 'Reason'] === 'injury')).length;
 
+      // A failed read is not a squad that said nothing. Where the board would
+      // otherwise print a number derived from answers it does not have, it
+      // says what happened and offers the refresh it already owns
+      // (availRefreshNow — the Live sync chip's action), in the same
+      // error-state shape the Overview's "Activity unavailable" card uses.
+      const availUnknown   = availabilityReadUnknown();
+      const availErrorHTML = `<p class="ovw-empty" style="padding:14px 16px;margin:0">
+        <strong>Availability could not be loaded</strong>The server did not answer, so this week's replies are not known — nobody has been marked as "no reply".
+        <button type="button" class="ovw-retry" onclick="availRefreshNow()">Try again</button></p>`;
+
       const playerRows = list => list.map(({player, status, reason, respondedAt}) => {
         const isInjury   = reason === 'injury';
         const reasonText = reason && reason !== 'injury' ? REASON_LABELS[reason] || reason : '';
@@ -17717,19 +17765,20 @@
         return `<button class="msg-session-card ${selected?.id === session.id ? "active" : ""}" type="button" onclick="openMessageDetail('${session.id}')">
           <div class="register-head">
             <strong><span style="margin-right:5px">${icon}</span>${esc(sessionDisplayTitle(session))}</strong>
-            <span class="msg-chip ${chase === 0 && total > 0 ? 'available' : chase > 0 ? 'no-reply' : ''}">${yes}/${total}</span>
+            <span class="msg-chip ${availUnknown ? '' : chase === 0 && total > 0 ? 'available' : chase > 0 ? 'no-reply' : ''}">${availUnknown ? '—' : `${yes}/${total}`}</span>
           </div>
           <small style="color:var(--muted)">${[
             session.date ? '' : esc("Availability open"),   // the weekday now leads the title; an undated session keeps its old line
             session.deadline ? '<span style="color:var(--amber)">by ' + esc(session.deadline) + '</span>' : '',
           ].filter(Boolean).join(' · ')}</small>
-          <div class="avail-progress"><div class="avail-progress-fill" style="width:${pct}%"></div></div>
+          <div class="avail-progress"><div class="avail-progress-fill" style="width:${availUnknown ? 0 : pct}%"></div></div>
+          ${availUnknown ? '' : `
           <div class="msg-pill-row" style="margin-top:8px">
             <span class="msg-chip available">${yes} ✓</span>
             <span class="msg-chip unavailable">${no} ✗</span>
             <span class="msg-chip maybe">${unsure} ?</span>
             <span class="msg-chip no-reply">${chase} —</span>
-          </div>
+          </div>`}
           ${session.target > 0 ? (() => {
             const needed = session.target - yes;
             const ok     = yes >= session.target;
@@ -17794,12 +17843,13 @@
           </header>
 
           ${`
+          ${availUnknown ? `<section class="msg-card" style="margin-bottom:12px">${availErrorHTML}</section>` : `
           <section class="msg-kpi-grid avail-summary">
             <article class="msg-kpi available"><span>Available</span><strong>${available.length}</strong></article>
             <article class="msg-kpi maybe"><span>Maybe</span><strong>${maybe.length}</strong></article>
             <article class="msg-kpi unavailable"><span>Unavailable</span><strong>${unavailable.length}</strong></article>
             <article class="msg-kpi chase"><span>No reply</span><strong>${noReply.length}</strong></article>
-          </section>
+          </section>`}
 
           <!-- ROW 1: Session picker (left) + live response board (right) -->
           <section class="msg-command-grid msg-two-col">
@@ -17816,11 +17866,11 @@
                      the control appeared to leave CoachEasier. It is a real
                      button now, running the availability refresh this same chip
                      already reports the result of (avail-refresh-ts). -->
-                <button type="button" id="avail-refresh-ts" class="msg-chip msg-chip-btn ${_availLastSync ? 'available' : 'no-reply'}"
+                <button type="button" id="avail-refresh-ts" class="msg-chip msg-chip-btn ${availabilityLastReadFailed() ? 'unavailable' : _availLastSync ? 'available' : 'no-reply'}"
                   onclick="availRefreshNow()" title="Refresh live availability now"
-                  aria-label="Refresh live availability now">${_availLastSync ? 'Synced ' + new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : 'Live sync'}</button>
+                  aria-label="Refresh live availability now">${availabilityLastReadFailed() ? 'Sync failed — retry' : _availLastSync ? 'Synced ' + new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : 'Live sync'}</button>
               </div>
-              ${opPlayers.length > 0 ? `
+              ${opPlayers.length > 0 && !availUnknown ? `
               <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(var(--accent-rgb), 0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
                 <span style="color:var(--muted)">${esc(isNowWeek ? 'This week' : availDatedWeekLabel(weekStart))}:</span>
                 <span style="font-weight:700;color:var(--ink)">${repliedAll} / ${opPlayers.length} replied to all sessions</span>
@@ -17874,7 +17924,7 @@
                     <p>${esc(sessionDisplayTitle(selected || {}))}${selected?.focus ? ' · <span style="color:var(--amber)">' + esc(selected.focus) + '</span>' : ''} · tap a player for details.</p>
                   </div>
                   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-                    <span class="msg-chip ${boardNoReply.length ? "no-reply" : "available"}">${boardAnswered.length}/${boardRows.length} shown</span>
+                    ${availUnknown ? '' : `<span class="msg-chip ${boardNoReply.length ? "no-reply" : "available"}">${boardAnswered.length}/${boardRows.length} shown</span>`}
                     ${selected?.target > 0 ? (() => {
                       const avail  = boardAvailable.length;
                       const needed = selected.target - avail;
@@ -17883,6 +17933,7 @@
                     })() : ''}
                   </div>
                 </div>
+                ${availUnknown ? '' : `
                 <div class="availability-board-tools">
                   <div class="availability-filter-group">${filterButtons}</div>
                   <div style="display:flex;gap:8px;align-items:center">
@@ -17896,17 +17947,20 @@
                       ↓ CSV
                     </button>
                   </div>
-                </div>
+                </div>`}
                 <!-- V2: one sortable, filterable squad list (status quick-filters +
                      Position/Attendance/Response sort). Each row → player panel. -->
-                <div class="msg-player-list msg-board-list">${playerRows(boardRows)}</div>
+                <div class="msg-player-list msg-board-list">${availUnknown ? availErrorHTML : playerRows(boardRows)}</div>
               </article>
             </div>
           </section>`}
 
           <!-- ROW 2: Player detail — appears only when a player is clicked -->
-          <div id="player-detail-panel" class="msg-player-detail-panel" style="${state.selectedMessagePlayerId ? "margin-top:14px" : "display:none"}">
-            ${state.selectedMessagePlayerId ? buildPlayerDetailHtml(selectedPlayer, selectedStatus) : ""}
+          <!-- The open player's card reads THIS player's reply. With no read to
+               read it from, it would state one anyway ("This session: No reply"),
+               so it closes while availability is unknown and returns on recovery. -->
+          <div id="player-detail-panel" class="msg-player-detail-panel" style="${state.selectedMessagePlayerId && !availUnknown ? "margin-top:14px" : "display:none"}">
+            ${state.selectedMessagePlayerId && !availUnknown ? buildPlayerDetailHtml(selectedPlayer, selectedStatus) : ""}
           </div>
 
           <section class="msg-command-grid${BETA_SIMPLE_UI ? ' beta-hidden' : ''}" style="grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr)">
@@ -18474,6 +18528,11 @@
 
     async function chaseAllNonResponders() {
       if (!isCoach()) return showToast("Only coaches can send reminders");
+      // Fail closed: with no known answers, "everyone" is not a chase list —
+      // it is the shape of a failed read, and sending it pushes a reminder to
+      // players who may well have replied. Guarded here rather than only in
+      // the board, because the Overview's needs-attention card calls this too.
+      if (availabilityReadUnknown()) return showToast('Availability could not be loaded — refresh before chasing');
       // The canonical current week — the same set the Overview card counted,
       // and the same DATED identities the board renders. state.schedule's bare
       // protocol ids would judge "replied" from the legacy stores.
@@ -41558,6 +41617,9 @@
     // ─── LIVE MESSAGING API LOADERS ───────────────────────────────────────────
     let _availPollTimer  = null;
     let _availLastSync   = null; // ISO string of last successful refresh
+    // The last live availability read FAILED (HTTP error, or the network never
+    // answered). Distinct from "never read": see availabilityReadUnknown().
+    let _availReadFailed = false;
 
     // LIVE-DATA CYCLE GUARD (coach Availability/Messaging screen).
     // render() calls loadLiveMessaging() on EVERY render while this section is
@@ -41747,6 +41809,11 @@
           // force stays (a stale one is already caught by
           // currentResolvedAvailability's group check), the chip says what
           // happened, and the next poll retries.
+          // Record the failure in STATE, not only in this element: every
+          // render rebuilds the chip from what we know, so a DOM-only message
+          // was erased by the next repaint — and nothing else could tell that
+          // the numbers on the board came from a read that never landed.
+          if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(true);
           if (ts) { ts.textContent = 'Sync failed — will retry'; ts.className = 'msg-chip unavailable'; }
           return;
         }
@@ -41779,6 +41846,8 @@
         });
         if (changed) saveState('Live availability synced');
         _availLastSync = new Date().toISOString();
+        // A real answer clears the failure state, whatever it contains.
+        if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(false);
         if (ts) {
           ts.textContent = `Synced ${new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
           ts.className = 'msg-chip available';
@@ -41807,6 +41876,7 @@
         }
       } catch(e) {
         console.warn('[refreshLiveAvailability]', e);
+        if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(true);
         if (ts) { ts.textContent = 'Sync failed'; ts.className = 'msg-chip unavailable'; }
       }
       })();
