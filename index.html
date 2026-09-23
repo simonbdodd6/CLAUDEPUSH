@@ -24509,6 +24509,14 @@
     // reply lands), landing the legacy/Seniors record in the cache; the stamp
     // lets ensureTrainingSchedule notice and refetch for the real group.
     let _trainingScheduleGroupId = '';
+    // The schedule request in flight, keyed to the group it was made for:
+    // { gid, promise }. ensureTrainingSchedule() latches its OWN attempts, but
+    // renderTrainingScheduleCard() calls loadTrainingSchedule() directly on
+    // every render while the schedule is still null — seven duplicate
+    // requests during a fresh load. Concurrent callers for the same group now
+    // share one request; a forced (stale-reply) chase for another group
+    // replaces it. The latch clears when the request settles, either way.
+    let _trainingScheduleInFlight = null;
 
     /**
      * The training schedule is the SOURCE of dated training events, but it was
@@ -24538,6 +24546,9 @@
       // switched groups by the time the reply lands, that reply describes the
       // wrong group's schedule and is discarded.
       const gid = trainingGroupParam();
+      const inFlight = typeof _trainingScheduleInFlight !== 'undefined' ? _trainingScheduleInFlight : null;
+      if (!force && inFlight && inFlight.gid === gid) return inFlight.promise;
+      const promise = (async () => {
       try {
         const res = await fetch('/api/publish?resource=training-schedule'
           + (gid ? `&group=${encodeURIComponent(gid)}` : ''));
@@ -24566,6 +24577,11 @@
         render();
         return _trainingSchedule;
       } catch { _trainingScheduleAttempted = false; return null; }
+      })();
+      const latch = { gid, promise };
+      if (typeof _trainingScheduleInFlight !== 'undefined') _trainingScheduleInFlight = latch;
+      try { return await promise; }
+      finally { if (typeof _trainingScheduleInFlight !== 'undefined' && _trainingScheduleInFlight === latch) _trainingScheduleInFlight = null; }
     }
 
     async function trainingScheduleSave(body) {
@@ -34865,6 +34881,12 @@
     // the difference chatIsUnresolvedPlaceholder needs to avoid refusing a real
     // conversation during boot.
     let _chatConversationsLoaded = false;
+    // The one /api/chat?action=conversations request in flight, keyed to the
+    // identity it was made for: { id, promise }. render() runs once per
+    // loader that lands during a fresh load, and each pass re-entered this
+    // fetch — ten identical requests inside the first half-second. Concurrent
+    // callers now await the same request; the latch clears when it settles.
+    let _chatConversationsInFlight = null;
     let _chatFeedPaintedFor = null;  // conv id the #chatFeed DOM currently shows
     let _chatMessages      = {};   // { convId: [...msgs] }
     // ts of the last SUCCESSFUL full-history load per conversation. THE proof
@@ -35214,7 +35236,7 @@
             description: 'Group players and group staff' }),
         });
         const data = await res.json().catch(() => ({}));
-        if (res.ok && data.ok !== false) await chatFetchConversations();
+        if (res.ok && data.ok !== false) await chatFetchConversations(true);
       } catch (e) { console.warn('[chatEnsureGroupChannel]', e); }
     }
 
@@ -35452,7 +35474,7 @@
         if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not save the group');
         _chatGroupModal = null;
         chatRenderGroupModal();
-        await chatFetchConversations();                 // the server list is authoritative
+        await chatFetchConversations(true);                 // the server list is authoritative
         if (data.conversation?.id) selectChat(data.conversation.id);
         else chatRenderContactList(state.activeView === 'coach' ? 'coach' : 'player');
         showToast(m.mode === 'edit' ? 'Group updated' : `${name} created`);
@@ -35517,7 +35539,7 @@
             body: JSON.stringify({ action: 'create_conv', id: convId, name: staff.name || 'Direct message', type: 'DIRECT', participants: [String(me.id), String(staff.id)] }),
           });
           const data = await res.json().catch(() => ({}));
-          if (res.ok && data.ok !== false) await chatFetchConversations();
+          if (res.ok && data.ok !== false) await chatFetchConversations(true);
         } catch (e) { console.warn('[chatStartStaffDm]', e); }
       }
     }
@@ -35584,7 +35606,7 @@
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not create conversation');
         }
-        await chatFetchConversations();
+        await chatFetchConversations(true);
         chatRenderContactList('coach');
         await selectChat(request.id);
         chatFocusComposerSoon();
@@ -36311,12 +36333,21 @@
       });
     }
 
-    async function chatFetchConversations() {
+    async function chatFetchConversations(force) {
       // Single funnel for /api/chat?action=conversations. Several render paths
       // call it directly, so gating only the background tick still left a
       // signed-out tab issuing 401s after logout. No session, no request.
       if (typeof _serverAuthState !== 'undefined' && _serverAuthState === 'anon') return;
       const me = chatMe();
+      // In-flight sharing. A render-driven caller joins the request already
+      // out for this identity instead of starting another. A caller that has
+      // just CHANGED something (created a group, marked a thread read) passes
+      // force: the answer it needs post-dates any request already in flight.
+      // Guarded with typeof so sandboxes that extract this function alone
+      // keep working without the latch.
+      const inFlight = typeof _chatConversationsInFlight !== 'undefined' ? _chatConversationsInFlight : null;
+      if (!force && inFlight && inFlight.id === me.id) return inFlight.promise;
+      const promise = (async () => {
       try {
         const data = await fetch(`/api/chat?action=conversations&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
         if (data.ok) {
@@ -36344,6 +36375,15 @@
         // Network failure / offline: same guarantee — do not leave a frozen stale badge.
         _chatConversations = (_chatConversations || []).map(c => ({ ...c, unread: 0 }));
         chatSetUnreadTotal(0);
+      }
+      })();
+      const latch = { id: me.id, promise };
+      if (typeof _chatConversationsInFlight !== 'undefined') _chatConversationsInFlight = latch;
+      try { return await promise; }
+      finally {
+        // Only the request that set the latch clears it — a forced request
+        // that replaced it while this one was out must not be un-latched.
+        if (typeof _chatConversationsInFlight !== 'undefined' && _chatConversationsInFlight === latch) _chatConversationsInFlight = null;
       }
     }
 
@@ -36787,7 +36827,7 @@
       const me = chatMe();
       fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ action:'read', convId, userId: me.id }) })
-        .then(() => chatFetchConversations())
+        .then(() => chatFetchConversations(true))
         .then(() => chatRenderContactList(mode))
         .catch(()=>{});
     }
@@ -41649,7 +41689,7 @@
             // pair twice. A manual refresh, and the refresh on returning to
             // the tab, still reload them — that is the point of asking.
             if (!opts.skipPanelReload) {
-              loadLiveSchedules();
+              loadLiveSchedules(true);
               loadLiveTemplates();
               loadLiveLog();
             }
@@ -41930,6 +41970,12 @@
     // caller still reloads unconditionally.
     let _liveSchedulesLoadedAt = 0;
     let _liveSchedulesHtml = '';
+    // The /api/schedules + /api/templates pair in flight. The panel's <details>
+    // fires toggle on every render that rebuilds it, and until the FIRST load
+    // has stored its markup the toggle handler had nothing to repaint and
+    // re-fetched — six copies of the pair during a fresh load. Concurrent
+    // callers now share the request; the latch clears when it settles.
+    let _liveSchedulesInFlight = null;
 
     /**
      * The panel's <details> is re-created by every render of this screen, and
@@ -41953,10 +41999,19 @@
       loadLiveSchedules();
     }
 
-    async function loadLiveSchedules() {
-      const panel = document.getElementById("live-schedules-panel");
-      if (!panel) return;
+    async function loadLiveSchedules(force) {
+      if (!document.getElementById("live-schedules-panel")) return;
+      const inFlight = typeof _liveSchedulesInFlight !== 'undefined' ? _liveSchedulesInFlight : null;
+      // A caller that has just changed a schedule (toggle, delete, a manual
+      // refresh) passes force: it needs an answer that post-dates its write.
+      if (!force && inFlight) return inFlight;
       _liveSchedulesLoadedAt = Date.now();
+      // The panel is resolved when the reply is PAINTED, not when the request
+      // leaves: a render in between rebuilds the <details>, and painting the
+      // element captured at the start would fill a node no longer in the page
+      // while the visible one stayed on "Loading...".
+      const paint = html => { const panel = document.getElementById("live-schedules-panel"); if (panel) panel.innerHTML = html; };
+      const promise = (async () => {
       try {
         const [schedRes, tplRes] = await Promise.all([
           fetch('/api/schedules').then(r => r.json()),
@@ -41971,12 +42026,12 @@
         const ordered  = [...active, ...inactive];
 
         if (!ordered.length) {
-          panel.innerHTML = `<p class="muted" style="font-size:13px">No scheduled sends yet — create one using the Template messages builder above.</p>`;
-          _liveSchedulesHtml = panel.innerHTML;
+          _liveSchedulesHtml = `<p class="muted" style="font-size:13px">No scheduled sends yet — create one using the Template messages builder above.</p>`;
+          paint(_liveSchedulesHtml);
           return;
         }
 
-        panel.innerHTML = ordered.map(s => {
+        _liveSchedulesHtml = ordered.map(s => {
           const tpl      = tplMap[s.templateId];
           const days     = s.days?.join(', ') || (s.day ? s.day.charAt(0).toUpperCase()+s.day.slice(1) : '—');
           const timeStr  = s.time || '—';
@@ -42010,14 +42065,18 @@
             <div style="font-size:11px;color:var(--muted);margin-top:3px">Last fired: ${lastSent}</div>
           </div>`;
         }).join('');
-        _liveSchedulesHtml = panel.innerHTML;
+        paint(_liveSchedulesHtml);
       } catch (err) {
-        panel.innerHTML = `<p class="muted" style="font-size:13px;color:#f87171">Could not load schedules — ${err.message}</p>`;
+        paint(`<p class="muted" style="font-size:13px;color:#f87171">Could not load schedules — ${err.message}</p>`);
         // Never hold a failure as the panel's content. Clearing this is what
         // makes the next toggle retry the load instead of repainting the
         // error — the throttle only repaints when there is content to repaint.
         _liveSchedulesHtml = '';
       }
+      })();
+      if (typeof _liveSchedulesInFlight !== 'undefined') _liveSchedulesInFlight = promise;
+      try { await promise; }
+      finally { if (typeof _liveSchedulesInFlight !== 'undefined' && _liveSchedulesInFlight === promise) _liveSchedulesInFlight = null; }
     }
 
     async function loadLiveTemplates() {
@@ -44266,7 +44325,7 @@
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ id, active }),
         });
-        loadLiveSchedules();
+        loadLiveSchedules(true);
       } catch (err) {
         showToast("Could not update schedule: " + err.message);
       }
@@ -44280,7 +44339,7 @@
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ id }),
         });
-        loadLiveSchedules();
+        loadLiveSchedules(true);
         showToast('Schedule deleted');
       } catch (err) {
         showToast('Could not delete: ' + err.message);
