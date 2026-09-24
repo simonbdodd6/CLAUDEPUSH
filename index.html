@@ -172,6 +172,17 @@
     .brand strong { display: block; font-size: 16px; font-weight: 800; color: #fff; }
     .brand p { margin: 2px 0 0; color: #4a7a5e; font-size: 12px; }
     .sidebar-card p { margin: 2px 0 0; color: #4a7a5e; font-size: 12px; }
+    /* Club switcher — the sidebar's one answer to "which club is this?".
+       Sized for a phone first: the sidebar is position:static there, so this
+       sits at the top of the page, and a long club name truncates inside the
+       control rather than widening it. */
+    .club-switch { display: grid; gap: 4px; min-width: 0; }
+    .club-switch-label { font-size: 10px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted); }
+    .club-switch-select { width: 100%; max-width: 100%; box-sizing: border-box; min-height: 38px;
+      border: 1px solid var(--line); border-radius: 8px; background: var(--nav-soft); color: var(--ink);
+      font-size: 13px; font-weight: 700; padding: 0 8px; text-overflow: ellipsis; }
+    .club-switch-note { margin: 0; font-size: 10.5px; font-weight: 700; color: var(--muted); }
 
     /* Segmented control */
     .view-switch {
@@ -14216,10 +14227,49 @@
       return NAV_BETA_IDS.includes(id) ? '<span class="nav-beta">Beta</span>' : '';
     }
 
+    /**
+     * WHICH CLUB AM I WORKING IN — and how do I change it.
+     *
+     * The control is the one that already existed; what it lacked was a name.
+     * An account holding two clubs saw an unlabelled dropdown between the
+     * login panel and the nav, and an owner of a newly created club had no
+     * way to tell that it was the thing that would take him there.
+     *
+     * Only ever the clubs the SERVER listed for this account
+     * (_myMemberships), only when there is an actual choice, and the club in
+     * force is the selected option. Choosing one goes through switchTeamTo →
+     * switch_team, which re-checks the membership server-side; nothing here
+     * decides anything or grants anything.
+     *
+     * A platform administrator is told, beside the club, that platform
+     * administration is NOT one — it appears in no club list and confers no
+     * membership anywhere.
+     */
+    function clubSwitcherHTML() {
+      const clubs = (typeof _myMemberships !== 'undefined' && Array.isArray(_myMemberships)) ? _myMemberships : [];
+      if (clubs.length < 2) return '';
+      const isPlatformAdmin = typeof _myPlatformRole !== 'undefined' && _myPlatformRole === 'platform_admin';
+      return `
+        <div class="club-switch">
+          <label class="club-switch-label" for="clubSwitchSelect">Current club</label>
+          <select id="clubSwitchSelect" class="club-switch-select" onchange="switchTeamTo(this.value)"
+            aria-label="Current club — choose which club you are working in">
+            ${clubs.map(m => `<option value="${esc(m.teamId)}"${m.current ? ' selected' : ''}>${esc(m.teamName)}</option>`).join('')}
+          </select>
+          ${isPlatformAdmin ? `<p class="club-switch-note">Platform admin · not a club role</p>` : ''}
+        </div>`;
+    }
+
     function renderNav() {
       const user = currentUser();
       // ── Dynamic club name in sidebar ───────────────────────────────────────
-      const _clubName = state.clubName || 'My Team';
+      // The club's own configured name where it has one; otherwise the name
+      // the SERVER gave this membership. A club created minutes ago has no
+      // club-config record yet, and "My Team" in the sidebar while the
+      // switcher named the club was the app disagreeing with itself.
+      const _clubName = state.clubName
+        || (typeof _myMemberships !== 'undefined' && (_myMemberships || []).find(m => m.current)?.teamName)
+        || 'My Team';
       const _nameEl   = document.getElementById('sidebarClubName');
       const _cardEl   = document.getElementById('sidebarClubCard');
       if (_nameEl) _nameEl.textContent = _clubName;
@@ -14236,15 +14286,12 @@
         .map(([id, label]) =>
         `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${icon(SECTION_ICONS[id] || 'home')}${label}${navBetaBadge(id)}</button>`
       ).join("");
-      // Multi-team switcher — only when this identity belongs to >1 team.
+      // The club switcher — only when this account belongs to >1 club.
       const switcherHost = document.getElementById('teamSwitcher');
-      if (switcherHost) {
-        switcherHost.innerHTML = (_myMemberships || []).length > 1 ? `
-          <select onchange="switchTeamTo(this.value)" aria-label="Switch team"
-            style="width:100%;min-height:34px;border:1px solid var(--line);border-radius:8px;background:var(--nav-soft);color:var(--ink);font-size:12px;font-weight:700;padding:0 8px;margin-top:6px">
-            ${_myMemberships.map(m => `<option value="${esc(m.teamId)}" ${m.current ? 'selected' : ''}>${esc(m.teamName)}${m.current ? '' : ' →'}</option>`).join('')}
-          </select>` : '';
-      }
+      // typeof-guarded: several suites splice renderNav into a sandbox that
+      // declares only what it needs, and an undeclared identifier would throw
+      // there rather than render nothing.
+      if (switcherHost) switcherHost.innerHTML = typeof clubSwitcherHTML === 'function' ? clubSwitcherHTML() : '';
       const player = currentUser();
       const _pendingCount = (() => {
         if (!player?.id) return 0;
