@@ -328,7 +328,25 @@ for (const view of ['desktop', 'phone']) {
         return (box?.innerText || '').replace(/\s+/g, ' ');
       });
       const dmCandidates = () => page.evaluate(() => chatStaffDmCandidates(state.currentUserId).map(c => c.name));
-      const openMembers = async () => { await page.evaluate(() => setSection('coach', 'players')); await page.waitForTimeout(600); };
+      // Members is open once its staff card is on screen — a state, not a delay.
+      const openMembers = async () => {
+        await page.evaluate(() => setSection('coach', 'players'));
+        await page.waitForSelector('#members-staff-title', { timeout: 20000 });
+      };
+      // Wait until the staff CARD (not the page: the signed-in name is in the
+      // sidebar too) shows `expected`, and report whether any `forbidden` name was
+      // painted in it on the way — a transient leak counts as a leak.
+      const staffSettled = async (expected, forbidden) => {
+        await page.evaluate(() => { window.__staffLeak = ''; });
+        await page.waitForFunction(([want, bad]) => {
+          const el = document.getElementById('members-staff-title');
+          const box = el?.closest('div.card') || el?.parentElement?.parentElement;
+          const t = (box?.innerText || '').replace(/\s+/g, ' ');
+          if (bad && new RegExp(bad).test(t)) window.__staffLeak = t;
+          return new RegExp(want).test(t);
+        }, [expected, forbidden || ''], { timeout: 20000 });
+        return page.evaluate(() => window.__staffLeak || '');
+      };
 
       await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#ce-welcome', { timeout: 20000 });
@@ -340,7 +358,7 @@ for (const view of ['desktop', 'phone']) {
 
       // Club A: its staff load and show (three: Nick, Simon, Alice).
       await openMembers();
-      await page.waitForFunction(() => /Alice Physio/.test(document.getElementById('players')?.innerText || document.body.innerText), null, { timeout: 20000 });
+      await staffSettled('Alice Physio');
       let text = await staffOnScreen();
       assert.match(text, /Simon Alpha/); assert.match(text, /Alice Physio/); assert.match(text, /Nick Admin/);
       assert.deepEqual((await dmCandidates()).sort(), ['Alice Physio', 'Simon Alpha'], 'club A DM candidates');
@@ -349,11 +367,12 @@ for (const view of ['desktop', 'phone']) {
       await page.selectOption('#clubSwitchSelect', B.team.id);
       await page.waitForFunction(id => state.stateTeamId === id, B.team.id, { timeout: 20000 });
       await openMembers();
-      await page.waitForFunction(() => /Nick Admin/.test(document.body.innerText), null, { timeout: 20000 });
-      await page.waitForTimeout(600);
+      // 1. club B's own staff appear (its directory has answered); 2. club A's never did.
+      const leakB = await staffSettled('Nick Admin', 'Simon Alpha|Alice Physio|alpha\\.test');
       text = await staffOnScreen();
+      assert.match(text, /Nick Admin/, 'club B\'s own staff are shown');
+      assert.equal(leakB, '', 'club A\'s staff were never painted under club B');
       assert.doesNotMatch(text, /Simon Alpha|Alice Physio|alpha\.test/, 'club A\'s staff are not shown under club B');
-      assert.match(text, /Nick Admin/, 'club B\'s own staff are');
       assert.deepEqual(await dmCandidates(), [], 'no DM candidate from club A remains');
       assert.equal(await page.evaluate(() => (state.users || []).filter(u => u._staff && u.teamId !== state.stateTeamId).length), 0,
         'no directory row of another club is held in state');
@@ -362,16 +381,17 @@ for (const view of ['desktop', 'phone']) {
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForFunction(() => typeof state !== 'undefined' && !!state.stateTeamId, null, { timeout: 20000 });
       await openMembers();
-      await page.waitForTimeout(800);
+      const leakR = await staffSettled('Nick Admin', 'Simon Alpha|Alice Physio|alpha\\.test');
       text = await staffOnScreen();
+      assert.match(text, /Nick Admin/, 'club B\'s staff are back after the reload');
+      assert.equal(leakR, '', 'club A\'s staff were never painted after the reload');
       assert.doesNotMatch(text, /Simon Alpha|Alice Physio/, 'still not after a reload');
-      assert.match(text, /Nick Admin/);
 
       // Switch back to club A: its own staff, all of them, and nothing else.
       await page.selectOption('#clubSwitchSelect', A.team.id);
       await page.waitForFunction(id => state.stateTeamId === id, A.team.id, { timeout: 20000 });
       await openMembers();
-      await page.waitForFunction(() => /Alice Physio/.test(document.body.innerText), null, { timeout: 20000 });
+      await staffSettled('Alice Physio');
       text = await staffOnScreen();
       assert.match(text, /Simon Alpha/); assert.match(text, /Alice Physio/); assert.match(text, /Nick Admin/);
       assert.deepEqual((await dmCandidates()).sort(), ['Alice Physio', 'Simon Alpha']);

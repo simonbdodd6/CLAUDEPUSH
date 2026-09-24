@@ -248,8 +248,18 @@ test('7 + 12. renderTraining picks the completed view, and leaves the editable o
 });
 
 // ── 8. mutations refuse a completed occurrence ────────────────────────────
-function mutScope({ today = WED, blocks, schedule = [] } = {}) {
+// `now` is pinned inside the sandbox (the counterpart of page.clock.setFixedTime
+// in the browser tests below): trainingEditingLocked() asks
+// isTrainingSessionCompleted() without a `now`, which then reads Date.now() —
+// so on the real clock "Thursday 20:30 is still live" stopped being true at
+// 20:30 on that Thursday, and every mutation test became a time bomb.
+function mutScope({ today = WED, now = at(WED, 12, 0), blocks, schedule = [] } = {}) {
   return new Function(`"use strict";
+    const _RealDate = globalThis.Date, _NOW = ${now.getTime()};
+    class Date extends _RealDate {
+      constructor(...a) { super(...(a.length ? a : [_NOW])); }
+      static now() { return _NOW; }
+    }
     let _trainingSchedule = ${JSON.stringify({ slots: SLOTS })};
     let _trainingScheduleGroupId = 'g1';
     let saved = 0, toasts = [], rendered = 0;
