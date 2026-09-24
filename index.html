@@ -7201,17 +7201,31 @@
       document.body.appendChild(el);
     }
     let _welcomeDismissed = false;
+    /**
+     * Autofocus that never STEALS focus. The login and join panels focus their
+     * first field shortly after opening — but that is a timer, and on a busy
+     * page it fires late, after the user (or their password manager) has
+     * already moved on to the next field. It then pulled focus back to the
+     * email field, and the password being typed landed in the EMAIL field, in
+     * plain text, leaving the password empty ("coach@x.testpassword123").
+     * Measured: 3 in 50 concurrent logins. Only take focus if nothing has it.
+     */
+    function focusIfNothingChosen(id) {
+      const active = document.activeElement;
+      if (active && active !== document.body && active !== document.documentElement) return;
+      document.getElementById(id)?.focus();
+    }
     function welcomeLogin() {
       _welcomeDismissed = true;
       document.getElementById('ce-welcome')?.remove();
       setAuthTab('login');
-      setTimeout(() => document.getElementById('identityLoginEmail')?.focus(), 120);
+      setTimeout(() => focusIfNothingChosen('identityLoginEmail'), 120);
     }
     function welcomeJoin() {
       _welcomeDismissed = true;
       document.getElementById('ce-welcome')?.remove();
       setAuthTab('join');
-      setTimeout(() => document.getElementById('joinCode')?.focus(), 120);
+      setTimeout(() => focusIfNothingChosen('joinCode'), 120);
     }
 
     function showToast(msg) {
@@ -13928,7 +13942,7 @@
 
     function setAuthTab(tab) {
       authTab = tab;
-      if (tab === 'login') setTimeout(() => document.getElementById('identityLoginEmail')?.focus(), 120);
+      if (tab === 'login') setTimeout(() => (typeof focusIfNothingChosen === 'function' ? focusIfNothingChosen('identityLoginEmail') : document.getElementById('identityLoginEmail')?.focus()), 120);
       if (tab === 'switch') chatLoadStateModule().then(() => renderNav()).catch(() => {});
       renderNav();
     }
@@ -14349,15 +14363,15 @@
       const _betaSimpleUI = (typeof BETA_SIMPLE_UI !== 'undefined') && BETA_SIMPLE_UI;
       const _betaAuthed = _betaSimpleUI && !!(user && user.id && ['coach','admin','medical','player'].includes(user.role));
 
-      document.getElementById("authPanel").innerHTML = authTab === 'login' ? `
+      const authPanelHtml = authTab === 'login' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <strong style="font-size:15px">Log in</strong>
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:12px">✕</button>
         </div>
         <div style="display:grid;gap:10px">
           <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Email
-            <input id="identityLoginEmail" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="you@club.com" style="font-size:14px;padding:9px 11px;font-weight:400"${_resetFieldError ? ' aria-invalid="true"' : ''} aria-describedby="identity-reset-error" oninput="clearResetFieldError()" onkeydown="if(event.key==='Enter')loginIdentityAccount()"></label>
-          <p id="identity-reset-error" role="alert"${_resetFieldError ? '' : ' hidden'} style="margin:-4px 0 0;font-size:12.5px;font-weight:700;color:var(--status-unavailable)">${esc(_resetFieldError || 'Enter your email address first.')}</p>
+            <input id="identityLoginEmail" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="you@club.com" style="font-size:14px;padding:9px 11px;font-weight:400" aria-describedby="identity-reset-error" oninput="clearResetFieldError()" onkeydown="if(event.key==='Enter')loginIdentityAccount()"></label>
+          <p id="identity-reset-error" role="alert" hidden style="margin:-4px 0 0;font-size:12.5px;font-weight:700;color:var(--status-unavailable)">Enter your email address first.</p>
           <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Password
             <input id="identityLoginPassword" type="password" name="password" autocomplete="current-password" placeholder="Your password" style="font-size:14px;padding:9px 11px;font-weight:400" onkeydown="if(event.key==='Enter')loginIdentityAccount()"></label>
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:14px;min-height:42px">Log in</button>
@@ -14491,6 +14505,38 @@
           </div>
         </div>
       `;
+      // THE LOGIN PANEL IS LEFT ALONE UNLESS IT ACTUALLY CHANGED. render()
+      // runs whenever any loader lands, and this used to rebuild the panel on
+      // every pass: a redraw arriving while someone was typing replaced the
+      // email and password inputs with fresh, empty ones, so "Log in" sent
+      // nothing and said "Enter your email". Typed values live in the input
+      // elements, not in this markup — so when the markup is unchanged the
+      // DOM is not touched and nothing the user typed can be lost. The same
+      // rule the group switcher (applyGroupSwitcherHTML) and 21c0b321's nav
+      // hosts use; the last-applied source is kept on the host, not compared
+      // against innerHTML (which re-serialises). This is the panel's ONLY
+      // writer, so the marker cannot go stale.
+      const authPanel = document.getElementById("authPanel");
+      if (authPanel && authPanel._ceAppliedMarkup !== authPanelHtml) {
+        authPanel.innerHTML = authPanelHtml;
+        authPanel._ceAppliedMarkup = authPanelHtml;
+      }
+      // The reset prompt (5e6bd003) is STATE, applied in place rather than
+      // written into the markup above: clearResetFieldError() clears it as the
+      // player types, and if it were markup the very next background redraw
+      // would see "changed" and rebuild the panel mid-typing. typeof-guarded
+      // because several suites splice renderNav into sandboxes without it.
+      const _resetMsg = typeof _resetFieldError !== 'undefined' ? _resetFieldError : '';
+      const _resetErrEl = document.getElementById('identity-reset-error');
+      if (_resetErrEl) {
+        _resetErrEl.hidden = !_resetMsg;
+        if (_resetMsg) _resetErrEl.textContent = _resetMsg;
+      }
+      const _loginEmailEl = document.getElementById('identityLoginEmail');
+      if (_loginEmailEl && typeof _loginEmailEl.setAttribute === 'function' && typeof _loginEmailEl.removeAttribute === 'function') {
+        if (_resetMsg) _loginEmailEl.setAttribute('aria-invalid', 'true');
+        else _loginEmailEl.removeAttribute('aria-invalid');
+      }
       renderPushSidebar();
       // Restore badge after nav re-render
       if (_chatNavUnread > 0) updateNavBadge();
