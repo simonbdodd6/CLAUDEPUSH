@@ -194,6 +194,30 @@ const SEED = { activeView: 'player', activePlayerSection: 'availability', stateT
   users: [{ id: 'u1', name: 'Gaetan Player', email: 'p@s.test', role: 'player', playerId: 'p1' }], operationalGroupId: GRP,
   players: [ME], fixtures: FIXTURES, messages: [], onboardingDismissed: true };
 
+/**
+ * Open Home and wait for what every Home assertion here is ABOUT: the Next
+ * Fixture card showing this fixture, with the badge the assertion reads.
+ *
+ * This used to be `setSection` + a fixed 450–500 ms pause, and that pause was
+ * racing a server reply, not a paint. Home's fixture card is group-scoped and
+ * deliberately fails closed ("No fixtures scheduled.") until the SESSION names
+ * the player's group — while the Availability-screen states these tests wait
+ * on first can be reached from locally persisted state before that reply
+ * lands. Measured with the session reply delayed: Home painted in 14 ms, read
+ * "No fixtures scheduled." at 500 ms, and showed the fixture at 554 ms. On a
+ * loaded machine (the release gate runs the whole suite at once) that is
+ * exactly how "an empty week still reads as not replied" failed once.
+ *
+ * Nothing is weakened: the badge is asserted exactly as before, and a Home
+ * that never shows the fixture fails here instead of passing by accident.
+ */
+async function openHome(page) {
+  await page.evaluate(() => setSection('player', 'home'));
+  await page.waitForFunction(opp => (document.getElementById('player-home')?.innerText || '').includes('vs ' + opp),
+    FIXTURES[0].opposition, { timeout: 20000 });
+  return page.evaluate(() => (document.getElementById('player-home')?.innerText || '').replace(/\s+/g, ' '));
+}
+
 for (const view of ['desktop', 'phone']) {
   test(`browser (${view}): Home shows the same answer the Availability screen shows`, async (t) => {
     if (!chromium) return t.skip('playwright not installed');
@@ -208,8 +232,7 @@ for (const view of ['desktop', 'phone']) {
       const page = await ctx.newPage();
       const errors = []; page.on('pageerror', e => errors.push(e.message));
       const availText = () => page.evaluate(() => (document.getElementById('player-availability')?.innerText || '').replace(/\s+/g, ' '));
-      const homeText  = async () => { await page.evaluate(() => setSection('player', 'home')); await page.waitForTimeout(450);
-                                      return page.evaluate(() => (document.getElementById('player-home')?.innerText || '').replace(/\s+/g, ' ')); };
+      const homeText  = () => openHome(page);
       const backToAvail = async () => { await page.evaluate(() => setSection('player', 'availability')); await page.waitForTimeout(350); };
 
       // 1. AVAILABLE, answered server-side (the reported case)
@@ -255,9 +278,7 @@ test('browser: a failed self-read still shows the honest unknown state on Home (
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => /Availability unavailable/.test(document.getElementById('player-availability')?.innerText || ''), null, { timeout: 20000 });
-    await page.evaluate(() => setSection('player', 'home'));
-    await page.waitForTimeout(500);
-    const home = await page.evaluate(() => (document.getElementById('player-home')?.innerText || '').replace(/\s+/g, ' '));
+    const home = await openHome(page);
     assert.match(home, /Not known/, 'the failure state still wins over any reply claim');
     assert.doesNotMatch(home, /Not replied/);
 
@@ -287,9 +308,7 @@ test('browser: an empty week still reads as not replied on Home (unchanged)', as
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => /needs your answer/.test(document.getElementById('player-availability')?.innerText || ''), null, { timeout: 20000 });
-    await page.evaluate(() => setSection('player', 'home'));
-    await page.waitForTimeout(500);
-    const home = await page.evaluate(() => (document.getElementById('player-home')?.innerText || '').replace(/\s+/g, ' '));
+    const home = await openHome(page);
     assert.match(home, /Not replied/, 'an empty week is a real "no reply", not an error');
     assert.doesNotMatch(home, /Not known/);
     assert.deepEqual(errors, []);
