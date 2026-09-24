@@ -41,7 +41,7 @@ import {
   projectAssignmentForCoach, saveAuthoringProfile, authoringProfileFor,
   createSelfGeneratedProgramme, OCCUPYING_STATUSES,
 } from './_performanceStore.js';
-import { loadTeams } from './_identityStore.js';
+import { loadTeams, setTenantClubName } from './_identityStore.js';
 import { canonicalRole, isStaffRole } from './_permissions.js';
 import { gateRestrictionSignal, authoringProfileUsable, missingAuthoringInputs }
   from '../performance/domain/authoring-profile.js';
@@ -2773,6 +2773,18 @@ async function clubHandler(req, res) {
     // in order. sanitiseClubConfig already rejects non-ISO dates.
     if (club.seasonStart && club.seasonEnd && club.seasonStart > club.seasonEnd) {
       return res.status(400).json({ error: 'Season start must be on or before season end' });
+    }
+    // ONE NAME. The club name is the TENANT's — memberships, the club
+    // switcher and every session payload read it from the team record — and
+    // the copy below is what the settings screen edits. Renaming the tenant
+    // here keeps them from drifting apart; it refuses a name another club
+    // already holds, exactly as club creation does, and that refusal happens
+    // BEFORE anything is persisted, so a rejected save saves nothing.
+    try {
+      await setTenantClubName(session.teamId, club.clubName);
+    } catch (error) {
+      const status = error?.status || 409;
+      return res.status(status).json({ error: error?.message || 'Could not rename the club' });
     }
     const existing = (await kvGet(clubKey(session.teamId))) || null;
     const record = {
