@@ -160,6 +160,7 @@ async function env({ moduleAvailable = true, conversations = [], gid = SENIORS, 
     let state = { users: CFG.users, currentUserId: CFG.coach, players: CFG.roster, activeView: 'coach',
                   operationalGroupId: CFG.gid, selectedChatId: 'squad', selectedPlayerId: '', activeCoachSection: 'messages' };
     let _adminData = { members: CFG.members, loaded: true, structureAccess: null };
+    let _clubContextId = 'club-test';                 // the club the session named; staff rows below are stamped with it
     let _chatConversations = CFG.conversations, _chatMessages = {}, _chatOnline = {}, _chatLastPoll = {}, _chatHistoryLoadedAt = {};
     let _chatNewDmOpen = false, _chatNewDmQuery = '', _chatMobileOpen = false, _chatStateModule = MOD, _chatStatePromise = null;
     let _chatStateFailedAt = 0; const CHAT_STATE_RETRY_MS = 60000;
@@ -214,6 +215,7 @@ async function env({ moduleAvailable = true, conversations = [], gid = SENIORS, 
     ${fn('chatOpenNewDmPicker')}
     ${fn('chatCloseNewDmPicker')}
     ${fn('chatSetNewDmQuery')}
+    ${fn('staffRowInCurrentClub')}
     ${fn('chatStartStaffDm')}
     ${fn('chatStartDmWith')}
     ${fn('chatStartCoachDm')}
@@ -224,8 +226,8 @@ async function env({ moduleAvailable = true, conversations = [], gid = SENIORS, 
       start: chatStartDmWith, posts: () => posts, toasts: () => toasts, selected: () => selected,
       isOpen: () => _chatNewDmOpen, convs: () => _chatConversations, moduleLoaded: () => !!_chatStateModule };
   `;
-  const users = [{ id: COACH, role: 'coach', name: 'Coach H', email: 'c@x.test' },
-    { id: 'user_other_coach', role: 'coach', name: 'Other Coach', email: 'oc@x.test' },
+  const users = [{ id: COACH, role: 'coach', name: 'Coach H', email: 'c@x.test', teamId: 'club-test' },
+    { id: 'user_other_coach', role: 'coach', name: 'Other Coach', email: 'oc@x.test', teamId: 'club-test' },
     ...ROSTER.map(p => ({ id: p.userId, role: 'player', name: p.name, email: p.email }))];
   return new Function(body)({ users, coach: COACH, roster: ROSTER, members: MEMBERS, conversations, gid, postOk }, mod);
 }

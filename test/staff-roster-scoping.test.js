@@ -155,9 +155,20 @@ test('granting U18 via set_member_access surfaces the member in U18 staff and no
 });
 
 // ── Bug A client pins: the directory can no longer fossilise a stale role ─
+// The pins read the WHOLE function (brace-matched), not a fixed-length prefix:
+// a stale-reply guard now sits ahead of the merge loop, and a prefix window
+// would silently stop covering the pinned line as the function grows.
+function functionBody(source, startIdx) {
+  let i = source.indexOf('{', startIdx), depth = 0;
+  for (; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) return source.slice(startIdx, i + 1);
+  }
+  return source.slice(startIdx);
+}
 test('the staff directory treats the MEMBER row as authoritative for role', () => {
   const start = src.indexOf('async function loadStaffDirectory');
-  const body = src.slice(start, start + 1800);
+  const body = functionBody(src, start);
   assert.match(body, /if \(existing\.role !== m\.role\) existing\.role = m\.role;/,
     'stale player role is corrected on sync');
   assert.equal(/if \(!existing\.role\)\s+existing\.role/.test(body), false, 'the fossilising branch is gone');
