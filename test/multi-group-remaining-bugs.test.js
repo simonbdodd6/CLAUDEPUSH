@@ -196,14 +196,16 @@ test('MSG 22-24: staff DISCOVERY follows operational scope; club-wide staff stay
   assert.match(cand, /clubWideStaffIds/, 'club-wide staff always offered');
   assert.match(cand, /groupStaffIds/, 'scoped staff only in their groups');
   const run = (gid, acc) => new Function(`
+    const _clubContextId = 'club-x';                 // the club in force; every directory row below belongs to it
     const state = { operationalGroupId: arguments[0], users: [
-      { id: 'u-christian', role: 'coach', name: 'Christian Cornet' },
-      { id: 'u-florian', role: 'coach', name: 'Florian Wintjens' },
-      { id: 'u-xavier', role: 'coach', name: 'Xavier Bossert' },
-      { id: 'u-laurine', role: 'medical', name: 'Laurine Blanc' },
-      { id: 'u-sergio', role: 'medical', name: 'Sergio Domingues' },
+      { id: 'u-christian', role: 'coach', name: 'Christian Cornet', teamId: 'club-x' },
+      { id: 'u-florian', role: 'coach', name: 'Florian Wintjens', teamId: 'club-x' },
+      { id: 'u-xavier', role: 'coach', name: 'Xavier Bossert', teamId: 'club-x' },
+      { id: 'u-laurine', role: 'medical', name: 'Laurine Blanc', teamId: 'club-x' },
+      { id: 'u-sergio', role: 'medical', name: 'Sergio Domingues', teamId: 'club-x' },
     ] };
     const _adminData = { structureAccess: arguments[1] };
+    ${fn('staffRowInCurrentClub')}
     ${fn('chatStaffDmCandidates')}
     return chatStaffDmCandidates('u-simon').map(x => x.name);
   `)(gid, acc);

@@ -20569,7 +20569,13 @@
       const _staffRowsEditable = canI('assign_access')
         && ((_acc?.clubWideStaffIds || []).includes(String(state.currentUserId || ''))
             || !(_acc?.clubWideStaffIds || []).length);
+      const _clubInForce = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
       const staffMembers = (state.users || [])
+        // CLUB BOUNDARY, fail closed (the rule staffRowInCurrentClub states):
+        // only a row stamped with THIS club's id is a member of this club's
+        // staff. No stamp, or another club's, is never shown — inlined here
+        // because this renderer is spliced into sandboxes without the helper.
+        .filter(u => !!_clubInForce && !!u && String(u.teamId || '') === _clubInForce)
         .filter(u => isStaffRole(u.role) && u.name)
         .filter(_staffInScope)
         .filter(u => { const k = String(u.id); if (_staffSeen.has(k)) return false; _staffSeen.add(k); return true; })
@@ -26327,6 +26333,10 @@
       if (_adminData.loading || (_adminData.loaded && !force)) return;
       _adminData.loading = true;
       if (force) _adminData.attempted = false;
+      // The club this read is FOR. A reply that lands after a switch belongs to
+      // the club that was left; applying it would paint that club's members
+      // under this one. Discarded instead — the next render fetches again.
+      const _forClub = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
       try {
         const [identityRes, inviteRes, clubRes, structureRes] = await Promise.all([
           fetch('/api/identity'),
@@ -26336,6 +26346,7 @@
           // structure card hidden for members who cannot administer it.
           fetch('/api/publish?resource=structure').catch(() => null),
         ]);
+        if (String((typeof _clubContextId !== 'undefined' && _clubContextId) || '') !== _forClub) return;   // stale reply for a club we have left
         if (identityRes.ok) {
           const d = await identityRes.json();
           _adminData.users    = d.users || [];
@@ -35629,25 +35640,55 @@
     // and merged into state.users ONLY — never state.players (no roster pollution;
     // dedupeRosterMembers ignores user-only entries, so player lists are unaffected).
     let _staffDirLoadedAt = 0;
+    /**
+     * A staff-directory row may be shown only for the club it was read from.
+     *
+     * Rows are stamped with the club the server answered for (loadStaffDirectory,
+     * chatLoadDmCandidates). A row with no club, or another club's, is never
+     * displayed — that is the row a switch left behind, or one written before
+     * rows were stamped. There is deliberately no fallback: the Coaches & staff
+     * list, staff DM candidates and the staff DM lookup all fail closed.
+     */
+    function staffRowInCurrentClub(u) {
+      // _clubContextId, not the persisted marker: it is set only when the
+      // SERVER named the club in this page lifetime, so nothing shows until
+      // the session has answered — after a reload, or mid-switch.
+      const club = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
+      return !!club && !!u && String(u.teamId || '') === club;
+    }
+
     async function loadStaffDirectory() {
       if (!isCoach()) return;
       try {
         const res = await fetch('/api/identity');
         if (!res.ok) return;
         const d = await res.json().catch(() => ({}));
+        // The club this directory IS: the server names it in the reply. A reply
+        // that names no club is not applied, and one for a club this device has
+        // since left is discarded rather than filed under the current one.
+        const teamId = String((Array.isArray(d.teams) && d.teams[0] && d.teams[0].id) || '');
+        const inForce = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
+        if (!teamId || teamId !== inForce) {
+          // Not this club's directory (or no club in force yet): apply nothing,
+          // and let the next render ask again rather than sit out the throttle.
+          if (typeof _staffDirLoadedAt !== 'undefined') _staffDirLoadedAt = 0;
+          return;
+        }
         const members = Array.isArray(d.team_members) ? d.team_members : [];
         const users   = Array.isArray(d.users) ? d.users : [];
         const STAFF   = STAFF_ROLES;
+        const fresh   = new Set();
         members.forEach(m => {
           if (!STAFF.includes(m.role) || (m.status && m.status !== 'active')) return;
           const u  = users.find(x => String(x.id) === String(m.userId));
           const id = String(m.userId || (u && u.id) || '');
           if (!id) return;
+          fresh.add(id);
           const name  = (u && (u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email)) || 'Staff';
           const email = (u && u.email) || '';
           const existing = state.users.find(su => String(su.id) === id);
           if (!existing) {
-            state.users.push({ id, role: m.role, name, email, phone: '', pin: '', _staff: true });
+            state.users.push({ id, role: m.role, name, email, phone: '', pin: '', _staff: true, teamId });
           } else {
             // The MEMBER row is authoritative for staffness. A player upgraded
             // to coach kept role 'player' in this cached directory forever
@@ -35657,8 +35698,14 @@
             if (existing.role !== m.role) existing.role = m.role;
             if (!existing.name)  existing.name  = name;
             if (!existing.email) existing.email = email;
+            existing.teamId = teamId;          // re-stamped for THIS club, whatever it said before
           }
         });
+        // This reply is the directory. A directory row it does not contain is
+        // stale — another club's, or someone since removed — and goes. The
+        // signed-in account's own record is never a directory row to drop.
+        const me = String(state.currentUserId || '');
+        state.users = state.users.filter(u => !u._staff || fresh.has(String(u.id)) || String(u.id) === me);
       } catch (e) { /* best-effort — never block Messages on the staff directory */ }
     }
     // Debounced refresh when the coach opens Messages; re-render if staff changed.
@@ -35683,17 +35730,27 @@
         const res = await fetch('/api/chat?action=dm_candidates');
         if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
+        // Stamped with the club in force; without one there is nothing to file
+        // these under, so nothing is added. Same replacement rule as the coach
+        // directory: a candidate the server no longer lists is gone.
+        const teamId = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
+        if (!teamId) return;
+        const fresh = new Set();
         (Array.isArray(data.candidates) ? data.candidates : []).forEach(c => {
           const id = String(c.userId || '');
           if (!id) return;
+          fresh.add(id);
           const existing = (state.users || []).find(u => String(u.id) === id);
           if (existing) {
             if (existing.role !== c.role) existing.role = c.role;
             if (!existing.name) existing.name = c.name;
+            existing.teamId = teamId;
           } else {
-            state.users.push({ id, role: c.role, name: c.name, email: '', phone: '', pin: '', _staff: true });
+            state.users.push({ id, role: c.role, name: c.name, email: '', phone: '', pin: '', _staff: true, teamId });
           }
         });
+        const me = String(state.currentUserId || '');
+        state.users = (state.users || []).filter(u => !u._staff || fresh.has(String(u.id)) || String(u.id) === me);
       } catch { /* offline — the player keeps whatever contacts they already had */ }
     }
 
@@ -35734,6 +35791,7 @@
         return ((_acc.groupStaffIds || {})[_gid] || []).includes(String(u.id));
       };
       return (state.users || [])
+        .filter(staffRowInCurrentClub)          // this club's directory only, fail closed
         .filter(u => isStaffRole(u.role) && u.name && String(u.id) !== String(meId))
         .filter(inScope)
         .filter(u => { const k = String(u.id); if (seen.has(k)) return false; seen.add(k); return true; })
@@ -36139,7 +36197,7 @@
         // Staff fallback: the target is another coach/admin/medical who lives in
         // state.users (not the roster). Open/create a DM keyed on their user id.
         const staff = (state.users || []).find(u =>
-          isStaffRole(u.role) && String(u.id) === String(playerId));
+          staffRowInCurrentClub(u) && isStaffRole(u.role) && String(u.id) === String(playerId));
         if (staff) return chatStartStaffDm(staff);
         return showToast('Member not found');
       }
@@ -44417,7 +44475,16 @@
       _trainingScheduleAttempted = false;
       _groupRecipients = {};         // group ids are per-club (grp_initial collides across clubs)
       _clubConfigChecked = false; _publishedStateLoadedAt = 0;
-      if (typeof _adminData === 'object') _adminData.loaded = false;
+      // The Members data is per-club. Flipping `loaded` alone left the previous
+      // club's members, users, invites and structure access in memory to be
+      // painted under the next club until a refetch happened — and kept if
+      // that refetch was not OK. Empty it, and let this club fetch its own.
+      if (typeof _adminData === 'object' && _adminData) Object.assign(_adminData, {
+        invites: [], members: [], users: [], profiles: [], structure: null, structureAccess: null,
+        counts: null, clubWideStaff: [], loaded: false, loading: false, attempted: false, failed: false });
+      if (typeof _staffDirLoadedAt !== 'undefined') _staffDirLoadedAt = 0;   // the new club's directory loads at once
+      if (typeof _clubContextId !== 'undefined') _clubContextId = '';        // no club is in force until the server names the next
+      if (typeof _staffDetailUserId !== 'undefined') _staffDetailUserId = null; // no editor open on another club's member
       _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
     }
 
@@ -44468,6 +44535,17 @@
       // them). The athlete's own profile and wellness log follow the person,
       // not the club, so they survive a club switch.
       state.performanceWorkout = null;
+      // THE USER DIRECTORY IS PER-CLUB. state.users carried the previous
+      // club's staff (names, emails, roles — added by loadStaffDirectory and
+      // never removed) and its roster-derived local player rows across a club
+      // switch, and both are persisted — so Members showed the previous club's
+      // coaches under the newly entered club, and still did after a reload.
+      // Only the signed-in account's own record is kept: the new club's
+      // directory and roster re-derive everything else for themselves.
+      const _me = String(state.currentUserId || '');
+      state.users = (state.users || []).filter(u => u && (
+        String(u.id) === _me
+        || (!u._staff && !(u.role === 'player' && u.playerId))));
       saveState('Team switched');
     }
 
