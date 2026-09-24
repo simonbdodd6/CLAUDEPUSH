@@ -44612,7 +44612,24 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ club }),
         });
-        return res.ok ? (await res.json()).club : null;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          // A club name another club already holds is refused — the same rule
+          // club creation applies — and nothing was saved. Silence here left
+          // the screen looking as though it had been.
+          showToast(data.error || 'Could not save club settings');
+          return null;
+        }
+        const saved = data.club || null;
+        // The club name belongs to the TENANT, and a save can have renamed it.
+        // _myMemberships is what the club switcher reads, so ask the server
+        // for the session again rather than letting the switcher go on showing
+        // the old name until the next reload.
+        const mine = (typeof _myMemberships !== 'undefined' && (_myMemberships || []).find(m => m.current)) || null;
+        if (saved && saved.clubName && mine && mine.teamName !== saved.clubName) {
+          checkServerSession().catch(() => {});
+        }
+        return saved;
       } catch(e) { console.warn('[saveClubConfigToServer]', e); return null; }
     }
 

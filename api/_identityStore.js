@@ -1899,6 +1899,34 @@ export function emailVerificationRequiredError() {
 
 // Multi-team: switch the current session to another team where the user
 // holds an active membership. Old session is replaced; no logout required.
+/**
+ * RENAME THE TENANT — the club name's one writer after creation.
+ *
+ * The name lives on the TEAM record. That is what memberships report, so it
+ * is what the club switcher, the sidebar and every session payload show. The
+ * club-config record carries a copy for the settings screen, and while only
+ * that copy was written a founder who renamed their club saw the new name in
+ * one place and the original in the other, permanently.
+ *
+ * Applied only to a club id the caller's SESSION already resolved — never to
+ * anything from a request body — and under the same uniqueness policy club
+ * creation enforces, so a rename cannot walk into another club's name. A club
+ * that has no team record (legacy data) is left alone rather than invented.
+ */
+export async function setTenantClubName(teamId, clubName) {
+  const id = String(teamId || '').trim();
+  const name = String(clubName || '').trim().slice(0, 80);
+  if (!id || !name) return { changed: false };
+  const teams = await loadStoredTeams();
+  const team = teams.find(t => String(t.id) === id);
+  if (!team) return { changed: false };
+  if (String(team.name || '') === name) return { changed: false };
+  if (clubNameTaken(teams, name, id)) throw clubNameTakenError();
+  team.name = name;
+  await saveTeams(teams);
+  return { changed: true, teamId: id, name };
+}
+
 export async function switchTeam(token = '', targetTeamId = '') {
   const current = await resolveSession(token);
   if (!current?.user?.id) { const e = new Error('Authentication required'); e.status = 401; throw e; }
