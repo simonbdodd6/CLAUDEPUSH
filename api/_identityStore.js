@@ -1153,8 +1153,24 @@ export async function loginUser(input = {}) {
   // active membership held by any sibling record still grants access (heals
   // older data where the membership and the changed password split apart).
   const memberIds = new Set(sameEmail.map(item => item.id).concat(user.id));
+  const activeIn = teamId => teamId
+    && members.find(item => memberIds.has(item.userId) && item.teamId === String(teamId) && item.status === 'active');
+  // WHICH CLUB THIS LOGIN OPENS, in order of what the account actually said:
+  //   1. the club the caller asked for,
+  //   2. the club this account last operated (switch, invite claim, founding),
+  //   3. the default club — kept, so an account that has never chosen lands
+  //      exactly where it always did,
+  //   4. any club it is active in.
+  // Only (1) and (2) existed as a question before: the default used to come
+  // FIRST, which meant an account holding a membership there was returned to
+  // it on every login however many other clubs it belonged to — an owner who
+  // had just set up their own club came back the next day into someone
+  // else's. Each candidate still has to be a live membership, so none of this
+  // grants access to anything.
   const member = legacyMember ||
-    members.find(item => memberIds.has(item.userId) && item.teamId === (input.teamId || DEFAULT_TEAM.id) && item.status === 'active') ||
+    activeIn(input.teamId) ||
+    activeIn(user.lastTeamId) ||
+    activeIn(DEFAULT_TEAM.id) ||
     members.find(item => memberIds.has(item.userId) && item.status === 'active') ||
     // No active membership — surface the requested-team membership of any status
     // so a pending player still gets "Waiting for coach approval", not a generic error.
@@ -1171,6 +1187,7 @@ export async function loginUser(input = {}) {
     Object.assign(user, hashPassword(input.password), { passwordMigratedAt: nowIso() });
   }
   user.lastLoginAt = nowIso();
+  user.lastTeamId = member.teamId;          // where this account is working now
   await saveUsers(users);
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
   return withIdentityComputed({ user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, session }, member);
@@ -1378,6 +1395,7 @@ export async function claimInvite(input = {}) {
   }
   await persistInvite(located);
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
+  await rememberLastTeam(user.id, member.teamId);   // the club just joined is the club to return to
   return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, invite, session };
 }
 
@@ -1704,6 +1722,38 @@ export async function verifyEmailToken(token) {
   return { user: publicUser(user), verification: { id: verification.id, usedAt: verification.usedAt } };
 }
 
+/**
+ * WHICH CLUB THIS ACCOUNT IS OPERATING — remembered on the account itself.
+ *
+ * Every path that opens a session names the club it is for: logging in,
+ * switching club, claiming an invite, founding a club. Recording it here means
+ * there is ONE place it can be forgotten from, and the next login can return
+ * the account to the club it was actually working in rather than to a club id
+ * compiled into the product.
+ *
+ * It is a preference, never an authority: login only honours it while an
+ * ACTIVE membership in that club still exists, and it grants nothing on its
+ * own. A blank club is not a choice and is not recorded as one.
+ *
+ * Called from the paths where an account DELIBERATELY enters a club — logging
+ * in, switching, claiming an invite, founding one — and deliberately NOT from
+ * createSession: creating a session must stay a session write, or every
+ * feature that opens one starts touching the identity store (a Performance
+ * write, for instance, is required to be structurally incapable of that).
+ */
+async function rememberLastTeam(userId, teamId) {
+  const id = String(teamId || '').trim();
+  // Defensive only: all three callers pass a team id the server has already
+  // validated, so no reachable path can arrive here blank. Kept so the helper
+  // is safe for the next caller rather than relying on that staying true.
+  if (!userId || !id) return;
+  const users = await loadUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user || user.lastTeamId === id) return;
+  user.lastTeamId = id;
+  await saveUsers(users);
+}
+
 export async function createSession({ userId, teamId = DEFAULT_TEAM.id, role = 'player' } = {}) {
   if (!userId) throw new Error('userId is required');
   const token = randomBytes(32).toString('base64url');
@@ -1856,6 +1906,7 @@ export async function switchTeam(token = '', targetTeamId = '') {
   if (!membership) { const e = new Error('No active membership in that team'); e.status = 403; throw e; }
   await destroySession(token);
   const session = await createSession({ userId: current.user.id, teamId: membership.teamId, role: membership.role });
+  await rememberLastTeam(current.user.id, membership.teamId);
   return { session, teamId: membership.teamId };
 }
 
@@ -2083,6 +2134,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
   }
 
   const session = await createSession({ userId: user.id, teamId: team.id, role: 'coach' });
+  await rememberLastTeam(user.id, team.id);        // the founder's club is theirs to return to
   const result = await withIdentityComputed({ user: publicUserWithRole(user, member), team, teamMember: member, session }, member);
   if (resumed) result.resumed = true;
   return result;
