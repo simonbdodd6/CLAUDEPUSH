@@ -329,13 +329,13 @@ test('SUCCESSFUL WRITE: nothing reverts, and the payload carries the canonical s
   rec.trainingThursday = 'available';
   await sc.save('thu', 'available', '', revert);
   assert.equal(rec.trainingThursday, 'available', 'accepted write keeps the new answer');
-  assert.deepEqual(sc.lastBody, { response: 'available', reason: '', sessionId: 'thu' });
+  { const { intentAt, intentSeq, ...sent } = sc.lastBody; assert.deepEqual(sent, { response: 'available', reason: '', sessionId: 'thu' }); assert.match(String(intentAt), /^\d{4}-\d{2}-\d{2}T/, 'stamped with the intent instant'); assert.equal(typeof intentSeq, 'number'); }
 });
 
 test("legacy 'injured' still maps to unavailable + injury reason on the wire", async () => {
   const sc = clientScope({ status: 200 });
   await sc.save('thu', 'injured', '');
-  assert.deepEqual(sc.lastBody, { response: 'unavailable', reason: 'injury', sessionId: 'thu' });
+  { const { intentAt, intentSeq, ...sent } = sc.lastBody; assert.deepEqual(sent, { response: 'unavailable', reason: 'injury', sessionId: 'thu' }); assert.match(String(intentAt), /^\d{4}-\d{2}-\d{2}T/); assert.equal(typeof intentSeq, 'number'); }
 });
 
 test('the client wiring passes the revert from the tap through to the save', () => {
