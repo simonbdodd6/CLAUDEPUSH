@@ -42414,6 +42414,15 @@
     let _availRefreshInFlight = null;
     /** The board read in flight: { key, weight, promise } — see refreshLiveAvailability. */
     let _liveAvailabilityInFlight = null;
+    // READ ORDER. Reads of the board can overlap — a poll tick, a Live Sync, the
+    // refresh on returning to the tab, a section re-entry — and a reply that
+    // LEFT earlier can LAND later. Applied in arrival order, that older reply
+    // overwrote the newer authoritative state until the next tick (the audit's
+    // R2). Every read takes a sequence number when it leaves; a reply applies
+    // only when no newer read has applied since — and a read that fails
+    // applies nothing, so it never outranks an older valid result.
+    let _availabilityReadSeq = 0;      // the newest read that has LEFT
+    let _availabilityAppliedSeq = 0;   // the newest read that has APPLIED
     function availRefreshNow() {
       if (_availRefreshInFlight) return _availRefreshInFlight;
       const ts = document.getElementById('avail-refresh-ts');
@@ -42471,9 +42480,27 @@
         if (!state.operationalGroupId && operationalGroups().length > 1) return;
         const _availGroupQ = state.operationalGroupId
           ? '&group=' + encodeURIComponent(state.operationalGroupId) : '';
+        // What this read is FOR: the club in force and the group, as they are
+        // when the request leaves. A reply for a context since LEFT is not this
+        // board's to apply, whatever it says. A context merely becoming KNOWN
+        // meanwhile (the club proven by the session during boot, a group adopted)
+        // is not a switch: the read was made with this session's cookie for what
+        // the server already scoped it to, so only a change between two known
+        // values disqualifies it.
+        const _ctxNow = () => ({ club: String((typeof _clubContextId !== 'undefined' && _clubContextId) || ''), group: String(state.operationalGroupId || '') });
+        const _ctxAtStart = _ctxNow();
+        const _ctxLeft = () => { const c = _ctxNow(); return (_ctxAtStart.club && c.club !== _ctxAtStart.club) || (_ctxAtStart.group && c.group !== _ctxAtStart.group); };
+        const readSeq = (typeof _availabilityReadSeq !== 'undefined') ? ++_availabilityReadSeq : 1;
         const reply = await fetch('/api/availability?resolveRoster=1' + _availGroupQ)
           .then(r => r.ok ? r.json() : null)
           .catch(() => null);
+        // ── ORDER + CONTEXT, before ANYTHING this reply could touch ──
+        // Ignored completely — no map, no stamp, no roster patch, no chip,
+        // no failure flag, no render — when a NEWER read has already applied
+        // (readSeq is stale) or the context it was asked for has been left.
+        const _appliedSeq = (typeof _availabilityAppliedSeq !== 'undefined') ? _availabilityAppliedSeq : 0;
+        if (readSeq <= _appliedSeq) return;
+        if (_ctxLeft()) return;
         if (!reply) {
           // A FAILED READ IS A FAILED READ — never an empty board. Collapsing
           // a 500 / lapsed session / network drop into {} took the success
@@ -42493,6 +42520,9 @@
           return;
         }
         const resolved = reply.resolved || {};
+        // This read is now the newest to have applied: every read that left
+        // before it, however late its reply lands, is stale from here on.
+        if (typeof _availabilityAppliedSeq !== 'undefined') _availabilityAppliedSeq = readSeq;
         // Source of truth for the coach board at render time (see sessionRows).
         const _prevResolvedSig = JSON.stringify(_resolvedAvailability);
         _resolvedAvailability = resolved;
