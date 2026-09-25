@@ -39,15 +39,20 @@ function extractFn(src, name) {
 const fn = n => extractFn(html, n);
 
 /** The REAL row pipeline over a controlled world. `resolved` is the
- *  server-resolved availability map; `players` the operating group's roster. */
-function world({ players = [], resolved = {}, group = 'grp_u18' } = {}) {
+ *  server-resolved availability map; `players` the operating group's roster.
+ *  `sync` — whether a SUCCESSFUL read of this group's answers is in force
+ *  (the default, as on a live board). Under one, an answer the server does
+ *  not hold is a cleared/removed answer and reads No reply (Build 96:
+ *  authoritative absence); without one, the local field is the honest best
+ *  the device has and passes through as it always did. */
+function world({ players = [], resolved = {}, group = 'grp_u18', sync = true } = {}) {
   const body =
     '"use strict";\n' +
     'const state = { operationalGroupId: ' + JSON.stringify(group) + ', players: ' + JSON.stringify(players) + ', schedule: [{ id: "thu", title: "Thursday" }] };\n' +
     'function operationalPlayers() { return state.players; }\n' +
     'let _resolvedAvailability = ' + JSON.stringify(resolved) + ';\n' +
     'let _resolvedAvailabilityGroup = ' + JSON.stringify(group) + ';\n' +
-    'let _availLastSync = "2026-09-03T10:00:00.000Z";\n' +
+    'let _availLastSync = ' + JSON.stringify(sync ? '2026-09-03T10:00:00.000Z' : null) + ';\n' +
     // availabilityNonResponders filters archived players; none of these
     // synthetic rosters archive anyone, so the check is a truthful constant.
     'function playerIsArchived() { return false; }\n' +
@@ -85,15 +90,25 @@ test("2: an empty-string local field is also no-reply — absence has ONE spelli
 });
 
 // ── 3+4+5. real answers unchanged ──────────────────────────────────────────
-test('3+4+5: available / maybe / unavailable pass through untouched, local or resolved', () => {
+test('3+4+5: available / maybe / unavailable pass through untouched — resolved, or local with no read in force', () => {
   const w = world({
-    players: [P('a', { trainingThursday: 'available' }), P('m'), P('u', { trainingThursday: 'unavailable' })],
-    resolved: { m: ANS('maybe') },
+    players: [P('a'), P('m'), P('u')],
+    resolved: { a: ANS('available'), m: ANS('maybe'), u: ANS('unavailable') },
   });
   const by = Object.fromEntries(w.rows('thu').map(r => [r.player.id, r.status]));
   assert.equal(by.a, 'available');
   assert.equal(by.m, 'maybe');
   assert.equal(by.u, 'unavailable');
+  // Before any read has landed the local field is the honest best we have.
+  const local = world({ players: [P('a', { trainingThursday: 'available' }), P('u', { trainingThursday: 'unavailable' })], sync: false });
+  const byLocal = Object.fromEntries(local.rows('thu').map(r => [r.player.id, r.status]));
+  assert.equal(byLocal.a, 'available');
+  assert.equal(byLocal.u, 'unavailable');
+  // Under a successful read that holds nothing for them, those same local
+  // fields are what a cleared week leaves behind — No reply, not the stale answer.
+  const cleared = world({ players: [P('a', { trainingThursday: 'available' }), P('u', { trainingThursday: 'unavailable' })], resolved: {} });
+  assert.deepEqual(cleared.rows('thu').map(r => r.status), ['no-reply', 'no-reply'], 'authoritative absence reads No reply');
+  assert.deepEqual(cleared.rows('thu').map(r => r.confirmed), [false, false]);
 });
 
 // ── 6. Build R precedence intact ───────────────────────────────────────────
@@ -105,18 +120,20 @@ test('6: the server-resolved answer still overrides the local field (Build R pre
   assert.equal(w.rows('thu')[0].status, 'unavailable', 'server-first resolution unchanged');
 });
 
-test('6b: local no-reply never masks a resolved answer; resolved absence still falls back locally', () => {
+test('6b: local no-reply never masks a resolved answer; resolved absence falls back locally ONLY with no read in force', () => {
   const w = world({ players: [P('p')], resolved: { p: ANS('maybe') } });
   assert.equal(w.rows('thu')[0].status, 'maybe');
-  const w2 = world({ players: [P('q', { trainingThursday: 'maybe' })], resolved: {} });
-  assert.equal(w2.rows('thu')[0].status, 'maybe');
+  const w2 = world({ players: [P('q', { trainingThursday: 'maybe' })], resolved: {}, sync: false });
+  assert.equal(w2.rows('thu')[0].status, 'maybe', 'no authoritative read yet: the local field stands');
+  const w3 = world({ players: [P('q', { trainingThursday: 'maybe' })], resolved: {} });
+  assert.equal(w3.rows('thu')[0].status, 'no-reply', 'a successful read that holds nothing: the local field is stale');
 });
 
 // ── 7+8. the coach board's buckets, by the board's own predicates ──────────
 test('7+8: the silent player lands in the no-reply bucket and is NOT counted as answered', () => {
   const w = world({
-    players: [P('a', { trainingThursday: 'available' }), P('m'), P('u', { trainingThursday: 'unavailable' }), P('silent')],
-    resolved: { m: ANS('maybe') },
+    players: [P('a'), P('m'), P('u'), P('silent')],
+    resolved: { a: ANS('available'), m: ANS('maybe'), u: ANS('unavailable') },
   });
   const rows = w.rows('thu');
   // The EXACT bucket predicates the board uses:
@@ -131,9 +148,12 @@ test('7+8: the silent player lands in the no-reply bucket and is NOT counted as 
 });
 
 test('8b: the chase list counts the completely silent player as a non-responder', () => {
-  const w = world({ players: [P('a', { trainingThursday: 'available' }), P('silent')] });
+  const w = world({ players: [P('a'), P('silent')], resolved: { a: ANS('available') } });
   const chase = w.nonResponders([{ id: 'thu' }]);
   assert.deepEqual(chase.map(p => p.id), ['silent']);
+  // A cleared week: the server holds nothing, so a stale local answer is chased too.
+  const cleared = world({ players: [P('a', { trainingThursday: 'available' }), P('silent')], resolved: {} });
+  assert.deepEqual(cleared.nonResponders([{ id: 'thu' }]).map(p => p.id), ['a', 'silent']);
 });
 
 // ── 9+10. group boundary unchanged, and FIRST in the pipeline ──────────────
