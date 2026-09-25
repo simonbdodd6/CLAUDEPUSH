@@ -378,7 +378,19 @@ export default async function handler(req, res) {
       // can never blank the Seniors board. For the INITIAL group an empty
       // group-scoped record also shadows the legacy club/flat fallback, so
       // its history disappears from the board without being destroyed.
-      await Promise.all(validIds.map(sid => saveGroupAvailability(coachSession.teamId, group.id, sid, {})));
+      // A clear is a WRITE to each session record, and takes the same lock an
+      // answer takes (withAvailabilityWriteLock): it can no longer land between
+      // another writer's read and save — whichever holds the lock first
+      // completes first, and the other then sees the result — and two clears
+      // simply take their turn. Busy → 503, and nothing is half-cleared.
+      try {
+        await Promise.all(validIds.map(sid =>
+          withAvailabilityWriteLock(coachSession.teamId, group.id, sid,
+            () => saveGroupAvailability(coachSession.teamId, group.id, sid, {}))));
+      } catch (error) {
+        if (error?.code === 'busy') return res.status(503).json({ ok: false, error: error.message, code: 'busy' });
+        throw error;
+      }
       return res.status(200).json({ ok: true, action: 'clear_week', cleared: validIds, group: { id: group.id, name: group.name } });
     }
 

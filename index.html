@@ -8623,6 +8623,92 @@
       });
       return changed;
     }
+    /** The session id an availability STATUS field on a player record stands
+     *  for — or null for anything else (reasons, stamps, unrelated fields). */
+    function availabilitySessionIdForKey(key) {
+      const k = String(key || '');
+      if (/Reason$|RespondedAt$/.test(k)) return null;
+      if (k === 'trainingTuesday')  return 'tue';
+      if (k === 'trainingThursday') return 'thu';
+      if (k === 'game')             return 'game';
+      return k.startsWith('avail_') ? k.slice(6) : null;
+    }
+    /**
+     * AUTHORITATIVE ABSENCE, coach side. `mine` is the server's resolved answers
+     * for this player (sessionId → answer) from a SUCCESSFUL read of the group
+     * in force. A local field for a session the server no longer holds is stale
+     * — a week the coach cleared, a record since removed — and is dropped, so
+     * nothing downstream can fall back to it. An answer this device is still
+     * carrying (pending — a coach who also plays) is kept: it has not reached
+     * the server yet, so its absence there says nothing about it.
+     */
+    function availabilityDropStaleLocalAnswers(player, mine) {
+      if (!player) return false;
+      const held = new Set(Object.entries(mine || {}).filter(([, a]) => a && a.response).map(([sid]) => normalizeSessionId(sid)));
+      let changed = false;
+      for (const key of Object.keys(player)) {
+        const sid = availabilitySessionIdForKey(key);
+        if (!sid) continue;
+        const local = player[key];
+        if (!local || local === 'no-reply') continue;
+        if (held.has(normalizeSessionId(sid))) continue;
+        if (typeof availabilityPendingFor === 'function' && availabilityPendingFor(sid, player)) continue;
+        delete player[key]; delete player[key + 'Reason']; delete player[key + 'RespondedAt'];
+        changed = true;
+      }
+      return changed;
+    }
+    // When THIS device last had an answer confirmed by the server (2xx), by
+    // session. A self-read that LEFT before that moment cannot speak for the
+    // answer — see reconcileServerAvailabilityIntoRecord.
+    let _availConfirmedAt = {};
+    function availabilityNoteConfirmed(sessionId) {
+      if (typeof _availConfirmedAt === 'undefined' || !_availConfirmedAt) return;
+      _availConfirmedAt[String(sessionId || '')] = Date.now();
+    }
+    /**
+     * AUTHORITATIVE RECONCILIATION, player side. mergeServerAvailabilityIntoRecord
+     * fills the sessions this device never answered and never touches the rest;
+     * this brings the sessions it DID answer into line with a SUCCESSFUL
+     * self-read — a confirmed server answer is authoritative:
+     *   · the server holds a different answer → adopt it (answered elsewhere);
+     *   · the server holds no answer          → drop the local one (the coach
+     *                                            cleared the week).
+     * Two answers are never touched: one still PENDING on this device (unsent —
+     * its absence on the server is expected, and the flush will send it), and
+     * one confirmed AFTER this read left (the read predates it). Pure: the
+     * caller passes the moment the read started.
+     */
+    function reconcileServerAvailabilityIntoRecord(record, responses, opts = {}) {
+      if (!record || !responses) return false;
+      const readStartedAt = Number(opts.readStartedAt) || 0;
+      const confirmedAt = opts.confirmedAt || ((typeof _availConfirmedAt !== 'undefined' && _availConfirmedAt) || {});
+      const pendingFor = typeof opts.pendingFor === 'function' ? opts.pendingFor
+        : sid => typeof availabilityPendingFor === 'function' && Boolean(availabilityPendingFor(sid, record));
+      const server = {};
+      for (const [sid, entry] of Object.entries(responses)) {
+        if (entry && entry.response) server[normalizeSessionId(sid)] = entry;
+      }
+      let changed = false;
+      for (const key of Object.keys(record)) {
+        const sid = availabilitySessionIdForKey(key);
+        if (!sid) continue;
+        const local = record[key];
+        if (!local || local === 'no-reply') continue;
+        if (pendingFor(sid)) continue;
+        if ((Number(confirmedAt[sid]) || 0) > readStartedAt) continue;
+        const entry = server[normalizeSessionId(sid)];
+        if (entry) {
+          if (record[key] !== entry.response) { record[key] = entry.response; changed = true; }
+          const reason = entry.reason || '';
+          if ((record[key + 'Reason'] || '') !== reason) record[key + 'Reason'] = reason;
+          continue;
+        }
+        delete record[key]; delete record[key + 'Reason']; delete record[key + 'RespondedAt'];
+        changed = true;
+      }
+      return changed;
+    }
     // Pure helper: locate ALL live state.players entries that belong to the same
     // real player as a (possibly canonical/deduped) player copy.
     //
@@ -8991,11 +9077,21 @@
           confirmed:      true,
           pending:        false,
         };
+        // AUTHORITATIVE ABSENCE: when a successful read of THIS group's answers
+        // is in force and holds nothing for this player, the local field is
+        // stale — a week the coach cleared, a record since removed — and is
+        // not shown. What this device is still carrying (pending) is not the
+        // server's to deny; and with no authoritative read at all (never
+        // landed, or another group's) the local field stays the honest best
+        // we have, exactly as before.
+        const pending = Boolean(availabilityPendingFor(id, p));
+        const authoritative = typeof currentResolvedAvailability === 'function' && currentResolvedAvailability() !== null;
+        const stale = authoritative && !pending;
         return {
           player:         p,
-          status:         p[key] || 'no-reply',
-          reason:         p[rKey] || '',
-          respondedAt:    p[key + 'RespondedAt'] || null,
+          status:         stale ? 'no-reply' : (p[key] || 'no-reply'),
+          reason:         stale ? '' : (p[rKey] || ''),
+          respondedAt:    stale ? null : (p[key + 'RespondedAt'] || null),
           confirmed:      false,
           pending:        Boolean(availabilityPendingFor(id, p)),
         };
@@ -9386,7 +9482,10 @@
           });
           if (res.ok) {
             // The ONLY thing that turns an answer into an answer — and only
-            // the answer that was sent, not one chosen since.
+            // the answer that was sent, not one chosen since. The server holds
+            // this session's answer as of NOW: a self-read that left earlier
+            // cannot overrule it (reconcileServerAvailabilityIntoRecord).
+            if (typeof availabilityNoteConfirmed === 'function') availabilityNoteConfirmed(id);
             clearIfHeld(entry);
             return { ok: true };
           }
@@ -21205,6 +21304,7 @@
     async function fetchMyAvailabilityFromServer() {
       if (_playerAvailFetched) return; // only auto-fetch once per session
       _playerAvailFetched = true;
+      const readStartedAt = Date.now();     // what this read can speak for: answers confirmed before it left
       let data = null, ok = false;
       try {
         const res = await fetch('/api/availability?myResponse=1');
@@ -21227,7 +21327,20 @@
         liveRecords.forEach(rec => {
           if (mergeServerAvailabilityIntoRecord(rec, data.responses)) changed = true;
         });
-        if (changed) { saveState('Server availability loaded'); renderPlayerAvailabilityV2(); }
+        // Then bring what this device HAD answered into line with the server
+        // (a cleared week reads as No reply here too; an answer given on
+        // another device is adopted) — pending and just-confirmed answers
+        // excepted, see reconcileServerAvailabilityIntoRecord.
+        if (typeof reconcileServerAvailabilityIntoRecord === 'function') {
+          for (const rec of [player, ...liveRecords]) {
+            if (reconcileServerAvailabilityIntoRecord(rec, data.responses, { readStartedAt })) changed = true;
+          }
+        }
+        if (changed) {
+          saveState('Server availability loaded');
+          renderPlayerAvailabilityV2();
+          if (state.activePlayerSection === 'home' && typeof renderPlayerHome === 'function') renderPlayerHome();
+        }
       } catch { /* non-critical — player already sees local state */ }
     }
 
@@ -42392,11 +42505,14 @@
         // Patch state.players from the resolved model. Match each roster player by
         // ANY of its identity keys (userId / id / legacyPlayerId / playerId).
         let changed = false;
+        // The read is authoritative for the OPERATING group's players only —
+        // another group's answers are not in it, so theirs are left alone.
+        const _inScope = typeof operationalPlayers === 'function'
+          ? new Set(operationalPlayers().map(x => String(x && x.id || ''))) : null;
         state.players.forEach(p => {
           let mine = null;
           for (const k of liveAvailabilityPlayerKeys(p)) { if (resolved[k]) { mine = resolved[k]; break; } }
-          if (!mine) return;
-          Object.entries(mine).forEach(([sid, ans]) => {
+          if (mine) Object.entries(mine).forEach(([sid, ans]) => {
             if (!ans) return;
             const k  = sessionKey(sid);
             const rk = k + 'Reason';
@@ -42405,6 +42521,10 @@
             if (ans.reason   !== undefined && p[rk] !== ans.reason)  { p[rk] = ans.reason; }
             if (ans.respondedAt && p[tk] !== ans.respondedAt) { p[tk] = ans.respondedAt; }
           });
+          // A cleared week / removed record: the server holds nothing for a
+          // session this device still shows — drop it (availabilityDropStaleLocalAnswers).
+          if (_inScope && _inScope.has(String(p && p.id || '')) && typeof availabilityDropStaleLocalAnswers === 'function'
+              && availabilityDropStaleLocalAnswers(p, mine || {})) changed = true;
         });
         if (changed) saveState('Live availability synced');
         _availLastSync = new Date().toISOString();
@@ -46327,6 +46447,11 @@
       if (state.activeView === 'coach' && state.activeCoachSection === 'message' && typeof refreshLiveAvailability === 'function') {
         refreshLiveAvailability();
       }
+      // The player's own answers: ONE fresh self-read per return, so a week the
+      // coach cleared (or an answer given on another device) shows here without
+      // a reload. No timer, no polling — the once-per-session latch is released
+      // here and nowhere else.
+      if (state.activeView === 'player' && typeof playerAvailRetryNow === 'function') playerAvailRetryNow();
       // Returning to the app is the cheapest honest moment to send anything
       // this device is still holding. No timer, no polling.
       availabilityFlushPending().catch(() => {});

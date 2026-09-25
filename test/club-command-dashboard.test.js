@@ -233,17 +233,31 @@ const iso = days => new Date(Date.now() + days * 86400000).toISOString().slice(0
  * A populated club: 6 players, a fixture next week, tonight's session.
  * Tonight's training and the fixture carry DIFFERENT answers
  * (training 3/1/1/1, match 2/1/1/2), so a card reading the wrong one shows.
+ *
+ * The answers are SERVER-RESOLVED, as the product holds them (the resolved
+ * map refreshLiveAvailability fetches): since Build 96 a successful read that
+ * holds nothing for a player means No reply, so a device field alone is not
+ * a recorded answer — see "the availability figures come from the resolved
+ * answers, not the device fields" below.
  */
+const ANSWERED = r => ({ response: r, reason: '', respondedAt: '2026-08-30T10:00:00.000Z' });
 function fullClub(extra = {}) {
   return buildScope({
     players: [
-      { id: 'p1', name: 'A One',   position: 'Hooker',     trainingTuesday: 'available',   avail_fx1: 'available' },
-      { id: 'p2', name: 'B Two',   position: 'Scrum-half', trainingTuesday: 'available',   avail_fx1: 'unavailable' },
-      { id: 'p3', name: 'C Three', position: 'Fly-half',   trainingTuesday: 'maybe',       avail_fx1: 'available' },
-      { id: 'p4', name: 'D Four',  position: 'Lock',       trainingTuesday: 'unavailable', avail_fx1: 'maybe' },
+      { id: 'p1', name: 'A One',   position: 'Hooker' },
+      { id: 'p2', name: 'B Two',   position: 'Scrum-half' },
+      { id: 'p3', name: 'C Three', position: 'Fly-half' },
+      { id: 'p4', name: 'D Four',  position: 'Lock' },
       { id: 'p5', name: 'E Five',  position: 'Prop' },
-      { id: 'p6', name: 'F Six',   position: 'Wing',       trainingTuesday: 'available' },
+      { id: 'p6', name: 'F Six',   position: 'Wing' },
     ],
+    resolvedAvailability: {
+      p1: { tue: ANSWERED('available'),   fx1: ANSWERED('available') },
+      p2: { tue: ANSWERED('available'),   fx1: ANSWERED('unavailable') },
+      p3: { tue: ANSWERED('maybe'),       fx1: ANSWERED('available') },
+      p4: { tue: ANSWERED('unavailable'), fx1: ANSWERED('maybe') },
+      p6: { tue: ANSWERED('available') },
+    },
     schedule: [{ id: 'tue', type: 'Training', title: 'Tuesday Session', date: 'Tue 19:00', published: true }],
     fixtures: [{ id: 'fx1', opposition: 'Acton Town', date: iso(7), kickoffTime: '15:00', venue: 'Memorial Ground', type: 'League', homeAway: 'home' }],
     trainingBlocks: { tue: ['b1', 'b2'] },
