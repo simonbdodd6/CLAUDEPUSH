@@ -8524,6 +8524,9 @@
           reason:   String(entry.reason || ''),
           at:       String(entry.at || ''),
           owner:    String(entry.owner),
+          // Order within one millisecond (see availabilityMarkPending); part of
+          // the intent, so a retry after a reload carries the same stamp.
+          seq:      Number.isInteger(Number(entry.seq)) && Number(entry.seq) >= 0 ? Number(entry.seq) : 0,
         };
       }
       return out;
@@ -8541,8 +8544,17 @@
         const oldest = Object.entries(store).sort((a, b) => String(a[1]?.at || '').localeCompare(String(b[1]?.at || '')))[0];
         if (oldest) delete store[oldest[0]];
       }
+      // THE INTENT STAMP. `at` is the moment this answer was chosen and `seq`
+      // orders taps that land within the same millisecond — together they say
+      // which of a player's answers is the LATER one, wherever its request ends
+      // up. The server keeps the newest intent per person and acknowledges an
+      // older one without applying it, so a slow first request can no longer
+      // arrive after a fast second one and become the stored answer.
+      const at   = new Date().toISOString();
+      const prev = store[id];
+      const seq  = prev && prev.at === at ? (Number(prev.seq) || 0) + 1 : 0;
       store[id] = { response: String(response), reason: String(reason || ''),
-                    at: new Date().toISOString(), owner: String(state.currentUserId || '') };
+                    at, owner: String(state.currentUserId || ''), seq };
       return store[id];
     }
 
@@ -9317,6 +9329,15 @@
     }
 
     let _availAuthPromptedAt = 0; // one auth prompt per burst, not one per session
+    // ONE request in flight per session, per device. The worker started by a
+    // tap sends whatever the pending store holds for that session and keeps
+    // going until the entry it just confirmed is still the latest one — so a
+    // second tap made mid-request is sent AFTER the first completes, never
+    // beside it, and two requests for one session can never race each other
+    // to the server. Keyed by session so different sessions still send in
+    // parallel (Yes to all). typeof-guarded for the sandboxes that extract
+    // saveAvailabilityResponseToServer alone.
+    let _availSendChain = {};
     /**
      * Send one availability answer. Returns WHAT HAPPENED, so the caller can
      * tell the player the truth instead of assuming:
@@ -9328,59 +9349,97 @@
      * The intent is recorded as PENDING before the request leaves, not after it
      * fails: a tab closed mid-request would otherwise lose the answer with no
      * trace, which is the same silent loss in a different disguise.
+     *
+     * `retryEntry` — the flush passes the entry it is retrying so the SAME
+     * intent (same stamp) is sent, never a re-stamped copy that could outrank
+     * an answer the player has since given elsewhere.
      */
-    async function saveAvailabilityResponseToServer(sessionId, response, reason, revert) {
+    async function saveAvailabilityResponseToServer(sessionId, response, reason, revert, retryEntry) {
       // 'injured' is a legacy local-only status — map to unavailable + reason:injury for server.
       const sendResponse = response === 'injured' ? 'unavailable' : response;
       const sendReason   = response === 'injured' ? 'injury'     : (reason || '');
-      availabilityMarkPending(sessionId, sendResponse, sendReason);
+      const id = String(sessionId || '');
+      // The intent this call is about: the entry just recorded (latest wins), the
+      // held entry a retry is re-sending, or — where no store exists — the answer itself.
+      const initial = retryEntry
+        || availabilityMarkPending(id, sendResponse, sendReason)
+        || { response: sendResponse, reason: sendReason, at: new Date().toISOString(), seq: 0 };
+      const hasStore = () => typeof state !== 'undefined' && !!state;
+      const held = () => (hasStore() && state.availabilityPending && state.availabilityPending[id]) || null;
+      const sameIntent = (a, b) => !!a && !!b && a.at === b.at && (Number(a.seq) || 0) === (Number(b.seq) || 0);
+      // Does the store still hold exactly this intent? A success (or refusal)
+      // for an OLDER intent must not clear a newer one chosen meanwhile.
+      const clearIfHeld = entry => { if (sameIntent(held(), entry)) availabilityClearPending(id); };
       // Availability writes are AUTHENTICATED-ONLY. The old push-endpoint
       // identity fallback is gone server-side (it let an expired session write
       // into the default club), so a lapsed session now answers 401 — say so
       // honestly and route to the existing login UX instead of letting the
       // success toast stand. A network failure stays quiet (offline ≠ signed
       // out; the answer is kept locally exactly as before).
-      try {
-        const res = await fetch('/api/availability', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ response: sendResponse, reason: sendReason, sessionId })
-        });
-        if (res.ok) {
-          // The ONLY thing that turns an answer into an answer.
-          availabilityClearPending(sessionId);
-          return { ok: true };
-        }
-        if (res.status === 401 || res.status === 403) {
-          // The server REFUSED this write — the just-applied local value is a
-          // claim of persistence that did not happen. Put back what was there
-          // before the tap, so the card tells the truth (the persisted state
-          // remains authoritative). Offline stays different by design: a
-          // network failure keeps the local answer for later.
-          if (typeof revert === 'function') { revert(); saveState('Availability revert — not signed in'); render(); }
-          if (Date.now() - _availAuthPromptedAt > 4000) {
-            _availAuthPromptedAt = Date.now();
-            showToast('Not saved — your session has expired. Please log in again.');
-            checkServerSession().catch(() => {});   // flips the app into its signed-out presentation
-            setAuthTab('login');                    // the same entry the Welcome screen / banner use
+      const postIntent = async entry => {
+        try {
+          const res = await fetch('/api/availability', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ response: entry.response, reason: entry.reason || '', sessionId: id,
+                                   intentAt: entry.at, intentSeq: Number(entry.seq) || 0 })
+          });
+          if (res.ok) {
+            // The ONLY thing that turns an answer into an answer — and only
+            // the answer that was sent, not one chosen since.
+            clearIfHeld(entry);
+            return { ok: true };
           }
-          // A refused write is not a pending one: retrying it would fail again
-          // for the same reason, and the local answer has just been put back.
-          availabilityClearPending(sessionId);
-          return { ok: false, auth: true };
+          if (res.status === 401 || res.status === 403) {
+            // The server REFUSED this write — the just-applied local value is a
+            // claim of persistence that did not happen. Put back what was there
+            // before the tap, so the card tells the truth (the persisted state
+            // remains authoritative). Offline stays different by design: a
+            // network failure keeps the local answer for later.
+            if (typeof revert === 'function') { revert(); saveState('Availability revert — not signed in'); render(); }
+            if (Date.now() - _availAuthPromptedAt > 4000) {
+              _availAuthPromptedAt = Date.now();
+              showToast('Not saved — your session has expired. Please log in again.');
+              checkServerSession().catch(() => {});   // flips the app into its signed-out presentation
+              setAuthTab('login');                    // the same entry the Welcome screen / banner use
+            }
+            // A refused write is not a pending one: retrying it would fail again
+            // for the same reason, and the local answer has just been put back.
+            clearIfHeld(entry);
+            return { ok: false, auth: true };
+          }
+          // 5xx is the server having a bad moment — worth retrying. Any other
+          // refusal (a malformed session id, say) never will be, so it is not
+          // kept as pending and the caller reports the failure plainly.
+          if (res.status >= 500) return { ok: false, pending: true };
+          clearIfHeld(entry);
+          return { ok: false };
+        } catch {
+          // OFFLINE / transport failure — the answer is kept exactly as the
+          // player left it, marked pending, and retried. This is the case that
+          // used to fall into an empty catch and be reported as a save.
+          return { ok: false, pending: true };
         }
-        // 5xx is the server having a bad moment — worth retrying. Any other
-        // refusal (a malformed session id, say) never will be, so it is not
-        // kept as pending and the caller reports the failure plainly.
-        if (res.status >= 500) return { ok: false, pending: true };
-        availabilityClearPending(sessionId);
-        return { ok: false };
-      } catch {
-        // OFFLINE / transport failure — the answer is kept exactly as the
-        // player left it, marked pending, and retried. This is the case that
-        // used to fall into an empty catch and be reported as a save.
-        return { ok: false, pending: true };
-      }
+      };
+      const worker = async () => {
+        // Send what the store holds NOW — the latest intent — or nothing when an
+        // earlier worker already confirmed it; without a store, the intent itself.
+        let entry = hasStore() ? held() : initial;
+        let out = { ok: true };
+        for (let round = 0; round < 8 && entry; round++) {
+          out = await postIntent(entry);
+          if (!out.ok) return out;           // pending / auth / refused — stop; the flush retries what is pending
+          const next = held();
+          entry = next && !sameIntent(next, entry) ? next : null;   // a newer tap landed meanwhile: send it too
+        }
+        return out;
+      };
+      const chains = (typeof _availSendChain !== 'undefined' && _availSendChain)
+        ? _availSendChain
+        : (saveAvailabilityResponseToServer._chains || (saveAvailabilityResponseToServer._chains = {}));
+      const run = (chains[id] || Promise.resolve()).then(worker);
+      chains[id] = run.catch(() => {});
+      return run;
     }
 
     /**
@@ -9403,7 +9462,7 @@
         for (const [sessionId, entry] of mine) {
           // entry.response is the LATEST choice for this session — a second tap
           // overwrote the first, so no stale answer can be resurrected here.
-          const out = await saveAvailabilityResponseToServer(sessionId, entry.response, entry.reason || '', null);
+          const out = await saveAvailabilityResponseToServer(sessionId, entry.response, entry.reason || '', null, entry);
           if (out && out.ok) { sent++; continue; }
           if (out && out.pending) break;     // still unreachable: stop, try again on the next event
         }

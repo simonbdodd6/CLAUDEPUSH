@@ -1,5 +1,5 @@
-import { kvGet, kvSet, kvScanKeys } from './_kv.js';
-import { APP_PREFIX, LEGACY_PREFIX, availabilityKey, legacyAvailabilityKey, teamAvailabilityKey, groupAvailabilityKey } from './_keys.js';
+import { kvGet, kvSet, kvSetNX, kvDel, kvScanKeys } from './_kv.js';
+import { APP_PREFIX, LEGACY_PREFIX, key, availabilityKey, legacyAvailabilityKey, teamAvailabilityKey, groupAvailabilityKey } from './_keys.js';
 import { DEFAULT_TEAM } from './_identityStore.js';
 import { INITIAL_GROUP_ID } from './_structureStore.js';
 
@@ -71,6 +71,56 @@ export async function loadGroupAvailability(clubId, groupId, sessionId) {
 
 export async function saveGroupAvailability(clubId, groupId, sessionId, value) {
   await kvSet(groupAvailabilityKey(normalizeTeamId(clubId), String(groupId || ''), sessionId), value);
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// WRITE MUTEX — one writer per (club, group, session) record at a time.
+//
+// A session's answers are ONE record: an answer is written by loading the
+// record, replacing the writer's own entry and saving the whole record back.
+// Two players answering within the same read→write window (typical right
+// after a squad-wide request) each read the record without the other's entry
+// and the second save silently dropped the first answer — the player's own
+// device still showed it, the coach board never did. The lock serialises
+// writers to the same session: the second reads what the first saved.
+//
+// Built on the primitives the store already has (SET NX EX + DEL): the record
+// format, its keys and every reader are untouched, so existing data needs no
+// migration. Bounded wait, then FAIL CLOSED with 503 — the client keeps the
+// answer pending and retries; nothing is ever written unserialised. The TTL
+// frees a lock whose holder died mid-write. The lock key lives OUTSIDE the
+// availability:* namespace so no scan ever mistakes it for a session record.
+// ───────────────────────────────────────────────────────────────────────────
+const WRITE_LOCK_TTL_SECONDS = 5;
+const WRITE_LOCK_WAIT_MS     = 4000;
+
+export function availabilityWriteLockKey(clubId, groupId, sessionId) {
+  return key(`availability_lock:${normalizeTeamId(clubId)}:${String(groupId || '')}:${String(sessionId || '')}`);
+}
+
+export async function withAvailabilityWriteLock(clubId, groupId, sessionId, fn) {
+  const lockKey = availabilityWriteLockKey(clubId, groupId, sessionId);
+  const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const deadline = Date.now() + WRITE_LOCK_WAIT_MS;
+  let held = false;
+  for (;;) {
+    if (await kvSetNX(lockKey, token, WRITE_LOCK_TTL_SECONDS)) { held = true; break; }
+    if (Date.now() >= deadline) break;
+    await new Promise(resolve => setTimeout(resolve, 15 + Math.floor(Math.random() * 35)));
+  }
+  if (!held) {
+    const error = new Error('Availability is busy — please try again in a moment');
+    error.status = 503;
+    error.code = 'busy';
+    throw error;
+  }
+  try {
+    return await fn();
+  } finally {
+    // Best effort, and only our own lock: a lock that expired and was taken
+    // by another writer is theirs to release.
+    try { if ((await kvGet(lockKey)) === token) await kvDel(lockKey); } catch { /* the TTL will free it */ }
+  }
 }
 
 /** Read every availability record for ONE group, keyed by sessionId. */

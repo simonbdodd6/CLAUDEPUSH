@@ -1,7 +1,7 @@
 // Availability replies from notification actions or the player app.
 // Also handles dev-only seed/reset actions when DEV_LOGIN=true.
 import { loadAvailability, saveAvailability, loadAvailabilityForIdentity, resolveAvailabilityForIdentities,
-         loadGroupAvailability, saveGroupAvailability,
+         loadGroupAvailability, saveGroupAvailability, withAvailabilityWriteLock,
          loadGroupAvailabilityForIdentity, resolveGroupAvailabilityForIdentities } from './_availabilityStore.js';
 import { loadClubStructure, activeGroups, INITIAL_GROUP_ID } from './_structureStore.js';
 import { assertOperationalGroup, operationalGroupsFor, resolvePlayerGroup } from './_accessScope.js';
@@ -60,6 +60,53 @@ async function coachGroupForRequest(sessionContext, requestedGroup) {
 
 const RESPONSES = new Set(['available', 'unavailable', 'maybe']);
 const REASONS   = new Set(['injury', 'work', 'holiday', 'family', 'other', '']);
+
+// ── INTENT ORDER — the player's LAST tap wins, wherever its request lands ──
+// The client stamps every answer with the moment it was chosen (intentAt, an
+// ISO instant, plus intentSeq to order taps within one millisecond). Requests
+// can arrive out of order — a slow first request landing after a fast second
+// one used to become the stored answer while the player's screen showed the
+// newer one. The stored entry keeps its intent stamp; an incoming intent that
+// is OLDER than the stored one is acknowledged and NOT applied.
+//
+// Only stamped intents are ordered against each other. An unstamped write (an
+// older client, the notification action in the service worker) keeps the
+// arrival-order semantics it always had, so nothing that could answer before
+// this change is refused by it.
+const INTENT_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+const INTENT_CLOCK_SLACK_MS = 2 * 60 * 1000;
+
+/** The intent stamp of a request: { at, seq } or null when the client sent none. */
+function intentFromBody(body = {}, now = Date.now()) {
+  const raw = String(body?.intentAt || '').trim();
+  if (!INTENT_AT_RE.test(raw)) return null;
+  let at = new Date(raw).getTime();
+  if (!Number.isFinite(at)) return null;
+  // A device clock running ahead must not stamp an intent that every correctly
+  // clocked device (and every later tap on the same device once corrected)
+  // would then lose to. Anything further ahead than the slack is stamped now.
+  if (at > now + INTENT_CLOCK_SLACK_MS) at = now;
+  const seqRaw = Number(body?.intentSeq);
+  const seq = Number.isInteger(seqRaw) && seqRaw >= 0 ? Math.min(seqRaw, 1e6) : 0;
+  return { at: new Date(at).toISOString(), seq };
+}
+
+/** The intent stamp a stored entry carries, or null for a pre-ordering entry. */
+function intentOfEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const at = String(entry.intentAt || '');
+  if (!INTENT_AT_RE.test(at)) return null;
+  const seq = Number(entry.intentSeq);
+  return { at, seq: Number.isInteger(seq) && seq >= 0 ? seq : 0 };
+}
+
+/** True when intent `a` was chosen BEFORE intent `b`. Equal stamps are not older:
+ *  a duplicate of the stored intent is applied again, which is idempotent. */
+function intentOlderThan(a, b) {
+  if (!a || !b) return false;
+  if (a.at !== b.at) return a.at < b.at;      // canonical ISO instants sort lexically
+  return a.seq < b.seq;
+}
 const DEMO_SESSIONS = ['tue', 'thu', 'game'];
 
 const DEMO_PLAYERS = [
@@ -359,34 +406,73 @@ export default async function handler(req, res) {
       return res.status(403).json({ ok: false, error: 'Your account is not an active member of a club', code: 'no_membership' });
     }
     const writeGroup = await playerGroupForIdentity(writeTeamId, identity);
-    const responses = await loadGroupAvailability(writeTeamId, writeGroup, sessionId);
-    // ONE canonical answer per person per session. The same person can be
-    // stored under several keys (an invite-era inv-… record beside the
-    // authenticated user_… key); leaving the siblings in place kept a stale
-    // contradictory answer alive for every reader that matched it first.
-    // This write IS the person's current answer — remove every other record
-    // that belongs to the same identity before writing the canonical one.
-    // Lazy cleanup, same pattern as the legacy-key migration: no job, the
-    // store heals on the player's next answer.
-    for (const [k, v] of Object.entries(responses)) {
-      if (k === identity.key || !v || typeof v !== 'object') continue;
-      const same =
-        (identity.userId         && v.userId         === identity.userId) ||
-        (identity.playerId       && v.playerId       === identity.playerId) ||
-        (identity.legacyPlayerId && v.legacyPlayerId === identity.legacyPlayerId);
-      if (same) delete responses[k];
+    const intent = intentFromBody(req.body);
+    const sameIdentity = v => Boolean(v && typeof v === 'object' && (
+      (identity.userId         && v.userId         === identity.userId) ||
+      (identity.playerId       && v.playerId       === identity.playerId) ||
+      (identity.legacyPlayerId && v.legacyPlayerId === identity.legacyPlayerId)));
+    let outcome;
+    try {
+      // The read→replace→save below is serialised per session record (see
+      // withAvailabilityWriteLock): a concurrent answer from another player
+      // reads this one's entry rather than overwriting it, and the ordering
+      // check below is made against the record as it truly is.
+      outcome = await withAvailabilityWriteLock(writeTeamId, writeGroup, sessionId, async () => {
+        const responses = await loadGroupAvailability(writeTeamId, writeGroup, sessionId);
+        // The newest intent already stored for THIS person, across the canonical
+        // key and any alias record. An incoming intent older than it is the
+        // player's earlier tap arriving late: acknowledged, not applied.
+        let stored = null;
+        for (const [k, v] of Object.entries(responses)) {
+          if (k !== identity.key && !sameIdentity(v)) continue;
+          const stamp = intentOfEntry(v);
+          if (stamp && (!stored || intentOlderThan(stored.stamp, stamp))) stored = { stamp, entry: v };
+        }
+        if (intent && stored && intentOlderThan(intent, stored.stamp)) {
+          return { applied: false, current: stored.entry };
+        }
+        // ONE canonical answer per person per session. The same person can be
+        // stored under several keys (an invite-era inv-… record beside the
+        // authenticated user_… key); leaving the siblings in place kept a stale
+        // contradictory answer alive for every reader that matched it first.
+        // This write IS the person's current answer — remove every other record
+        // that belongs to the same identity before writing the canonical one.
+        // Lazy cleanup, same pattern as the legacy-key migration: no job, the
+        // store heals on the player's next answer.
+        for (const [k, v] of Object.entries(responses)) {
+          if (k === identity.key || !v || typeof v !== 'object') continue;
+          if (sameIdentity(v)) delete responses[k];
+        }
+        const now = new Date().toISOString();
+        const entry = {
+          response,
+          reason: safeReason,
+          respondedAt: now,
+          // The intent the client chose, or — for an unstamped write — the
+          // moment it arrived, so a later stamped tap still orders after it.
+          intentAt: intent ? intent.at : now,
+          intentSeq: intent ? intent.seq : 0,
+          label: identity.label,
+          userId: identity.userId,
+          playerId: identity.playerId,
+          legacyPlayerId: identity.legacyPlayerId,
+        };
+        responses[identity.key] = entry;
+        await saveGroupAvailability(writeTeamId, writeGroup, sessionId, responses);
+        return { applied: true, current: entry };
+      });
+    } catch (error) {
+      if (error?.code === 'busy') return res.status(503).json({ ok: false, error: error.message, code: 'busy' });
+      throw error;
     }
-    responses[identity.key] = {
-      response,
-      reason: safeReason,
-      respondedAt: new Date().toISOString(),
-      label: identity.label,
-      userId: identity.userId,
-      playerId: identity.playerId,
-      legacyPlayerId: identity.legacyPlayerId,
-    };
-    await saveGroupAvailability(writeTeamId, writeGroup, sessionId, responses);
-    return res.status(200).json({ ok: true, label: identity.label, userId: identity.userId, playerId: identity.playerId, response, reason: safeReason, sessionId });
+    const current = outcome.current || {};
+    return res.status(200).json({
+      ok: true, applied: outcome.applied, superseded: !outcome.applied,
+      label: identity.label, userId: identity.userId, playerId: identity.playerId,
+      // What the store holds now — the intent just applied, or the newer one it kept.
+      response: current.response, reason: current.reason || '', sessionId,
+      intentAt: current.intentAt || null, intentSeq: Number.isInteger(current.intentSeq) ? current.intentSeq : 0,
+    });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

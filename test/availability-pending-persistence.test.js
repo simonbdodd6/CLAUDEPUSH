@@ -120,7 +120,12 @@ const SESSION_OBJ = { id: SESSION, title: 'Training', date: '2026-09-15' };
 test('1. a successful submission is awaited, confirmed, and leaves nothing pending', async () => {
   const d = device({ script: ['ok'] });
   await d.tap(KEY, 'available', '');
-  assert.deepEqual(d.posts(), [{ response: 'available', reason: '', sessionId: SESSION }], 'exactly one POST, canonical session id');
+  assert.equal(d.posts().length, 1, 'exactly one POST');
+  const { intentAt, intentSeq, ...sent } = d.posts()[0];
+  assert.deepEqual(sent, { response: 'available', reason: '', sessionId: SESSION }, 'canonical session id');
+  // The intent stamp: the moment the answer was chosen, ordered within the millisecond.
+  assert.match(String(intentAt), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, 'the POST carries the intent instant');
+  assert.equal(intentSeq, 0);
   assert.deepEqual(d.pendingStore(), {}, 'nothing left pending');
   assert.ok(d.toasts().includes('Availability saved'), 'the normal success feedback: ' + JSON.stringify(d.toasts()));
   assert.equal(d.localField(), 'available');
@@ -207,7 +212,11 @@ test('4. a successful retry sends the held answer, promotes it, and clears the p
   assert.ok(d.pendingStore()[SESSION], 'held after the failure');
   const sent = await d.flush();
   assert.equal(sent, 1);
-  assert.deepEqual(d.posts()[1], { response: 'available', reason: '', sessionId: SESSION }, 'retried against the exact canonical session');
+  const { intentAt: retryAt, intentSeq: retrySeq, ...retried } = d.posts()[1];
+  assert.deepEqual(retried, { response: 'available', reason: '', sessionId: SESSION }, 'retried against the exact canonical session');
+  // The retry is the SAME intent, not a re-stamped copy: a re-stamp could outrank an answer the player has since given elsewhere.
+  assert.equal(retryAt, d.posts()[0].intentAt, 'the retry carries the original intent instant');
+  assert.equal(retrySeq, d.posts()[0].intentSeq);
   assert.deepEqual(d.pendingStore(), {}, 'pending cleared only by the 2xx');
   assert.ok(d.toasts().some(t => /now been sent/i.test(t)));
   assert.equal(d.card(SESSION_OBJ).pending, false);
