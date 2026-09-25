@@ -188,6 +188,84 @@ test('2. the player-side DM candidates follow the same rules', async () => {
   assert.deepEqual(none.state.users.map(u => u.id), ['u_me'], 'with no club in force nothing is added');
 });
 
+// ── 2b. the SCREEN learns of a change that the array length cannot show ────
+// After a switch the new club's reply re-stamps the signed-in account's own
+// row (club A → club B): same number of rows, different club. The wrapper
+// used to repaint only when state.users.length changed, so Members kept
+// painting "no staff" until an unrelated render happened by — the loader
+// must report an EFFECTIVE change and the wrapper must render on that.
+function ensureScope({ users, club, replies, coach = true, activeView = 'coach', currentUserId = 'u_me' }) {
+  return new Function(`"use strict";
+    const STAFF_ROLES = ['coach', 'admin', 'medical', 'snc', 'analyst'];
+    function isCoach() { return ${JSON.stringify(coach)}; }
+    let renders = 0; function render() { renders++; }
+    const replies = ${JSON.stringify(replies)};
+    let call = 0;
+    async function fetch() { const r = replies[Math.min(call++, replies.length - 1)]; return { ok: r.ok !== false, json: async () => r.body || {} }; }
+    let _clubContextId = ${JSON.stringify(club)}, _staffDirLoadedAt = 0;
+    const state = { stateTeamId: ${JSON.stringify(club)}, activeView: ${JSON.stringify(activeView)}, currentUserId: ${JSON.stringify(currentUserId)}, users: ${JSON.stringify(users)} };
+    ${fn('staffRowInCurrentClub')}
+    ${fn('loadStaffDirectory')}
+    ${fn('chatLoadDmCandidates')}
+    ${fn('chatEnsureStaffDirectory')}
+    return { ensure: () => chatEnsureStaffDirectory(), load: () => loadStaffDirectory(), dm: () => chatLoadDmCandidates(),
+             release: () => { _staffDirLoadedAt = 0; }, renders: () => renders, state,
+             onScreen: () => state.users.filter(staffRowInCurrentClub).map(u => u.name) };
+  `)();
+}
+const dmReply = cands => ({ body: { candidates: cands } });
+
+test('2b. a reply that only re-stamps the signed-in row still repaints — the length is not the signal', async () => {
+  // The exact post-switch state: the reset kept Nick's own row, still stamped for club A; club B is now in force.
+  const s = ensureScope({ users: [{ ...ME, teamId: 'club-a' }], club: 'club-b', replies: [reply('club-b', [ME])] });
+  const before = s.state.users.length;
+  assert.deepEqual(s.onScreen(), [], 'fail closed: nothing of club B is on screen before its directory answers');
+  await s.ensure();
+  assert.equal(s.state.users.length, before, 'no row was added or removed — the row was RE-STAMPED');
+  assert.equal(s.state.users[0].teamId, 'club-b', 'the row now belongs to club B');
+  assert.equal(s.renders(), 1, 'and the screen was repainted exactly once');
+  assert.deepEqual(s.onScreen(), ['Nick Admin'], 'so club B\'s staff is on screen');
+  assert.ok(!s.state.users.some(u => u.teamId === 'club-a'), 'and nothing of club A is');
+});
+
+test('2b. an unchanged reply costs no repaint', async () => {
+  const s = ensureScope({ users: [{ ...ME, teamId: 'club-a' }], club: 'club-b', replies: [reply('club-b', [ME, { id: 'u_b1', role: 'coach', name: 'Beto Navarra', email: 'beto@beta.test' }])] });
+  await s.ensure();
+  assert.equal(s.renders(), 1, 'the first reply changed the directory (a re-stamp and a new row)');
+  s.release(); await s.ensure();
+  s.release(); await s.ensure();
+  assert.equal(s.renders(), 1, 'identical replies changed nothing, so nothing was repainted');
+  assert.equal(await s.load(), false, 'the loader reports no change');
+});
+
+test('2b. the loader reports every effective change, and none for a reply it did not apply', async () => {
+  const B1 = { id: 'u_b1', role: 'coach', name: 'Beto Navarra', email: 'beto@beta.test' };
+  const b1Row = (extra = {}) => ({ ...B1, _staff: true, teamId: 'club-b', ...extra });
+  const me = { ...ME, teamId: 'club-b' };
+  const load = (users, r) => ensureScope({ users, club: 'club-b', replies: [r] }).load();
+  assert.equal(await load([me], reply('club-b', [ME, B1])), true, 'a row added');
+  assert.equal(await load([me, b1Row()], reply('club-b', [ME])), true, 'a row removed');
+  assert.equal(await load([me, b1Row({ role: 'medical' })], reply('club-b', [ME, B1])), true, 'a row re-roled');
+  assert.equal(await load([me, b1Row({ teamId: 'club-a' })], reply('club-b', [ME, B1])), true, 'a row re-stamped');
+  assert.equal(await load([me, b1Row()], reply('club-b', [ME, B1])), false, 'nothing changed');
+  assert.equal(await load([me, b1Row()], reply('club-a', [ME, A_COACH])), false, 'a reply for a club that has been left is discarded');
+  assert.equal(await load([me, b1Row()], { ok: false }), false, 'a failed read');
+});
+
+test('2b. the player path repaints on a re-stamp too, and only then', async () => {
+  const coachRow = { id: 'u_b1', role: 'coach', name: 'Beto Navarra', email: '', phone: '', pin: '', _staff: true, teamId: 'club-a' };
+  const s = ensureScope({ users: [ME, coachRow], club: 'club-b', coach: false, activeView: 'player',
+                          replies: [dmReply([{ userId: 'u_b1', role: 'coach', name: 'Beto Navarra' }])] });
+  const before = s.state.users.length;
+  await s.ensure();
+  assert.equal(s.state.users.length, before, 'same rows');
+  assert.equal(s.state.users.find(u => u.id === 'u_b1').teamId, 'club-b', 're-stamped for the club in force');
+  assert.equal(s.renders(), 1, 'repainted once');
+  s.release(); await s.ensure();
+  assert.equal(s.renders(), 1, 'an identical answer is not repainted');
+  assert.equal(await s.dm(), false, 'and the loader says so');
+});
+
 // ── 3. the boundary, fail closed ──────────────────────────────────────────
 test('3. a staff row renders only with THIS club\'s stamp — missing or foreign fails closed', () => {
   const scope = new Function(`"use strict";
