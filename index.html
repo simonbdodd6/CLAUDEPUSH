@@ -35657,11 +35657,22 @@
       return !!club && !!u && String(u.teamId || '') === club;
     }
 
+    /**
+     * Resolves true when the reply EFFECTIVELY changed the staff directory —
+     * a row added or removed, re-stamped for this club, re-roled, or given a
+     * name/email it lacked — and false for a reply that changed nothing, a
+     * reply that was discarded, or no reply at all. Callers render on THIS,
+     * not on state.users.length: after a club switch the new club's reply
+     * re-stamps the signed-in account's own row (same length, different
+     * club), and a length check left Members painting "no staff" until an
+     * unrelated render happened by.
+     */
     async function loadStaffDirectory() {
-      if (!isCoach()) return;
+      if (!isCoach()) return false;
+      let changed = false;
       try {
         const res = await fetch('/api/identity');
-        if (!res.ok) return;
+        if (!res.ok) return false;
         const d = await res.json().catch(() => ({}));
         // The club this directory IS: the server names it in the reply. A reply
         // that names no club is not applied, and one for a club this device has
@@ -35672,7 +35683,7 @@
           // Not this club's directory (or no club in force yet): apply nothing,
           // and let the next render ask again rather than sit out the throttle.
           if (typeof _staffDirLoadedAt !== 'undefined') _staffDirLoadedAt = 0;
-          return;
+          return false;
         }
         const members = Array.isArray(d.team_members) ? d.team_members : [];
         const users   = Array.isArray(d.users) ? d.users : [];
@@ -35689,24 +35700,32 @@
           const existing = state.users.find(su => String(su.id) === id);
           if (!existing) {
             state.users.push({ id, role: m.role, name, email, phone: '', pin: '', _staff: true, teamId });
+            changed = true;
           } else {
             // The MEMBER row is authoritative for staffness. A player upgraded
             // to coach kept role 'player' in this cached directory forever
             // (the old `if (!existing.role)` never corrected a truthy value),
             // which hid every dual-role coach from the Members staff list and
             // the DM directory even though the server standing was right.
+            const was = [existing.role, existing.name, existing.email, existing.teamId].join('\u0000');
             if (existing.role !== m.role) existing.role = m.role;
             if (!existing.name)  existing.name  = name;
             if (!existing.email) existing.email = email;
             existing.teamId = teamId;          // re-stamped for THIS club, whatever it said before
+            // Any of those taking effect — a re-stamp above all — is a change
+            // the screen must see even though no row was added.
+            if ([existing.role, existing.name, existing.email, existing.teamId].join('\u0000') !== was) changed = true;
           }
         });
         // This reply is the directory. A directory row it does not contain is
         // stale — another club's, or someone since removed — and goes. The
         // signed-in account's own record is never a directory row to drop.
         const me = String(state.currentUserId || '');
-        state.users = state.users.filter(u => !u._staff || fresh.has(String(u.id)) || String(u.id) === me);
+        const kept = state.users.filter(u => !u._staff || fresh.has(String(u.id)) || String(u.id) === me);
+        if (kept.length !== state.users.length) changed = true;
+        state.users = kept;
       } catch (e) { /* best-effort — never block Messages on the staff directory */ }
+      return changed;
     }
     // Debounced refresh when the coach opens Messages; re-render if staff changed.
     /**
@@ -35726,15 +35745,18 @@
      * playerCoachParticipantId) works unchanged for players.
      */
     async function chatLoadDmCandidates() {
+      // Same contract as loadStaffDirectory: true only when the candidate
+      // list EFFECTIVELY changed (see there for why length is not the signal).
+      let changed = false;
       try {
         const res = await fetch('/api/chat?action=dm_candidates');
-        if (!res.ok) return;
+        if (!res.ok) return false;
         const data = await res.json().catch(() => ({}));
         // Stamped with the club in force; without one there is nothing to file
         // these under, so nothing is added. Same replacement rule as the coach
         // directory: a candidate the server no longer lists is gone.
         const teamId = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
-        if (!teamId) return;
+        if (!teamId) return false;
         const fresh = new Set();
         (Array.isArray(data.candidates) ? data.candidates : []).forEach(c => {
           const id = String(c.userId || '');
@@ -35742,16 +35764,22 @@
           fresh.add(id);
           const existing = (state.users || []).find(u => String(u.id) === id);
           if (existing) {
+            const was = [existing.role, existing.name, existing.teamId].join('\u0000');
             if (existing.role !== c.role) existing.role = c.role;
             if (!existing.name) existing.name = c.name;
             existing.teamId = teamId;
+            if ([existing.role, existing.name, existing.teamId].join('\u0000') !== was) changed = true;
           } else {
             state.users.push({ id, role: c.role, name: c.name, email: '', phone: '', pin: '', _staff: true, teamId });
+            changed = true;
           }
         });
         const me = String(state.currentUserId || '');
-        state.users = (state.users || []).filter(u => !u._staff || fresh.has(String(u.id)) || String(u.id) === me);
+        const kept = (state.users || []).filter(u => !u._staff || fresh.has(String(u.id)) || String(u.id) === me);
+        if (kept.length !== (state.users || []).length) changed = true;
+        state.users = kept;
       } catch { /* offline — the player keeps whatever contacts they already had */ }
+      return changed;
     }
 
     async function chatEnsureStaffDirectory() {
@@ -35761,17 +35789,15 @@
         const now = Date.now();
         if (now - _staffDirLoadedAt < 30000) return;
         _staffDirLoadedAt = now;
-        const before = (state.users || []).length;
-        await chatLoadDmCandidates();
-        if ((state.users || []).length !== before) render();
+        if (await chatLoadDmCandidates()) render();
         return;
       }
       const now = Date.now();
       if (now - _staffDirLoadedAt < 30000) return;
       _staffDirLoadedAt = now;
-      const before = (state.users || []).length;
-      await loadStaffDirectory();
-      if ((state.users || []).length !== before && state.activeView === 'coach') render();
+      // The loader says whether the directory EFFECTIVELY changed; an
+      // unchanged reply costs no repaint, a re-stamped row costs one.
+      if (await loadStaffDirectory() && state.activeView === 'coach') render();
     }
     // Other staff (not me) as DM candidates, shaped like roster player rows.
     function chatStaffDmCandidates(meId) {
