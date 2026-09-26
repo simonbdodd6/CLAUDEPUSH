@@ -90,8 +90,11 @@ export function normalizeAccessScope(raw) {
 //        profile is full BY ROLE — Club Administrator / Director of Rugby
 //        are club-wide jobs)
 //  every other staff role (head_coach,        → group grant on the initial
-//        assistant, manager, medical, snc,      migrated group only
-//        analyst)
+//        assistant, manager, snc, analyst)      migrated group only
+//  canonical role 'medical'                   → NO group (Build 99). Medical
+//        reach opens health records, so it is never derived: a medic with no
+//        stored scope sees no players and no cases until an administrator
+//        grants a group explicitly (or whole-club access).
 //  player                                     → group grant on the initial
 //                                               group + eligibility for the
 //                                               initial team (primary)
@@ -109,6 +112,14 @@ function derivedScopeFor(member) {
       hasExplicitAccessProfile(member) && String(member.accessProfile).toLowerCase() === 'full' ||
       CLUB_WIDE_ROLES.has(canonicalRole(member))) {
     return { clubWide: true, groups: [], teams: [] };
+  }
+  // Build 99 — MEDICAL FAILS CLOSED. The initial-group grant below is a guess
+  // about which squad someone works with. For coaching staff it preserves the
+  // access they were exercising before groups existed; for a medic it opened
+  // the Seniors caseload to physios who work with U18. A medical membership
+  // with no stored scope therefore reaches nothing.
+  if (canonicalRole(member) === 'medical') {
+    return { clubWide: false, groups: [], teams: [] };
   }
   return {
     clubWide: false,
@@ -349,6 +360,9 @@ export function operationalGroupsFor(member, structure, { as = 'staff' } = {}) {
   if (role === 'player' || role === 'guest') return [];
   const scoped = getAccessibleGroups(member, structure);
   if (scoped.length) return scoped;
+  // Build 99 — a medic's reach is only ever what was granted: no single-group
+  // guess either (see derivedScopeFor). Medical records need an explicit grant.
+  if (role === 'medical') return [];
 
   // BACKWARD COMPATIBILITY. A member who predates scoped access derives
   // groups: [INITIAL_GROUP_ID], which only matches a club whose structure was

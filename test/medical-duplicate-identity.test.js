@@ -52,6 +52,7 @@ function makeWorld(cfg = {}) {
                     medicalRecords: cfg.medRecords, medicalNotes: cfg.medNotes,
                     operationalGroupId: 'g1' };
     const _sharedMedical = { loaded: true, cases: [], players: [] };
+    function canI(p) { return true; }   // a coach: roster authority (Build 99 reads it explicitly)
     function operationalPlayers() { return cfg.roster; }
     function activeRosterPlayers(p) { return (p || []).filter(x => x && x.id && !x.archived); }
     function normalizeMedicalRecord(raw) {

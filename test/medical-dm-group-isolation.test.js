@@ -59,6 +59,7 @@ function buildMedicalScope(gid) {
       SENIORS_CASES.map(c => ({ userId: c.userId, status: 'active', playerGroupId: SEN }))
     )} };
     let _sharedMedical = { loaded: false, cases: [], players: [] };
+    function canI(p) { return true; }   // a coach: roster authority (Build 99 reads it explicitly)
     function canonicalVisiblePlayers() { return state.players; }
     ${fn('clubUsesPlayerGroups')}
     ${fn('playerGroupIdOf')}
@@ -89,12 +90,17 @@ test("Medical/Women's: zero cases — no Seniors player reaches the dashboard", 
 });
 
 // ── MEDICAL 4: pre-structure and player-view behaviour unchanged ──────────
-test('Medical: legacy club (no grouped memberships) and player view keep the full roster', () => {
+// CONTRACT CHANGE (Build 99): the player view used to read the device roster on
+// the belief that "the server already scoped it" — it never did (a player's
+// device roster is not server-refreshed). It now lists the server's scoped
+// projection only. The legacy coach half is unchanged.
+test('Medical: legacy club keeps the full roster; the player view lists only the server projection', () => {
   const legacy = new Function(`"use strict";
     const state = { activeView: 'coach', operationalGroupId: '', players: ${JSON.stringify(SENIORS_CASES)} };
     // loaded:true — models arrived admin data; pending now fails closed (group-isolation fix).
     const _adminData = { loaded: true, members: [] };
     let _sharedMedical = { loaded: false, cases: [], players: [] };
+    function canI(p) { return true; }   // a coach: roster authority
     function canonicalVisiblePlayers() { return state.players; }
     ${fn('clubUsesPlayerGroups')}
     ${fn('playerGroupIdOf')}
@@ -109,14 +115,19 @@ test('Medical: legacy club (no grouped memberships) and player view keep the ful
 
   const playerView = new Function(`"use strict";
     const state = { activeView: 'player', operationalGroupId: ${JSON.stringify(U18)}, players: ${JSON.stringify(SENIORS_CASES)} };
-    let _sharedMedical = { loaded: false, cases: [], players: [] };
+    // What the server returned for this player-physio: their own group only.
+    let _sharedMedical = { loaded: true, cases: [], players: [{ id: 'p-u18', userId: 'u-u18', name: 'U18 Only' }],
+                           groups: [{ id: ${JSON.stringify(U18)}, name: 'U18' }] };
+    function canI(p) { return p === 'medical_access'; }   // a player holding the Medical grant: no roster authority
     function normalizeMedicalRecord(raw) { return raw || {}; }
+    ${fn('medicalHasNoGroupAccess')}
     ${fn('medicalRowCarriesCase')}
     ${fn('medicalCanonicalPlayers')}
     ${fn('medicalPlayers')}
     return medicalPlayers();
   `)();
-  assert.equal(playerView.length, 4, 'player view reads the raw roster — server scopes that reply');
+  assert.deepEqual(playerView.map(p => p.name), ['U18 Only'],
+    'player view lists the server projection — the Seniors rows on the device are never shown');
 });
 
 // ── MEDICAL 5: the group transition drops AND refetches the caseload ──────

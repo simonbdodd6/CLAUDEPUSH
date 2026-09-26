@@ -13445,9 +13445,17 @@
       // selected group's filter into every case at once. The reply is
       // discarded if the operator moved on before it landed.
       const gid = state.activeView !== 'player' ? (state.operationalGroupId || '') : '';
+      // Build 99 — the CLUB this read is for. Every club's first group shares
+      // one id, so the group guard below cannot tell two clubs apart: a reply
+      // that lands after a club switch belongs to the club that was left. A
+      // read that left before any club was proven (boot) speaks for the
+      // cookie's club and is kept.
+      const forClub = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
       try {
         const res = await fetch('/api/publish?resource=medical'
           + (gid ? `&group=${encodeURIComponent(gid)}` : ''));
+        const nowClub = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
+        if (forClub && nowClub !== forClub) return;   // the next club's own read is already on its way
         const nowGid = state.activeView !== 'player' ? (state.operationalGroupId || '') : '';
         if (nowGid !== gid) { loadMedicalFromServer().catch(() => {}); return; }   // stale reply — re-chase
         if (!res.ok) {
@@ -13467,9 +13475,14 @@
         // background session check could stamp on an open editor.
         const before = _sharedMedical.loaded
           ? JSON.stringify([_sharedMedical.cases, _sharedMedical.players]) : null;
-        _sharedMedical = { loaded: true, failed: false, cases: d.cases || [], players: d.players || [] };
+        const groupsBefore = _sharedMedical.loaded ? JSON.stringify(_sharedMedical.groups) : null;
+        // groups: the server's list of groups this identity reaches for Medical
+        // (Build 99) — an EMPTY list is the honest "no group access" state.
+        _sharedMedical = { loaded: true, failed: false, cases: d.cases || [], players: d.players || [],
+                           groups: Array.isArray(d.groups) ? d.groups : undefined };
         hydrateMedicalFromShared();
         if (before !== JSON.stringify([_sharedMedical.cases, _sharedMedical.players])) render();
+        else if (groupsBefore !== JSON.stringify(_sharedMedical.groups)) render();   // access changed, data did not
       } catch {
         // Offline: keep whatever is already rendered; with nothing loaded yet,
         // say so rather than painting a healthy-looking zero.
@@ -27654,6 +27667,51 @@
       return ROLE_DEFAULT_ACCESS_PROFILE[role] || 'limited';
     }
 
+    // ── Build 99 — what a member's access LEVEL does, told apart from where it
+    // REACHES. A group tick only extends reach; what they may do there comes
+    // from their access level (their role on Limited access, or Full / Coach /
+    // Manager). The editor names each honestly instead of calling every group
+    // tick "Can coach".
+
+    /** True when this member's access level coaches: Full or Coach access. */
+    function memberAccessCoaches(member) {
+      if (member?.isOwner) return true;
+      const p = accessProfileFor(member);
+      return p === 'full' || p === 'coach';
+    }
+
+    /** What a NON-coaching member's access does inside a group they reach. */
+    function memberGroupAccessSummary(member) {
+      if (accessProfileFor(member) === 'manager') return 'Their Manager access applies in this group. No coaching.';
+      const role = String(member?.role || '').toLowerCase();
+      const tools = { medical: 'Medical records, messages and reports', snc: 'Training plans, messages and reports',
+                      analyst: 'Reports' }[role] || "Their role's own tools";
+      return tools + (member?.medicalAccess === true && role !== 'medical' ? ', plus Medical,' : '') + ' for this group. No coaching.';
+    }
+
+    /**
+     * Medical that comes WITH the member's role or access level, so the Medical
+     * checkbox cannot switch it off: Full access, the Medical role on Limited
+     * access, or a legacy coaching role with no profile stored (mirrors
+     * api/_permissions.js permissionsFor). '' when the flag alone decides.
+     */
+    function memberMedicalFromRole(member) {
+      if (!isStaffMember(member)) return '';
+      if (accessProfileFor(member) === 'full') return 'Full access';
+      if (ACCESS_PROFILE_LABELS[String(member?.accessProfile || '').toLowerCase()]) return '';
+      const role = String(member?.role || '').toLowerCase();
+      if (role === 'medical') return 'the Medical role';
+      if (role === 'coach') return String(member?.staffLevel || 'head').toLowerCase() === 'manager' ? '' : 'their role';
+      return '';
+    }
+
+    /** Limited access can be CHOSEN only for a role that carries no profile of its own. */
+    function memberLimitedAvailable(member) {
+      if (!isStaffMember(member) || member?.isOwner) return false;
+      const role = String(member?.role || '').toLowerCase();
+      return role !== 'coach' && !ROLE_DEFAULT_ACCESS_PROFILE[role];
+    }
+
     /**
      * RC4.7 — the member access + eligibility editor as it appears on the
      * MEMBERS screen. It resolves the roster player to their club membership
@@ -27704,7 +27762,9 @@
             ${(canAssign && isStaffMember(member)) ? `
               <select aria-label="Access level for ${esc(user.displayName || user.email || 'this member')}" style="${inputStyle};min-height:30px;font-size:11px;width:auto"
                 onchange="adminSetAccessProfile('${esc(member.id)}',this.value,'${esc(user.displayName || '')}','${esc(profile)}')">
-                ${ACCESS_PROFILE_LABELS[profile] ? '' : `<option value="" disabled selected>${esc(ROLE_ACCESS_LABEL)}</option>`}
+                ${(typeof memberLimitedAvailable === 'function' && memberLimitedAvailable(member))
+                  ? `<option value="limited" ${ACCESS_PROFILE_LABELS[profile] ? '' : 'selected'}>${esc(ROLE_ACCESS_LABEL)}</option>`
+                  : (ACCESS_PROFILE_LABELS[profile] ? '' : `<option value="" disabled selected>${esc(ROLE_ACCESS_LABEL)}</option>`)}
                 ${Object.entries(ACCESS_PROFILE_LABELS).map(([id, label]) =>
                   `<option value="${id}" ${profile === id ? 'selected' : ''}>${label}</option>`).join('')}
               </select>`
@@ -27733,18 +27793,34 @@
     /** The member's live scope, mirroring the server's effectiveAccessScope. */
     function memberScope(member) {
       const raw = member?.accessScope;
-      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      // A STORED scope wins even when it grants nothing — the server reads
+      // "stored but empty" (a malformed value included) as NO access, never as
+      // the role default.
+      if (raw !== undefined && raw !== null) {
+        const obj = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
         return {
-          clubWide: raw.clubWide === true,
-          groups: (Array.isArray(raw.groups) ? raw.groups : []).filter(g => g && g.groupId && g.status !== 'removed'),
-          teams: (Array.isArray(raw.teams) ? raw.teams : []).filter(t => t && t.teamId && t.status !== 'removed'),
+          clubWide: obj.clubWide === true,
+          groups: (Array.isArray(obj.groups) ? obj.groups : []).filter(g => g && g.groupId && g.status !== 'removed'),
+          teams: (Array.isArray(obj.teams) ? obj.teams : []).filter(t => t && t.teamId && t.status !== 'removed'),
         };
       }
       // No stored scope — show the same derivation the server applies.
       const derivedClubWide = member?.isOwner === true ||
         String(member?.accessProfile || '').toLowerCase() === 'full' ||
         ['admin', 'dor', 'owner'].includes(String(member?.role || '').toLowerCase());
-      return { clubWide: derivedClubWide, groups: [], teams: [], derived: true };
+      if (derivedClubWide) return { clubWide: true, groups: [], teams: [], derived: true };
+      // Build 99 — the server grants other STAFF the club's initial group by
+      // default, and a medic nothing (health records need an explicit grant).
+      // Showing that default is what stops an administrator relying on it
+      // unknowingly — and it is what the first explicit save keeps, instead of
+      // silently dropping it.
+      const initialId = typeof CE_INITIAL_GROUP_ID !== 'undefined' ? CE_INITIAL_GROUP_ID : 'grp_initial';
+      const st = (typeof _adminData === 'object' && _adminData && _adminData.structure) || null;
+      const initialLive = !!st && (st.groups || []).some(g => g && g.id === initialId && g.status === 'active');
+      const role = String(member?.role || '').toLowerCase();
+      const derivesInitial = role !== '' && !['player', 'parent', 'guest', 'medical'].includes(role);
+      return { clubWide: false, groups: (initialLive && derivesInitial) ? [{ groupId: initialId, status: 'active' }] : [],
+               teams: [], derived: true };
     }
 
     /**
@@ -27816,12 +27892,20 @@
           </span>
         </label>`;
 
-      const medicalRow = row({
-        checked: member.medicalAccess === true,
-        main: 'Medical access',
-        sub: 'Open and update the Medical page. Adds nothing else.',
-        onchange: `adminToggleMedical('${esc(member.id)}',this.checked,'${esc(name)}')`,
-      });
+      // Build 99 — Medical that comes WITH the role or access level cannot be
+      // switched off by this box, so it says so instead of showing an unticked
+      // checkbox that changes nothing. Either way, WHICH players Medical shows
+      // is decided by the group access above.
+      const medicalFrom = typeof memberMedicalFromRole === 'function' ? memberMedicalFromRole(member) : '';
+      const medicalRow = medicalFrom
+        ? row({ checked: true, disabled: true, main: 'Medical access',
+                sub: `Included with ${esc(medicalFrom)}. Medical shows only the groups ticked above.` })
+        : row({
+            checked: member.medicalAccess === true,
+            main: 'Medical access',
+            sub: 'Open and update the Medical page. Adds nothing else.',
+            onchange: `adminToggleMedical('${esc(member.id)}',this.checked,'${esc(name)}')`,
+          });
 
       if (member.isOwner) {
         return `
@@ -27861,6 +27945,12 @@
           </div>`;
       }
 
+      // Build 99 — a group tick names what it does for THIS member: coaching
+      // for Full / Coach access, plain access for everyone else (Manager, or a
+      // role on Limited access such as a physio). Coaching is never implied.
+      const coaches = typeof memberAccessCoaches !== 'function' || memberAccessCoaches(member);
+      const reachSummary = (coaches || typeof memberGroupAccessSummary !== 'function') ? '' : esc(memberGroupAccessSummary(member));
+      const medicalCapable = !!medicalFrom || member.medicalAccess === true;
       const rows = activeGroups.map(g => {
         const teams = (st.teams || []).filter(t => t.groupId === g.id && t.status === 'active');
         const hasGroup = scope.groups.some(x => x.groupId === g.id);
@@ -27868,15 +27958,16 @@
         const groupRow = row({
           checked: scope.clubWide || hasGroup,
           disabled: scope.clubWide,
-          main: `Can coach ${esc(g.name)}`,
-          sub: 'Whole group',
+          main: coaches ? `Can coach ${esc(g.name)}` : `Access to ${esc(g.name)}`,
+          sub: 'Whole group' + (reachSummary ? ' — ' + reachSummary : ''),
           onchange: scope.clubWide ? '' : `adminToggleGroupAccess('${esc(member.id)}','${esc(g.id)}',this.checked)`,
         });
         const teamRows = (teams.length && !scope.clubWide && !hasGroup)
           ? teams.map(t => row({
               checked: teamIds.has(t.id),
               main: esc(t.name),
-              sub: 'Team only',
+              // A team-only grant never opens a group's Medical caseload.
+              sub: 'Team only' + ((!coaches && medicalCapable) ? ' — match day. Medical needs the whole group.' : ''),
               onchange: `adminToggleTeamAccess('${esc(member.id)}','${esc(t.id)}',this.checked)`,
               nested: true,
             })).join('')
@@ -27887,12 +27978,19 @@
       return `
         <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
           <div class="ce-ahead">Can access</div>
-          ${row({ checked: scope.clubWide, main: 'Can manage entire club',
-                  sub: 'Every group and team',
+          ${row({ checked: scope.clubWide,
+                  main: coaches ? 'Can manage entire club' : 'Access to every group',
+                  sub: coaches ? 'Every group and team' : 'Every group and team — their access level decides what they can do there',
                   onchange: `adminToggleClubWide('${esc(member.id)}',this.checked,'${esc(name)}')` })}
           ${scope.clubWide ? '' : rows}
           ${medicalRow}
-          ${scope.derived ? `<p class="muted" style="font-size:11.5px;margin:8px 2px 0">Currently using the default access for their role. Choosing above sets it explicitly.</p>` : ''}
+          ${scope.derived ? `<p class="muted" style="font-size:11.5px;margin:8px 2px 0">Currently using the default access for their role${
+              scope.groups.length ? ': ' + esc(scope.groups.map(x => (activeGroups.find(g => g.id === x.groupId) || {}).name || '').filter(Boolean).join(', ')) : ''
+            }. Choosing above sets it explicitly.</p>` : ''}
+          ${(!scope.clubWide && !scope.groups.length && !scope.teams.length
+              && (String(member.role || '').toLowerCase() === 'medical' || activeGroups.length !== 1))
+            ? `<p style="font-size:11.5px;margin:8px 2px 0;color:var(--amber,#b45309);font-weight:600">No group access — ${esc(name)} sees no players${medicalCapable ? ', in Medical or anywhere else,' : ''} until you choose a group above.</p>`
+            : ''}
         </div>
         ${playerGroupBlock(member, name, activeGroups)}`;
     }
@@ -28054,11 +28152,16 @@
       const member = (_adminData.members || []).find(m => m.id === memberId);
       if (!member) return;
       if (on) {
-        const ok = await ceConfirm(`Give ${name} access to the entire club?`,
-          'They will be able to see and manage every group and team, including members and permissions.',
+        // Build 99 — whole-club REACH adds no permission: a physio on Limited
+        // access gets Medical, messages and reports everywhere, nothing more.
+        const coaches = typeof memberAccessCoaches !== 'function' || memberAccessCoaches(member);
+        const ok = await ceConfirm(coaches ? `Give ${name} access to the entire club?` : `Give ${name} access to every group?`,
+          coaches ? 'They will be able to see and manage every group and team, including members and permissions.'
+                  : 'Their access level will apply in every group and team. No other permission is added, and coaching stays separate.',
           { confirmLabel: 'Give whole-club access', danger: true });
         if (!ok) { render(); return; }
-        await adminSaveScope(memberId, { clubWide: true, groups: [], teams: [] }, `${name} can now manage the entire club`);
+        await adminSaveScope(memberId, { clubWide: true, groups: [], teams: [] },
+          coaches ? `${name} can now manage the entire club` : `${name} now has access to every group`);
       } else {
         const ok = await ceConfirm(`Remove whole-club access from ${name}?`,
           'They will keep their account and history, but will only see the groups or teams you tick next.',
@@ -28089,7 +28192,7 @@
         clubWide: false,
         groups: [...scope.groups.filter(g => g.groupId !== groupId), { groupId, status: 'active' }],
         teams: scope.teams.filter(t => !teamIdsInGroup.has(t.teamId)),
-      }, `Can now coach ${groupName}`);
+      }, (typeof memberAccessCoaches !== 'function' || memberAccessCoaches(member)) ? `Can now coach ${groupName}` : `Access to ${groupName} granted`);
     }
 
     async function adminToggleTeamAccess(memberId, teamId, on) {
@@ -28110,7 +28213,7 @@
         clubWide: false,
         groups: scope.groups,
         teams: [...scope.teams.filter(t => t.teamId !== teamId), { teamId, status: 'active' }],
-      }, `Can now coach ${teamName}`);
+      }, (typeof memberAccessCoaches !== 'function' || memberAccessCoaches(member)) ? `Can now coach ${teamName}` : `Access to ${teamName} granted`);
     }
 
     async function adminToggleEligibility(memberId, teamId, on) {
@@ -28142,6 +28245,18 @@
     async function adminSetAccessProfile(memberId, nextProfile, name, currentProfile) {
       if (nextProfile === currentProfile) return;
       const who = name || 'this member';
+      // Build 99 — back to the role's own tools. The server clears the stored
+      // profile; group access and the Medical setting are left exactly as they are.
+      if (nextProfile === 'limited') {
+        const ok = await ceConfirm(
+          `Change ${who} to Limited access?`,
+          `They keep only their role's own tools and lose ${ACCESS_PROFILE_LABELS[currentProfile] || 'their current access level'}. Their group access and Medical access stay exactly as they are.`,
+          { confirmLabel: 'Change to Limited access' });
+        if (!ok) { render(); return; }
+        await adminAction({ action: 'set_access_profile', memberId, accessProfile: 'limited' }, `${who} now has Limited access`);
+        render();
+        return;
+      }
       const label = ACCESS_PROFILE_LABELS[nextProfile] || nextProfile;
       if (nextProfile === 'full') {
         const ok = await ceConfirm(
@@ -32096,19 +32211,47 @@
       return (rows || []).filter(p => !drop.has(p));
     }
 
+    /**
+     * Build 99 — the server's own answer to "which groups does this identity
+     * reach for Medical?" came back EMPTY. Only a successful read carries that
+     * list; before it lands (or from an older reply without it) the answer is
+     * unknown and this stays false — loading and failure are said by
+     * medicalScreenMode, never inferred here.
+     */
+    function medicalHasNoGroupAccess() {
+      return typeof _sharedMedical === 'object' && !!_sharedMedical && _sharedMedical.loaded === true
+        && Array.isArray(_sharedMedical.groups) && _sharedMedical.groups.length === 0;
+    }
+
+    /** The injury selector's empty option. No group access is not an empty squad. */
+    function medicalEmptySelectorText() {
+      return medicalHasNoGroupAccess()
+        ? "No players available — you don't currently have access to a player group"
+        : 'No players yet — add players first';
+    }
+
     function medicalPlayers() {
-      // GROUP context (coach view): the caseload roster follows the OPERATING
+      // Build 99 — FAIL CLOSED on the server's answer: an identity that reaches
+      // no group lists nobody, whatever rows this device happens to hold (the
+      // previous user's roster on a shared device, a stale cache).
+      if (typeof medicalHasNoGroupAccess === 'function' && medicalHasNoGroupAccess()) return [];
+      const serverRows = (typeof _sharedMedical === 'object' && _sharedMedical && _sharedMedical.players) || [];
+      // WHO may be listed is the SERVER's decision for anyone without roster
+      // authority — a medic, a player holding the Medical grant, anyone on
+      // Limited access. Their device roster is never refreshed from the server
+      // (the roster read needs manage_players), so it can only be stale or
+      // another identity's; the medical projection is scoped to their groups.
+      const rosterAuthority = typeof canI === 'function' && canI('manage_players');
+      if (!rosterAuthority) return medicalCanonicalPlayers(serverRows, state.medicalRecords, state.medicalNotes);
+      // Staff WITH roster authority: the caseload roster follows the OPERATING
       // group, mirroring the &group= that loadMedicalFromServer fetches with.
       // The dashboard flags injuries from roster fields (p.game, p.medical)
       // as well as records, so an unscoped state.players leaks every group's
-      // cases at once. Player view keeps the raw roster — the server already
-      // scopes that reply to the player's own group.
+      // cases at once.
       const rows = state.activeView !== 'player' && typeof operationalPlayers === 'function'
         ? operationalPlayers()
         : (Array.isArray(state.players) ? state.players : []);
-      const src = (Array.isArray(rows) && rows.length)
-        ? rows
-        : ((typeof _sharedMedical === 'object' && _sharedMedical.players) || []);
+      const src = (Array.isArray(rows) && rows.length) ? rows : serverRows;
       return medicalCanonicalPlayers(src, state.medicalRecords, state.medicalNotes);
     }
 
@@ -32305,6 +32448,7 @@
       const el = medicalMountEl();
       if (!el) return;
       const players = medicalPlayers();
+      const noGroupAccess = typeof medicalHasNoGroupAccess === 'function' && medicalHasNoGroupAccess();
       const today   = availToday();
       // The "not training this week" stat reads this week's training
       // occurrences, which need the slot table; the loader is latched and
@@ -32338,14 +32482,16 @@
         // ── Core Beta (Phase 3): prominent Add Injury action + quick form ──
         '<div class="card" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
           '<div><div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">' + icon('medical') + 'Injury log</div>' +
-          '<div style="font-size:12px;color:var(--muted);margin-top:2px">Record a new injury in seconds.</div></div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + (noGroupAccess
+            ? "You don't currently have access to a player group, so there is no one to record an injury for. Ask a club administrator to give you access to a group."
+            : 'Record a new injury in seconds.') + '</div></div>' +
           '<button class="btn primary" type="button" onclick="toggleAddInjury()" style="display:flex;align-items:center;gap:7px">' + icon('medical') + 'Add Injury</button>' +
         '</div>' +
         '<div id="addInjuryForm" class="' + (_medAddInjuryOpen ? '' : 'beta-hidden') + '" style="margin-bottom:14px">' +
           '<div class="card" style="border:1px solid var(--brand-line)">' +
             '<div style="font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + icon('medical') + 'Add injury</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Player<select id="injPlayer" style="' + INP + '">' + (players.length ? players.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') : '<option value="">No players yet — add players first</option>') + '</select></label>' +
+              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Player<select id="injPlayer" style="' + INP + '">' + (players.length ? players.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') : '<option value="">' + esc(typeof medicalEmptySelectorText === 'function' ? medicalEmptySelectorText() : 'No players yet — add players first') + '</option>') + '</select></label>' +
               '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Injury type / name<input id="injType" placeholder="e.g. Hamstring strain" style="' + INP + '"></label>' +
               '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Body area<select id="injArea" style="' + INP + '">' + ['','Head','Neck','Shoulder','Arm','Elbow','Wrist / Hand','Chest','Ribs','Back','Hip','Groin','Hamstring','Quad','Knee','Calf','Ankle','Foot','Other'].map(a => '<option value="' + a + '">' + (a || 'Select…') + '</option>').join('') + '</select></label>' +
               '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Severity<select id="injSeverity" style="' + INP + '"><option value="">Select…</option><option value="minor">Minor</option><option value="moderate">Moderate</option><option value="severe">Severe</option></select></label>' +
@@ -32369,7 +32515,9 @@
               : 'Open the record to edit, the timeline to add notes, or clear the case when the player is back.') +
           '</div>' +
           (summ.all.length === 0
-            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No open medical cases. Players appear here once an injury is recorded.</div>'
+            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">' + (noGroupAccess
+                ? "No player group — you don't currently have access to one, so no cases can be shown."
+                : 'No open medical cases. Players appear here once an injury is recorded.') + '</div>'
             : summ.all.map(p => {
                 const rec = normalizeMedicalRecord(medRecs[p.id]);
                 const ts  = rec.trainingStatus;
@@ -43297,6 +43445,15 @@
       // A different person signing in on this device must never inherit it —
       // nor have it sent under their name by a later retry.
       state.availabilityPending = {};
+      // The medical caseload is what THIS identity was authorised to see
+      // (Build 99). The next person on the device — or the signed-out shell —
+      // must not inherit it, in memory or in device storage.
+      state.medicalRecords = {};
+      state.medicalNotes = {};
+      if (typeof _sharedMedical !== 'undefined') _sharedMedical = { loaded: false, failed: false, cases: [], players: [] };
+      if (typeof _medActivePlayerId !== 'undefined') _medActivePlayerId = null;
+      if (typeof _medActiveTab !== 'undefined') _medActiveTab = 'dashboard';
+      if (typeof _medAddInjuryOpen !== 'undefined') _medAddInjuryOpen = false;
       state.selectedPlayerId = '';
       state.selectedPlayerOwnerId = '';
       state.selectedMessagePlayerId = '';
@@ -44720,6 +44877,13 @@
       if (typeof _staffDirLoadedAt !== 'undefined') _staffDirLoadedAt = 0;   // the new club's directory loads at once
       if (typeof _clubContextId !== 'undefined') _clubContextId = '';        // no club is in force until the server names the next
       if (typeof _staffDetailUserId !== 'undefined') _staffDetailUserId = null; // no editor open on another club's member
+      // The shared medical caseload and any open Medical view belong to the club
+      // being left (Build 99). Unloaded, the Medical screen says "loading" until
+      // the next club's own read lands — it never paints the previous club's cases.
+      if (typeof _sharedMedical !== 'undefined') _sharedMedical = { loaded: false, failed: false, cases: [], players: [] };
+      if (typeof _medActivePlayerId !== 'undefined') _medActivePlayerId = null;
+      if (typeof _medActiveTab !== 'undefined') _medActiveTab = 'dashboard';
+      if (typeof _medAddInjuryOpen !== 'undefined') _medAddInjuryOpen = false;
       _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
     }
 
@@ -44770,6 +44934,11 @@
       // them). The athlete's own profile and wellness log follow the person,
       // not the club, so they survive a club switch.
       state.performanceWorkout = null;
+      // MEDICAL is club data too (Build 99): the hydrated caseload view of the
+      // club being left must not render — or stay in device storage — under
+      // the next one. The next club's own read repopulates it.
+      state.medicalRecords = {};
+      state.medicalNotes = {};
       // THE USER DIRECTORY IS PER-CLUB. state.users carried the previous
       // club's staff (names, emails, roles — added by loadStaffDirectory and
       // never removed) and its roster-derived local player rows across a club
