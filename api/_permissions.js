@@ -150,6 +150,18 @@ const ROLE_DEFAULT_PROFILE = {
   assistant: 'coach', manager: 'manager',
 };
 
+/**
+ * Build 99 — LIMITED ACCESS is the absence of an access profile: the member
+ * holds exactly their role's own permissions (medical, S&C, analyst). It is a
+ * state an administrator can RETURN to, never a stored profile value.
+ */
+export const LIMITED_ACCESS = 'limited';
+
+/** The profile a member's ROLE implies when none is stored, or null. */
+export function roleDefaultAccessProfile(member = {}) {
+  return ROLE_DEFAULT_PROFILE[canonicalRole(member)] || null;
+}
+
 export function accessProfileOf(member = {}) {
   const explicit = String(member.accessProfile || '').toLowerCase();
   if (ACCESS_PROFILES.includes(explicit)) return explicit;

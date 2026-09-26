@@ -4,6 +4,7 @@ import { findInviteByToken, persistInvite, appendClubInvite, loadAllInvites,
 import {
   permissionsFor, canonicalRole, accessProfileOf, isClubOwner,
   accessProfileRank, ACCESS_PROFILES, PERM, isStaffRole,
+  LIMITED_ACCESS, roleDefaultAccessProfile,
 } from './_permissions.js';
 import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effectiveEligibility, playerGroupIdOf,
          isPlayingMember, operationalGroupsFor, defaultOperationalGroup } from './_accessScope.js';
@@ -2889,8 +2890,13 @@ export async function assignedTeamsForUser(userId) {
 
 export async function setAccessProfile(memberId, profile, changedBy, expectedTeamId) {
   const next = String(profile || '').toLowerCase();
-  if (!ACCESS_PROFILES.includes(next)) {
-    const error = new Error(`accessProfile must be one of: ${ACCESS_PROFILES.join(', ')}`);
+  // Build 99 — 'limited' CLEARS the stored profile, returning the member to
+  // their role's own permissions. It is the only way back from Full, Coach or
+  // Manager access for a role that carries no profile of its own (a physio
+  // given Manager access by mistake kept it for good before this).
+  const clearing = next === LIMITED_ACCESS;
+  if (!clearing && !ACCESS_PROFILES.includes(next)) {
+    const error = new Error(`accessProfile must be one of: ${[...ACCESS_PROFILES, LIMITED_ACCESS].join(', ')}`);
     error.status = 400;
     throw error;
   }
@@ -2899,6 +2905,22 @@ export async function setAccessProfile(memberId, profile, changedBy, expectedTea
   const actor = members.find(m =>
     m.userId === changedBy && m.teamId === member.teamId && m.status === 'active');
   const previous = accessProfileOf(member);
+
+  if (clearing) {
+    // A role WITH a default profile (coaches, managers, admins) would not
+    // become limited — clearing would silently hand it its role default, which
+    // can ADD permissions. Only roles without one may return to Limited.
+    if (roleDefaultAccessProfile(member)) {
+      const error = new Error("This role's access level comes with the role — choose Full, Coach or Manager access instead");
+      error.status = 400;
+      throw error;
+    }
+    if (isClubOwner(member)) {
+      const error = new Error("The club owner's access cannot be reduced");
+      error.status = 400;
+      throw error;
+    }
+  }
 
   // Self-elevation is reserved to the club owner.
   if (member.userId === changedBy && accessProfileRank(next) > accessProfileRank(previous) && !isClubOwner(member)) {
@@ -2925,7 +2947,8 @@ export async function setAccessProfile(memberId, profile, changedBy, expectedTea
     throw error;
   }
 
-  member.accessProfile = next;
+  if (clearing) delete member.accessProfile;   // role permissions only — nothing else on the membership changes
+  else member.accessProfile = next;
   member.accessChangedBy = changedBy;
   member.accessChangedAt = nowIso();
   await saveTeamMembers(members);
@@ -2937,7 +2960,7 @@ export async function setAccessProfile(memberId, profile, changedBy, expectedTea
   return {
     teamMember: member,
     previousProfile: previous,
-    newProfile: next,
+    newProfile: clearing ? LIMITED_ACCESS : next,
     assignedTeams: await assignedTeamsForUser(member.userId),
     changedAt: member.accessChangedAt,
   };

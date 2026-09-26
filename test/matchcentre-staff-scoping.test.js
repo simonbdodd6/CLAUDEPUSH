@@ -186,14 +186,16 @@ test('the dual-role member remains a Seniors PLAYER while appearing as U18 staff
   assert.deepEqual(operationalGroupsFor(dual, STRUCTURE, { as: 'staff' }).map(g => g.id), [U18]);
 });
 
-test('an unscoped medic derives the initial group — never global (11)', async () => {
+// CONTRACT CHANGE (Build 99): an unscoped medic used to derive the initial group
+// (Seniors). Medical now fails closed, so they stand in NO group — still never global.
+test('an unscoped medic stands in no group — never global (11)', async () => {
   seed();
   const members = JSON.parse(kv.get('app:identity:team_members'));
   members.push({ id: 'm-mednull', teamId: CLUB, userId: 'u-mednull', role: 'medical', status: 'active' });
   kv.set('app:identity:team_members', JSON.stringify(members));
   const access = await realAccessIds();
   assert.ok(!access.clubWideStaffIds.includes('u-mednull'), 'medical role alone is not club-wide');
-  assert.ok((access.groupStaffIds[SEN] || []).includes('u-mednull'), 'legacy derivation: initial group only');
+  assert.ok(!(access.groupStaffIds[SEN] || []).includes('u-mednull'), 'no derived initial group for a medic');
   assert.ok(!(access.groupStaffIds[U18] || []).includes('u-mednull'));
   assert.ok(!(access.groupStaffIds[WOM] || []).includes('u-mednull'));
 });

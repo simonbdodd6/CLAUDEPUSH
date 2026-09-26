@@ -469,6 +469,11 @@ test('13. a player is told who they may message — and it is their staff', asyn
   kv.clear(); lists.clear();
   const coach  = await seedCoach();
   const medic  = await seedStaff('staff_medic_13', 'medical', 'Mo Medic');
+  // Build 99 — a medic's reach is explicit: this one works with the club's group.
+  // (An UNSCOPED medic is offered to no player — medical-scope-permissions.test.js.)
+  { const members = JSON.parse(kv.get('app:identity:team_members'));
+    members.find(m => m.userId === medic.id).accessScope = { clubWide: false, groups: [{ groupId: 'grp_initial', status: 'active' }], teams: [] };
+    kv.set('app:identity:team_members', JSON.stringify(members)); }
   const player = await seedPlayer('player_dm_13', { displayName: 'Dana Player' });
   const other  = await seedPlayer('player_dm_13b', { displayName: 'Other Player' });
 

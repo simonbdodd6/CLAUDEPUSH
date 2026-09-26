@@ -171,8 +171,9 @@ test('MEMBERS 4-6: server computes per-group staff access with the canonical res
   assert.equal(r.code, 200);
   assert.deepEqual(r.body.clubWideStaffIds, ['u-simon'], 'club-wide staff listed by id');
   const g = r.body.counts.groups;
-  assert.deepEqual(g[SEN].staffUserIds.sort(), ['u-florian', 'u-laurine'].sort(),
-    'Seniors: the scoped assistant AND the legacy-null medic (initial-group derivation)');
+  // CONTRACT CHANGE (Build 99): the legacy-null medic no longer derives Seniors.
+  assert.deepEqual(g[SEN].staffUserIds.sort(), ['u-florian'],
+    'Seniors: the scoped assistant only — an unscoped medic stands in no group');
   assert.deepEqual(g[U18].staffUserIds, ['u-u18m'], 'U18: its scoped coach only');
   assert.deepEqual(g[WOM].staffUserIds, [], "Women's: nobody scoped yet");
 });
@@ -226,8 +227,13 @@ test('MEDICAL 11-15: the caseload follows the asked group; orphans ride only wit
   assert.deepEqual(await ids('u-simon', { group: U18 }), [], 'same authority + U18 ask: nothing — broad access never collapses the group filter');
   assert.deepEqual(await ids('u-simon', { group: WOM }), [], "Women's likewise");
   assert.deepEqual(await ids('u-simon', {}), ['case-orphan', 'case-sen'], 'unscoped whole-club read unchanged');
-  assert.deepEqual(await ids('u-laurine', {}), ['case-sen'],
-    'a Seniors-only medic (legacy-null scope) never sees the orphan');
+  // CONTRACT CHANGE (Build 99): an unscoped medic reads NOTHING…
+  assert.deepEqual(await ids('u-laurine', {}), [], 'a legacy-null medic reads no case — Medical fails closed');
+  // …and the original guarantee holds for an explicitly Seniors-scoped medic.
+  const mem = JSON.parse(kv.get('app:identity:team_members'));
+  mem.find(m => m.userId === 'u-laurine').accessScope = scope([SEN]);
+  kv.set('app:identity:team_members', JSON.stringify(mem));
+  assert.deepEqual(await ids('u-laurine', {}), ['case-sen'], 'a Seniors-scoped medic never sees the orphan');
   assert.deepEqual(await ids('u-u18m', {}), [], 'the U18 medic sees no Seniors case and no orphan');
 });
 

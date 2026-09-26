@@ -149,7 +149,7 @@ test('19. Existing coach derives the initial group — NOT the whole club', () =
     member({ role: 'coach', staffLevel: 'head' }),        // derived-full by role, not explicit
     member({ role: 'coach', staffLevel: 'assistant' }),
     member({ role: 'coach', staffLevel: 'manager' }),
-    member({ role: 'medical' }),
+    // (medical left this list in Build 99 — see test 19b)
     member({ role: 'snc' }),
     member({ role: 'analyst' }),
   ]) {
@@ -158,6 +158,16 @@ test('19. Existing coach derives the initial group — NOT the whole club', () =
     assert.deepEqual(scope.groups.map(g => g.groupId), [INITIAL_GROUP_ID]);
     assert.deepEqual(scope.teams, []);
   }
+});
+
+// CONTRACT CHANGE (Build 99): a medic's reach opens health records, so it is
+// never DERIVED. An existing medical membership with no stored scope reaches no
+// group at all until an administrator grants one — it used to derive Seniors.
+test('19b. Existing medic derives NO group — Medical fails closed', () => {
+  const scope = effectiveAccessScope(member({ role: 'medical' }));
+  assert.equal(scope.clubWide, false);
+  assert.deepEqual(scope.groups, []);
+  assert.deepEqual(scope.teams, []);
 });
 
 test('20. Existing player derives the initial group + initial-team eligibility', () => {

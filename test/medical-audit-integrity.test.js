@@ -483,7 +483,11 @@ test('16. resolved cases are not projected and never count as active', async () 
 const MEMBERS = [
   { id: 'm-plain', teamId: CLUB, userId: 'u-plain', role: 'player', status: 'active', playerGroupId: GRP },
   { id: 'm-medic', teamId: CLUB, userId: 'u-medic', role: 'player', status: 'active', playerGroupId: GRP, medicalAccess: true },
-  { id: 'm-physio', teamId: CLUB, userId: 'u-physio', role: 'medical', status: 'active' },
+  // Build 99 — a medic's reach is never derived: the authorised physio holds an
+  // explicit grant on the club's group (an unscoped medic reads nothing — pinned
+  // in medical-scope-permissions.test.js).
+  { id: 'm-physio', teamId: CLUB, userId: 'u-physio', role: 'medical', status: 'active',
+    accessScope: { clubWide: false, groups: [{ groupId: GRP, status: 'active' }], teams: [] } },
   { id: 'm-coach', teamId: CLUB, userId: 'u-coach', role: 'coach', status: 'active', staffLevel: 'head', accessProfile: 'full' },
   { id: 'm-asst', teamId: CLUB, userId: 'u-asst', role: 'coach', status: 'active', accessProfile: 'coach' },
   { id: 'm-snc', teamId: CLUB, userId: 'u-snc', role: 'snc', status: 'active' },

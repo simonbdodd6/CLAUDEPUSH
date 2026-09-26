@@ -392,7 +392,9 @@ for (const view of ['desktop', 'phone']) {
       const teamCode = (await S.loadStoredTeams()).find(t => t.id === A.team.id).teamCode;
       const alice = await S.createJoinRequest({ teamCode, firstName: 'Alice', lastName: 'Physio', email: `alice.${view}@alpha.test`, password: PW });
       const members = await S.loadTeamMembers();
-      members.forEach(m => { if (m.userId === alice.user.id && m.teamId === A.team.id) { m.role = 'medical'; m.status = 'active'; } });
+      // Build 99 — a physio's reach is explicit: Alice works with club A's first group.
+      members.forEach(m => { if (m.userId === alice.user.id && m.teamId === A.team.id) { m.role = 'medical'; m.status = 'active';
+        m.accessScope = { clubWide: false, groups: [{ groupId: 'grp_initial', status: 'active' }], teams: [] }; } });
       members.push({ id: 'tm_nick_a_' + view, teamId: A.team.id, userId: B.user.id, role: 'coach', staffLevel: 'head', status: 'active', accessProfile: 'full', joinedAt: '2026-01-01T00:00:00.000Z' });
       await S.saveTeamMembers(members);
       const users = await S.loadUsers(); users.find(u => u.id === B.user.id).lastTeamId = A.team.id; await S.saveUsers(users);  // Nick's history: a long time in club A
