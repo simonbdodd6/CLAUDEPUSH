@@ -8524,9 +8524,15 @@
           reason:   String(entry.reason || ''),
           at:       String(entry.at || ''),
           owner:    String(entry.owner),
+          // The club the answer was given in (Build 101). A retry under another
+          // club's session must never carry it: see availabilityPendingFor.
+          club:     String(entry.club || ''),
           // Order within one millisecond (see availabilityMarkPending); part of
           // the intent, so a retry after a reload carries the same stamp.
           seq:      Number.isInteger(Number(entry.seq)) && Number(entry.seq) >= 0 ? Number(entry.seq) : 0,
+          // A restored entry is NEVER in flight — the request it was sending
+          // died with the page. It is an unsent answer until a retry succeeds.
+          status:   'failed',
         };
       }
       return out;
@@ -8553,8 +8559,16 @@
       const at   = new Date().toISOString();
       const prev = store[id];
       const seq  = prev && prev.at === at ? (Number(prev.seq) || 0) + 1 : 0;
+      // THE STATE MACHINE (Build 101). An entry exists only while the answer is
+      // not confirmed: `status` says whether its request is in flight
+      // ('sending') or has genuinely failed ('failed' — offline, 5xx, a page
+      // that died mid-request). A 2xx for THIS intent removes the entry and
+      // persists the removal, so reopening the app finds nothing to re-send.
+      // `club` is the club the answer belongs to; the entry is invisible and
+      // unsendable under any other club or account (availabilityPendingFor).
       store[id] = { response: String(response), reason: String(reason || ''),
-                    at, owner: String(state.currentUserId || ''), seq };
+                    at, owner: String(state.currentUserId || ''),
+                    club: String(state.stateTeamId || ''), seq, status: 'sending' };
       return store[id];
     }
 
@@ -8582,6 +8596,12 @@
       if (!entry || !entry.owner) return null;
       const me = String(state.currentUserId || '');
       if (!me || String(entry.owner) !== me) return null;
+      // CLUB ISOLATION (Build 101): an answer chosen under club A is not this
+      // person's answer under club B — not on their card, and never sent by a
+      // retry running under B's session. An entry with no club stamp (written
+      // before this build) keeps the owner-only rule it was written under.
+      const club = String(state.stateTeamId || '');
+      if (entry.club && club && String(entry.club) !== club) return null;
       const ids = [player?.id, player?.userId, player?.legacyPlayerId].map(v => String(v || '')).filter(Boolean);
       return ids.includes(String(entry.owner)) ? entry : null;
     }
@@ -8665,6 +8685,24 @@
     function availabilityNoteConfirmed(sessionId) {
       if (typeof _availConfirmedAt === 'undefined' || !_availConfirmedAt) return;
       _availConfirmedAt[String(sessionId || '')] = Date.now();
+    }
+    /**
+     * The server holds a NEWER answer of this player's than the one just sent
+     * (Build 95 ordering: the older intent was acknowledged, not applied).
+     * Show what the server holds — on the player's record and every live
+     * duplicate of it — so the card cannot present the superseded choice as
+     * the answer. Nothing is sent: this is the server's answer, adopted.
+     */
+    function availabilityAdoptServerAnswer(sessionId, response, reason) {
+      const value = String(response || '');
+      if (!AVAIL_RESPONSES.includes(value) || typeof getPlayer !== 'function') return false;
+      const player = getPlayer();
+      if (!player || !player.id) return false;
+      const key = sessionKey(sessionId);
+      const records = [player, ...(typeof findLiveAvailabilityRecords === 'function'
+        ? findLiveAvailabilityRecords(state.players, player) : [])];
+      records.forEach(rec => availabilityApplyToRecord(rec, key, value, String(reason || '')));
+      return true;
     }
     /**
      * AUTHORITATIVE RECONCILIATION, player side. mergeServerAvailabilityIntoRecord
@@ -9463,9 +9501,28 @@
       const hasStore = () => typeof state !== 'undefined' && !!state;
       const held = () => (hasStore() && state.availabilityPending && state.availabilityPending[id]) || null;
       const sameIntent = (a, b) => !!a && !!b && a.at === b.at && (Number(a.seq) || 0) === (Number(b.seq) || 0);
+      const persist = label => { if (typeof saveState === 'function') { try { saveState(label); } catch { /* device storage is best-effort */ } } };
       // Does the store still hold exactly this intent? A success (or refusal)
       // for an OLDER intent must not clear a newer one chosen meanwhile.
-      const clearIfHeld = entry => { if (sameIntent(held(), entry)) availabilityClearPending(id); };
+      // WHAT WAS MISSING (Build 101): the entry was persisted before the send
+      // (so an interrupted request survives a reload) but its removal on
+      // success was not — device storage kept saying "unsent", the next open
+      // re-sent a confirmed answer, and after a coach's clear_week that re-send
+      // put the cleared answer back. Every transition out of the store is now
+      // written through at once.
+      const clearIfHeld = entry => {
+        if (!sameIntent(held(), entry)) return false;
+        availabilityClearPending(id);
+        persist('Availability confirmed');
+        return true;
+      };
+      // The request for this intent has genuinely failed: it is an unsent
+      // answer until a retry lands. Only the entry still holding this intent
+      // is marked — a newer tap has its own request and its own outcome.
+      const markFailed = entry => {
+        const cur = held();
+        if (cur && sameIntent(cur, entry) && cur.status !== 'failed') { cur.status = 'failed'; persist('Availability pending'); }
+      };
       // Availability writes are AUTHENTICATED-ONLY. The old push-endpoint
       // identity fallback is gone server-side (it let an expired session write
       // into the default club), so a lapsed session now answers 401 — say so
@@ -9473,6 +9530,10 @@
       // success toast stand. A network failure stays quiet (offline ≠ signed
       // out; the answer is kept locally exactly as before).
       const postIntent = async entry => {
+        // In flight again: a retry of a failed entry is a live request until it
+        // answers, and the card says "sending", not "not sent", meanwhile.
+        const cur = held();
+        if (cur && sameIntent(cur, entry) && cur.status !== 'sending') cur.status = 'sending';
         try {
           const res = await fetch('/api/availability', {
             method: 'POST',
@@ -9485,9 +9546,21 @@
             // the answer that was sent, not one chosen since. The server holds
             // this session's answer as of NOW: a self-read that left earlier
             // cannot overrule it (reconcileServerAvailabilityIntoRecord).
+            // SUPERSEDED (Build 95 ordering): the server kept a NEWER intent of
+            // this person's — given on another device, or a later tap here whose
+            // request overtook this one. This intent was acknowledged, not
+            // applied, so the local answer must show what the server holds, not
+            // the older choice this request carried — unless a newer tap is
+            // already waiting in the store, in which case that tap's own
+            // outcome decides. The older answer is never resurrected.
+            const body = typeof res.json === 'function' ? await res.json().catch(() => null) : null;
+            const superseded = !!(body && typeof body === 'object' && body.ok !== false && body.superseded);
+            if (superseded && sameIntent(held(), entry) && typeof availabilityAdoptServerAnswer === 'function') {
+              availabilityAdoptServerAnswer(id, body.response, body.reason || '');
+            }
             if (typeof availabilityNoteConfirmed === 'function') availabilityNoteConfirmed(id);
             clearIfHeld(entry);
-            return { ok: true };
+            return superseded ? { ok: true, superseded: true, response: String(body.response || ''), reason: String(body.reason || '') } : { ok: true };
           }
           if (res.status === 401 || res.status === 403) {
             // The server REFUSED this write — the just-applied local value is a
@@ -9510,13 +9583,14 @@
           // 5xx is the server having a bad moment — worth retrying. Any other
           // refusal (a malformed session id, say) never will be, so it is not
           // kept as pending and the caller reports the failure plainly.
-          if (res.status >= 500) return { ok: false, pending: true };
+          if (res.status >= 500) { markFailed(entry); return { ok: false, pending: true }; }
           clearIfHeld(entry);
           return { ok: false };
         } catch {
           // OFFLINE / transport failure — the answer is kept exactly as the
           // player left it, marked pending, and retried. This is the case that
           // used to fall into an empty catch and be reported as a save.
+          markFailed(entry);
           return { ok: false, pending: true };
         }
       };
@@ -9549,28 +9623,57 @@
      * to, and once at boot.
      */
     let _availFlushInFlight = false;
+    /**
+     * The player's own "Send now" on a failed card. The same bounded flush the
+     * lifecycle events use — nothing new is queued, no timer is started — and
+     * the card repaints either way so "sending" gives way to the true outcome.
+     */
+    async function availabilityRetryNow() {
+      if (_availFlushInFlight) return 0;
+      if (typeof render === 'function') render();          // "sending…" while the attempt runs
+      let sent = 0;
+      try { sent = await availabilityFlushPending(); } catch { sent = 0; }
+      if (!sent) {
+        const store = (typeof state !== 'undefined' && state.availabilityPending) || {};
+        const stillHeld = Object.values(store).some(e => e && String(e.owner || '') === String(state.currentUserId || '') && e.status !== 'sending');
+        if (stillHeld) showToast("Still not sent — check your connection and try again.");
+        if (typeof render === 'function') render();
+      }
+      return sent;
+    }
     async function availabilityFlushPending() {
       if (_availFlushInFlight) return 0;
       const store = state.availabilityPending || {};
       const me = String(state.currentUserId || '');
-      const mine = Object.entries(store).filter(([, e]) => e && me && String(e.owner || '') === me);
+      // Mine: chosen by THIS account, in THIS club (the same rule as
+      // availabilityPendingFor). Another account's or another club's held
+      // answer is never sent under this session.
+      const club = String(state.stateTeamId || '');
+      const mine = Object.entries(store).filter(([, e]) => e && me && String(e.owner || '') === me
+        && !(e.club && club && String(e.club) !== club));
       if (!mine.length) return 0;
       _availFlushInFlight = true;
-      let sent = 0;
+      let sent = 0, adopted = 0, attempted = 0;
       try {
         for (const [sessionId, entry] of mine) {
           // entry.response is the LATEST choice for this session — a second tap
           // overwrote the first, so no stale answer can be resurrected here.
+          attempted++;
           const out = await saveAvailabilityResponseToServer(sessionId, entry.response, entry.reason || '', null, entry);
-          if (out && out.ok) { sent++; continue; }
+          // Superseded: the server already held a newer answer of this person's;
+          // the held one was acknowledged, not applied, and the newer answer has
+          // been adopted locally — nothing "has now been sent".
+          if (out && out.ok) { if (out.superseded) adopted++; else sent++; continue; }
           if (out && out.pending) break;     // still unreachable: stop, try again on the next event
         }
       } catch { /* never let a retry throw into a lifecycle handler */ }
       finally { _availFlushInFlight = false; }
-      if (sent) {
+      if (sent || adopted) {
         saveState('Pending availability sent');
         render();
-        showToast(sent === 1 ? 'Your availability has now been sent ✓' : `${sent} availability answers have now been sent ✓`);
+        if (sent) showToast(sent === 1 ? 'Your availability has now been sent ✓' : `${sent} availability answers have now been sent ✓`);
+      } else if (attempted) {
+        render();                            // the attempt showed "sending"; it is "not sent" again
       }
       return sent;
     }
@@ -21375,6 +21478,7 @@
     function availabilityCardModel(player, session) {
       const key = sessionKey(session.id);
       const raw = player[key] || 'no-reply';
+      const held = availabilityPendingFor(session.id, player) || null;
       // The card's title is not part of the model: availabilityCardV2 names the
       // session with availabilitySessionLabel, exactly as the coach cards do.
       return {
@@ -21385,8 +21489,12 @@
         isOpenReasonPicker: !!_availReasonOpenByKey[key],
         // Chosen on this device but not yet accepted by the server. The card
         // shows the player's own choice either way — it just stops calling an
-        // unsent answer a saved one.
-        pending: Boolean(availabilityPendingFor(session.id, player)),
+        // unsent answer a saved one. Two states (Build 101): `sending` while
+        // the request is in flight, `pending` once it has genuinely failed and
+        // is waiting for a retry. An entry with no status was written before
+        // this build; it is an unsent answer.
+        sending: held ? held.status === 'sending' : false,
+        pending: held ? held.status !== 'sending' : false,
       };
     }
 
@@ -21713,6 +21821,7 @@
 
     function availabilityCardV2(model, session) {
       const { key, status, reason, isOpenReasonPicker, pending } = model;
+      const sending = Boolean(model.sending);
       // An unanswered card after a FAILED self-read does not know whether this
       // player answered on another device, so it does not say "No reply". The
       // three buttons stay: answering works whether or not the read did.
@@ -21749,7 +21858,7 @@
       const reasonPicker = isOpenReasonPicker ? `
         <div style="margin-top:12px;padding:14px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.1)">
           <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">
-            Saved ✓ — ${status === 'maybe' ? "what's making you unsure?" : "why can't you make it?"}&nbsp;<span style="opacity:.5;font-weight:400;text-transform:none">(optional)</span>
+            ${sending ? 'Sending…' : pending ? 'Not sent yet' : 'Saved ✓'} — ${status === 'maybe' ? "what's making you unsure?" : "why can't you make it?"}&nbsp;<span style="opacity:.5;font-weight:400;text-transform:none">(optional)</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:10px">
             ${[['injury','⚠ Injury','#f87171'],['work','Work','#94a3b8'],['holiday','Holiday','#38bdf8'],['family','Family','#a78bfa'],['other','Other','#64748b']].map(([r,l,c]) => `
@@ -21777,11 +21886,13 @@
               ${meta ? `<div class="avail-player-card-meta">${esc(meta)}</div>` : ''}
               ${session.deadline ? `<div class="avail-player-card-meta" style="margin-top:3px;color:var(--amber)">Reply by ${esc(session.deadline)}</div>` : ''}
             </div>
-            <span class="avail-status-chip" style="border:1px solid ${border};color:${border === 'var(--line)' ? 'var(--muted)' : border};background:${status === 'no-reply' ? 'transparent' : border + '20'}">${unknownAnswer ? 'Not known' : statusLabel(status)}${pending ? ' · not sent' : ''}</span>
+            <span class="avail-status-chip" style="border:1px solid ${border};color:${border === 'var(--line)' ? 'var(--muted)' : border};background:${status === 'no-reply' ? 'transparent' : border + '20'}">${unknownAnswer ? 'Not known' : statusLabel(status)}${sending ? ' · sending…' : ''}${pending ? ' · not sent' : ''}</span>
           </div>
           ${pending ? `<div class="avail-pending-note" role="status">
             <span aria-hidden="true">⏳</span>
-            <span>Not sent yet — your coach cannot see this answer. Saved on this device; we'll send it automatically when you're back online.</span>
+            <span>Not sent yet — your coach cannot see this answer. Saved on this device; we'll send it automatically when you're back online or return to the app.
+              <button type="button" onclick="availabilityRetryNow()"
+                style="margin-left:6px;font-size:12px;font-weight:700;color:var(--accent);background:none;border:none;cursor:pointer;text-decoration:underline;padding:0;min-height:22px">Send now</button></span>
           </div>` : ''}
           <div class="avail-btns">
             ${selBtn('available',   'Available',     '#16a34a')}
@@ -21861,6 +21972,11 @@
       }
       if (outcome && outcome.ok === false) return showToast("Couldn't save — please try again.");
       render();                                    // confirmed: drop the pending chip
+      if (outcome && outcome.superseded) {
+        // The server kept a newer answer of this player's (another device, or a
+        // later tap here); the card now shows that answer, not this one.
+        return showToast(`Your later answer stands — ${statusLabel(outcome.response || status)}`);
+      }
       showToast(reason ? `Saved — ${REASON_LABELS[reason] || 'reason noted'}` : "Availability saved");
     }
 
@@ -43441,10 +43557,25 @@
      * it is club-scoped, and sign-out promises to keep it.
      */
     function resetIdentityScopedState() {
-      // An unsent availability answer belongs to the account that chose it.
-      // A different person signing in on this device must never inherit it —
-      // nor have it sent under their name by a later retry.
-      state.availabilityPending = {};
+      // An unsent availability answer belongs to the account that chose it. It
+      // is kept (Build 101) — stamped with that account and club, it is shown
+      // to and sent by NO other account or club (availabilityPendingFor and
+      // availabilityFlushPending check both) — so the same person signing back
+      // in still owes it and it still goes. Anything unattributable goes now.
+      const _held = state.availabilityPending || {};
+      for (const sid of Object.keys(_held)) { if (!_held[sid] || !String(_held[sid].owner || '')) delete _held[sid]; }
+      state.availabilityPending = _held;
+      // What THIS person's self-read established — that their answers are
+      // known, and when this device last had one confirmed — is theirs alone.
+      // Released, the next identity (or this one, signing back in) reads its
+      // own answers afresh instead of inheriting a latch set for someone else.
+      if (typeof _playerAvailFetched !== 'undefined') _playerAvailFetched = false;
+      if (typeof _playerAvailKnown !== 'undefined') _playerAvailKnown = false;
+      if (typeof _availConfirmedAt !== 'undefined') _availConfirmedAt = {};
+      // An open reason picker ("Saved ✓ — why can't you make it?") was opened
+      // by THIS person's tap; the next identity's unanswered card must not
+      // inherit it and read as saved.
+      if (typeof _availReasonOpenByKey !== 'undefined') _availReasonOpenByKey = {};
       // The medical caseload is what THIS identity was authorised to see
       // (Build 99). The next person on the device — or the signed-out shell —
       // must not inherit it, in memory or in device storage.
@@ -44885,6 +45016,12 @@
       if (typeof _medActiveTab !== 'undefined') _medActiveTab = 'dashboard';
       if (typeof _medAddInjuryOpen !== 'undefined') _medAddInjuryOpen = false;
       _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
+      // The player's own answers are per club: the self-read latch and the
+      // confirmation memo were set for the club being left (Build 101).
+      if (typeof _playerAvailFetched !== 'undefined') _playerAvailFetched = false;
+      if (typeof _playerAvailKnown !== 'undefined') _playerAvailKnown = false;
+      if (typeof _availConfirmedAt !== 'undefined') _availConfirmedAt = {};
+      if (typeof _availReasonOpenByKey !== 'undefined') _availReasonOpenByKey = {};   // session keys are per club
     }
 
     /** Re-read everything club-scoped from the server after a transition. */

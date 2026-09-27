@@ -315,8 +315,14 @@ test('11. a pending answer cannot leak to another player, account or club', asyn
   const next = device({ script: ['ok'], currentUserId: 'user_someone_else', pending: store });
   assert.equal(next.pendingFor(SESSION, next.PLAYER), null, 'not inherited by the next account');
   assert.equal(await next.flush(), 0, 'and never sent under their name');
-  // the identity reset drops it outright
-  assert.match(fn('resetIdentityScopedState'), /state\.availabilityPending = \{\};/, 'cleared when the identity changes');
+  // CONTRACT CHANGE (Build 101): the identity reset no longer wipes the store.
+  // An unsent answer is stamped with the account (and club) that chose it and
+  // is invisible to — and never sent by — any other account (asserted above),
+  // so it can safely wait for the SAME person to sign back in. Only an entry
+  // with no owner, which nothing could ever attribute, is dropped by the reset.
+  const reset = fn('resetIdentityScopedState');
+  assert.doesNotMatch(reset, /state\.availabilityPending = \{\};/, 'the reset keeps owner-stamped unsent answers');
+  assert.match(reset, /if \(!_held\[sid\] \|\| !String\(_held\[sid\]\.owner \|\| ''\)\) delete _held\[sid\];/, 'and drops only the unattributable');
 });
 
 test('11b. an unattributable or malformed entry is dropped on load, and the store is bounded', () => {
