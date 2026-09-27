@@ -373,14 +373,79 @@ let chromium = null, devices = null;
 try { ({ chromium, devices } = await import('playwright')); } catch { /* not installed */ }
 
 const GRP = 'grp_initial', TEAM = 'team_stub';
-const SAT = (() => { const x = new Date(); x.setUTCDate(x.getUTCDate() + ((6 - x.getUTCDay() + 7) % 7)); return x.toISOString().slice(0, 10); })();
+// ── THE FIXTURE'S DATE — valid on every weekday (Build 102) ────────────────
+// These journeys serve ONE fixture and read it back on the coach Availability board, whose
+// session cards are the occurrences of the week the board displays.
+// It used to be dated "the coming Saturday", counted from the day the suite
+// ran. On a Sunday the coming Saturday is six days ahead — in NEXT week — so
+// the week on screen was empty ("Nothing scheduled this week.") and the
+// browser tests below failed every Sunday for a reason unrelated to anything
+// they assert.
+//
+// The date now comes from the application's OWN week and occurrence
+// functions, extracted from index.html like every other function under test
+// here. No week arithmetic is restated: the app's generator is asked, day by
+// day from today, which dates it places in the week it displays, and the
+// fixture is played on the LAST of them. That day is inside the displayed
+// week by construction and has never passed, whichever weekday the suite
+// runs — and if the app's week ever changes, the fixture follows it.
+const APP_WEEK = new Function(`
+  ${src.match(/const AVAIL_DAY_INDEX = \{[^}]*\};/)[0]}
+  ${fn('availWeekStart')}
+  ${fn('availAddDays')}
+  ${fn('availSlotDateInWeek')}
+  ${fn('availTrainingEventId')}
+  ${fn('availabilityEventsForWeek')}
+  ${fn('availToday')}
+  ${fn('playerPortalNextFixture')}
+  return { availWeekStart, availAddDays, availabilityEventsForWeek, availToday, playerPortalNextFixture };
+`)();
+/** Does the app's occurrence generator place a fixture played on `dateIso` in the week it displays on `todayIso`? */
+function inDisplayedWeek(dateIso, todayIso) {
+  const week = APP_WEEK.availWeekStart(todayIso);
+  return APP_WEEK.availabilityEventsForWeek(week, { fixtures: [{ id: 'fx_probe', opposition: 'Probe', date: dateIso, status: 'scheduled' }], slots: [], currentWeekStart: week })
+    .some(e => e.id === 'fx_probe' && e.date === dateIso);
+}
+/** The last day of the week the app displays on `todayIso` — in that week, and not yet passed. */
+function matchDayFor(todayIso) {
+  let day = todayIso;
+  for (let i = 0; i < 14; i++) {
+    const next = APP_WEEK.availAddDays(day, 1);
+    if (!inDisplayedWeek(next, todayIso)) break;
+    day = next;
+  }
+  return day;
+}
+const MATCH_DAY = matchDayFor(APP_WEEK.availToday());
 const PLAYERS = Array.from({ length: 18 }, (_, i) => ({ id: 'p' + i, userId: 'u_p' + i, name: 'Player ' + i, position: 'Prop', playerGroupId: GRP }));
 const SESSION = { ok: true, user: { id: 'u1', name: 'Coach Stub', email: 'c@s.test', role: 'coach', platformRole: '' },
   teamMember: { teamId: TEAM, userId: 'u1', role: 'coach', staffLevel: 'head', status: 'active', playerGroupId: null },
   permissions: ['reports', 'messaging', 'manage_players', 'manage_coaches', 'training', 'matchday', 'publish_training'],
   memberships: [{ teamId: TEAM, teamName: 'Stub RFC', role: 'coach', staffLevel: 'head', canonicalRole: 'head_coach', current: true }],
   operational: { player: { groups: [], defaultGroupId: null, mustChoose: false }, staff: { groups: [{ id: GRP, name: 'Seniors', developmentCategory: 'adult' }], defaultGroupId: GRP, mustChoose: false } } };
-const FIXTURES = [{ id: 'fx_sat', groupId: GRP, opposition: 'Kituro', date: SAT, kickoffTime: '14:00', status: 'scheduled' }];
+const FIXTURES = [{ id: 'fx_sat', groupId: GRP, opposition: 'Kituro', date: MATCH_DAY, kickoffTime: '14:00', status: 'scheduled' }];
+
+test('the fixture these journeys serve is an occurrence of the week the board displays, and has not passed — on every weekday', () => {
+  assert.equal(FIXTURES[0].date, MATCH_DAY, 'the browser tests serve the derived date');
+  // Seven consecutive "todays" cover every weekday, whichever day the suite itself runs on.
+  const weekdays = new Set();
+  for (let i = 0; i < 7; i++) {
+    const today = APP_WEEK.availAddDays(APP_WEEK.availToday(), i);
+    const day = matchDayFor(today);
+    const fixture = { ...FIXTURES[0], date: day };
+    const week = APP_WEEK.availWeekStart(today);
+    weekdays.add(new Date(today + 'T12:00:00Z').getUTCDay());
+    // The board's session cards come from the app's own generator for the displayed week
+    // (coachAvailEvents → availabilityEventsForWeek): the fixture must be one of them…
+    const events = APP_WEEK.availabilityEventsForWeek(week, { fixtures: [fixture], slots: [], currentWeekStart: week });
+    assert.deepEqual(events.map(e => [e.id, e.type, e.date]), [['fx_sat', 'match', day]], `today ${today}: the fixture is THE occurrence of the displayed week`);
+    // …and not one of the following week's (the Sunday failure, stated as a rule)
+    assert.deepEqual(APP_WEEK.availabilityEventsForWeek(APP_WEEK.availAddDays(week, 7), { fixtures: [fixture], slots: [], currentWeekStart: week }).map(e => e.id), [],
+      `today ${today}: it does not belong to next week`);
+    assert.ok(day >= today, `today ${today}: ${day} has not passed`);
+  }
+  assert.equal(weekdays.size, 7, 'every weekday was covered');
+});
 
 /** availabilityMode: 'ok' | 'empty' | 'fail' — flipped live by the test. */
 function boardServer(mode) {
@@ -391,7 +456,7 @@ function boardServer(mode) {
     if (u.startsWith('/api/availability')) {
       if (state.mode === 'fail') { res.statusCode = 500; return send({ error: 'boom' }); }
       const resolved = {};
-      if (state.mode === 'ok') PLAYERS.slice(0, 5).forEach(p => { resolved[p.userId] = { ['slot_tue-' + SAT.replace(/-/g, '')]: { response: 'available', respondedAt: '2026-09-23T08:00:00Z' } }; });
+      if (state.mode === 'ok') PLAYERS.slice(0, 5).forEach(p => { resolved[p.userId] = { ['slot_tue-' + MATCH_DAY.replace(/-/g, '')]: { response: 'available', respondedAt: '2026-09-23T08:00:00Z' } }; });
       return send({ resolved, roster: PLAYERS });
     }
     if (u.startsWith('/api/identity')) return send(SESSION);
