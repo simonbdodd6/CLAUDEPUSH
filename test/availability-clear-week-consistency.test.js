@@ -159,7 +159,7 @@ test('F1. an answer holds the lock (slow read) while a clear arrives: the clear 
 });
 
 test('F2. a clear holds the lock (slow save) while an answer arrives: the answer waits, and the serial order clear→write leaves the ANSWER', async () => {
-  const c = await u18Club('Foxtrot2');
+  const c = await u18Club('Fjord');
   const me = c.sessions[0], id = c.players[0].user.id;
   await post(ck(me), { sessionId: SESSION, response: 'maybe', ...stamp(0) });   // something to clear
   kvHooks.delaySetMs = 250; kvHooks.delaySetMatch = `:${SESSION}`;              // the clear's save, inside its lock
@@ -449,6 +449,11 @@ test('browser: answer → clear → coach No reply → player returns/reloads No
       body: JSON.stringify({ action: 'add', group: gid, slot: { day: 'Tue', startTime: '19:00', venue: 'U18 pitch', active: true } }) })).status, c.U18.id), 200);
     await coach.evaluate(gid => { setOperationalGroup(gid); setSection('coach', 'message'); }, c.U18.id);
     await coach.waitForFunction(gid => state.activeCoachSection === 'message' && state.operationalGroupId === gid, c.U18.id, { timeout: 20000 });
+    // The coach's U18 training schedule loads asynchronously after the group
+    // switch (the switch drops the previous group's schedule). Wait for the
+    // training occurrence itself instead of reading the week once — under a
+    // loaded full suite the schedule could land after that single read.
+    await coach.waitForFunction(() => coachAvailEvents().some(e => e.type === 'training'), null, { timeout: 20000 });
     const EV = await coach.evaluate(() => coachAvailEvents().find(e => e.type === 'training')?.id);
     assert.ok(EV);
     const playerCtx = await browser.newContext({ ...devices['Pixel 5'], serviceWorkers: 'block' }); ctxs.push(playerCtx);

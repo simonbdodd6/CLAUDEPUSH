@@ -71,7 +71,16 @@ function fullTwin(world) {
   });
 }
 
-test('composes a full deterministic traveller twin', async () => {
+test('composes a full deterministic traveller twin', async (t) => {
+  // The fixture's timeline events carry fixed July 2026 timestamps, but the
+  // identity and relationship records buildWorld() creates are stamped by the
+  // clock, and lastUpdated is the latest of all of them. Unpinned, the
+  // expectation below only held while the real clock was before
+  // 2026-07-03T09:00Z (the test was written 2026-06-14), so it has failed on
+  // every run since. Pinned to the moment the trip was created, the world is
+  // self-consistent — every record precedes the newest event — and the view is
+  // deterministic, as the test name says. No assertion changes.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-07-01T09:00:00.000Z') });
   const world = await buildWorld();
   const twin = fullTwin(world);
   const view = await twin.getTravellerTwin(world.id);

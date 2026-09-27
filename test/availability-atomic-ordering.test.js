@@ -211,7 +211,7 @@ test('E. three rapid taps delivered in an adversarial order, sequentially AND co
 });
 
 test('E2. equal instants are ordered by intentSeq; a full tie is the same intent and applies idempotently', async () => {
-  const c = await u18Club('Echo2');
+  const c = await u18Club('Emerald');
   const me = c.sessions[0], id = c.players[0].user.id;
   await post(ck(me), { sessionId: SESSION, response: 'maybe', ...stamp(0, 1) });          // same ms, second tap
   const older = await post(ck(me), { sessionId: SESSION, response: 'available', ...stamp(0, 0) });   // same ms, first tap, arriving late
@@ -273,7 +273,7 @@ test('H. a pre-ordering record (no intent stamp) is read as before, and a stampe
 });
 
 test('H2. an UNSTAMPED write (older client, notification action) keeps arrival-order semantics', async () => {
-  const c = await u18Club('Hotel2');
+  const c = await u18Club('Harbour');
   const me = c.sessions[0], id = c.players[0].user.id;
   await post(ck(me), { sessionId: SESSION, response: 'unavailable', ...stamp(5000) });   // a stamped answer
   const legacy = await post(ck(me), { sessionId: SESSION, response: 'available' });        // no stamp at all
@@ -284,7 +284,7 @@ test('H2. an UNSTAMPED write (older client, notification action) keeps arrival-o
 });
 
 test('H3. a clock running far ahead is stamped with the arrival moment, so correctly clocked devices are never locked out', async () => {
-  const c = await u18Club('Hotel3');
+  const c = await u18Club('Heron');
   const me = c.sessions[0], id = c.players[0].user.id;
   const farFuture = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   await post(ck(me), { sessionId: SESSION, response: 'available', intentAt: farFuture, intentSeq: 0 });
@@ -525,6 +525,11 @@ test('browser: two U18 players tap at once, one rapid change, and an offline cha
     assert.equal(add, 200);
     await coach.evaluate(gid => { setOperationalGroup(gid); setSection('coach', 'message'); }, c.U18.id);
     await coach.waitForFunction(gid => state.activeCoachSection === 'message' && state.operationalGroupId === gid, c.U18.id, { timeout: 20000 });
+    // The coach's U18 training schedule loads asynchronously after the group
+    // switch (the switch drops the previous group's schedule). Wait for the
+    // training occurrence itself instead of reading the week once — under a
+    // loaded full suite the schedule could land after that single read.
+    await coach.waitForFunction(() => coachAvailEvents().some(e => e.type === 'training'), null, { timeout: 20000 });
     const EV = await coach.evaluate(() => coachAvailEvents().find(e => e.type === 'training')?.id);
     assert.ok(EV);
     const players = [];

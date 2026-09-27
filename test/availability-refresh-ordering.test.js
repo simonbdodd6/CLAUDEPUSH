@@ -357,6 +357,11 @@ test('browser: an older board reply released after a newer one never regresses t
       body: JSON.stringify({ action: 'add', group: gid, slot: { day: 'Tue', startTime: '19:00', venue: 'U18 pitch', active: true } }) })).status, U18.id), 200);
     await coach.evaluate(gid => { setOperationalGroup(gid); setSection('coach', 'message'); }, U18.id);
     await coach.waitForFunction(gid => state.activeCoachSection === 'message' && state.operationalGroupId === gid, U18.id, { timeout: 20000 });
+    // The coach's U18 training schedule loads asynchronously after the group
+    // switch (the switch drops the previous group's schedule). Wait for the
+    // training occurrence itself instead of reading the week once — under a
+    // loaded full suite the schedule could land after that single read.
+    await coach.waitForFunction(() => coachAvailEvents().some(e => e.type === 'training'), null, { timeout: 20000 });
     const EV = await coach.evaluate(() => coachAvailEvents().find(e => e.type === 'training')?.id);
     assert.ok(EV);
     const playerCtx = await browser.newContext({ ...devices['Pixel 5'], serviceWorkers: 'block' }); ctxs.push(playerCtx);
