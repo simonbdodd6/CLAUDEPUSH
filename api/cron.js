@@ -94,8 +94,15 @@ export function weeklyAvailabilityDue(slot, now, lastSentAt, offsetHours = local
   return weeklyAvailabilityDecision(slot, now, lastSentAt, offsetHours).due;
 }
 
-function availabilityActions(type) {
+// Same rule as api/push.js actionsFor (Build 101): answer buttons only on a
+// notification that names a DATED occurrence the coach board reads. A bare
+// legacy id ('game', 'week', the demo trio) gets no buttons — the service
+// worker would write the tap where nobody looks and report it as seen.
+const NON_ACTIONABLE_SESSION_IDS = new Set(['game', 'week', 'tue', 'thu']);
+export function availabilityActions(type, sessionId = 'game') {
   if (type !== 'availability') return undefined;
+  const sid = String(sessionId || '').trim();
+  if (!sid || NON_ACTIONABLE_SESSION_IDS.has(sid)) return undefined;
   return [
     { action: 'available', title: 'Available' },
     { action: 'unavailable', title: 'Not available' },
@@ -306,12 +313,10 @@ export default async function handler(req, res) {
       webpush.sendNotification(subscription, JSON.stringify({
         title, body: resolveVariables(body, { label }), from: 'Coach',
         tag: `weekly-reminder-${new Date().toISOString().slice(0, 10)}`,
+        // The weekly reminder speaks for the whole week, so it can name no
+        // single occurrence: no answer buttons (see availabilityActions).
         type: 'availability', sessionId: 'game', url: notificationUrl('availability'),
-        actions: [
-          { action: 'available', title: 'Available' },
-          { action: 'unavailable', title: 'Not available' },
-          { action: 'maybe', title: 'Maybe' },
-        ],
+        actions: availabilityActions('availability', 'game'),
       }))
     ));
     const sent = outcomes.filter(result => result.status === 'fulfilled').length;
@@ -392,7 +397,7 @@ export default async function handler(req, res) {
         url: notificationUrl(notificationType),
         type: notificationType,
         sessionId: schedule.sessionId || 'game',
-        actions: availabilityActions(notificationType),
+        actions: availabilityActions(notificationType, schedule.sessionId || 'game'),
       }));
     }));
     const sent = delivery.filter(result => result.status === 'fulfilled').length;

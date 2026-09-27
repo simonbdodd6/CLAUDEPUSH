@@ -28,14 +28,24 @@ export function configurePush() {
   }
 }
 
-function actionsFor(type) {
-  return type === 'availability' || type === 'availability-reminder'
-    ? [
-        { action: 'available', title: 'Available' },
-        { action: 'unavailable', title: 'Not available' },
-        { action: 'maybe', title: 'Maybe' },
-      ]
-    : undefined;
+// Answer buttons on a notification write straight from the service worker to
+// the session the payload names (sw.js recordAvailability). The coach board
+// reads only DATED occurrences — the bare legacy ids ('game', 'week', the
+// demo trio) are inert history since the identity cutover — so a button on a
+// notification that can only name a bare id writes where nobody looks and then
+// tells the player their coach can see it (Build 101 audit). Those
+// notifications carry no buttons: tapping them opens the app at Availability,
+// where the answer lands on the real occurrence.
+export const NON_ACTIONABLE_SESSION_IDS = new Set(['game', 'week', 'tue', 'thu']);
+export function actionsFor(type, sessionId = 'game') {
+  if (type !== 'availability' && type !== 'availability-reminder') return undefined;
+  const sid = String(sessionId || '').trim();
+  if (!sid || NON_ACTIONABLE_SESSION_IDS.has(sid)) return undefined;
+  return [
+    { action: 'available', title: 'Available' },
+    { action: 'unavailable', title: 'Not available' },
+    { action: 'maybe', title: 'Maybe' },
+  ];
 }
 
 export default async function handler(req, res) {
@@ -219,7 +229,7 @@ export default async function handler(req, res) {
       url: notificationUrl(type),
       type,
       sessionId,
-      actions: actionsFor(type),
+      actions: actionsFor(type, sessionId),
     });
     return webpush.sendNotification(subscription, payload);
   }));
