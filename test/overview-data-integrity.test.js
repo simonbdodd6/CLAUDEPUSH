@@ -111,6 +111,11 @@ function buildScope({
   stubTonightId = null,
   stubPhase = { label: 'None', msLeft: 0, days: 99 },
   stubUnread = 0,
+  // Build 104: the availability attention items are stated only once this
+  // group's schedule AND answers have landed (availabilityChaseContext).
+  // `landed` puts the scope in that state and splices the real gate; without
+  // it the gate is absent and fails closed, exactly as it does before a read.
+  landed = false,
 } = {}) {
   const stateObj = {
     players: clubPlayers, schedule, fixtures, messages, matchCentre, masterFeed,
@@ -187,6 +192,17 @@ function buildScope({
     extractFn(html, 'overviewAnswerMap') + '\n' +
     extractFn(html, 'overviewAnswerCounts') + '\n' +
     extractFn(html, 'overviewAvailabilityContext') + '\n' +
+    (landed
+      ? 'let _availLastSync = "2026-09-01T09:00:00.000Z"; let _resolvedAvailabilityGroup = ""; let _availReadFailed = false;\n' +
+        'function trainingGroupParam() { return ""; }\n' +
+        extractFn(html, 'currentResolvedAvailability') + '\n' +
+        extractFn(html, 'availabilityLastReadFailed') + '\n' +
+        extractFn(html, 'availabilityReadUnknown') + '\n' +
+        extractFn(html, '_tlIdTs') + '\n' +
+        extractFn(html, 'availabilityRequestMatches') + '\n' +
+        extractFn(html, 'availabilityRequestedSessions') + '\n' +
+        extractFn(html, 'availabilityChaseContext') + '\n'
+      : '') +
     extractFn(html, 'getNeedsAttentionItems') + '\n' +
     'return { overviewAvailabilityContext, getNeedsAttentionItems, overviewAnswerMap,\n' +
     '         overviewAvailableCount, overviewRoster, sessionRows, availabilityNonResponders };\n';
@@ -213,6 +229,11 @@ const THU_OCC = _dated('slot_thu', 3);
 // device but no server answer has arrived yet. Post-cutover this is
 // avail_<occurrence>, never the legacy `trainingTuesday`.
 const TUE_DEVICE_KEY = 'avail_' + TUE_OCC;
+// CONTRACT CHANGE (Build 104). The request these cases seed used to name the
+// bare legacy id 'tue' — enough when the gate was "any request ever sent".
+// The gate is now a request for one of THIS week's occurrences, so the
+// request names the dated Tuesday occurrence the answers are keyed on.
+const ASKED_TUESDAY = [{ id: 'req-' + TUE_OCC + '-1788000000000', sessionId: TUE_OCC, status: 'sent' }];
 const named = (n, prefix, extra = {}) =>
   Array.from({ length: n }, (_, i) => ({ id: prefix + (i + 1), name: prefix.toUpperCase() + ' ' + (i + 1), ...extra }));
 
@@ -232,7 +253,7 @@ test('non-responders are counted over the operating group, never the whole club'
     clubPlayers: club,
     groupPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
-    availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
+    availabilityRequests: ASKED_TUESDAY, landed: true,
   }).getNeedsAttentionItems();
 
   const nonResp = items.find(i => /replied/.test(i.text));
@@ -250,7 +271,7 @@ test('a player who answered through the server is not chased as a non-responder'
   const items = buildScope({
     clubPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
-    availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
+    availabilityRequests: ASKED_TUESDAY, landed: true,
     resolvedAvailability: serverAnswers(replied, TUE_OCC, 'available'),
   }).getNeedsAttentionItems();
 
@@ -265,7 +286,7 @@ test('a squad that has fully replied on the server raises no chase at all', () =
   const items = buildScope({
     clubPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
-    availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
+    availabilityRequests: ASKED_TUESDAY, landed: true,
     resolvedAvailability: serverAnswers(group, TUE_OCC, 'unavailable'),
   }).getNeedsAttentionItems();
 
@@ -281,7 +302,7 @@ test('several sessions do not multiply one player into several non-responders', 
     clubPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' },
                { id: 'thu', title: 'Thursday', type: 'Training' }],
-    availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
+    availabilityRequests: ASKED_TUESDAY, landed: true,
     resolvedAvailability: serverAnswers(group.slice(0, 3), TUE_OCC, 'available'),
   }).getNeedsAttentionItems();
 
@@ -301,6 +322,12 @@ test('the "not requested this week" prompt follows the group, not the club', () 
 
   assert.equal(items.find(i => /Availability not requested/.test(i.text)), undefined,
     'no players in this group means nothing to request');
+  // …and with the gate in force (Build 104) the answer is the same for the
+  // same reason, while a group that HAS players and has not been asked is told so.
+  const gated = args => buildScope({ schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }], landed: true, ...args })
+    .getNeedsAttentionItems().filter(i => /Availability not requested/.test(i.text)).length;
+  assert.equal(gated({ clubPlayers: named(30, 'p'), groupPlayers: [] }), 0, 'an empty group: nothing to request');
+  assert.equal(gated({ clubPlayers: named(30, 'p'), groupPlayers: named(12, 'p') }), 1, 'a group with players, not yet asked: said once');
 });
 
 // ── 2. The fixture Availability card ──────────────────────────────────────────
@@ -536,7 +563,7 @@ test('"Chase all" is about exactly the players the card counted', () => {
     groupPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' },
                { id: 'thu', title: 'Thursday', type: 'Training' }],
-    availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
+    availabilityRequests: ASKED_TUESDAY, landed: true,
     resolvedAvailability: serverAnswers(group.slice(0, 46), TUE_OCC, 'available'),
   });
 

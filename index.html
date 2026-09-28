@@ -8928,6 +8928,12 @@
       // stores is not an answer to THIS week, and must not spare its player
       // from the chase list.
       const ids = new Set((sessions || []).map(s => String((s && s.id) || '')).filter(Boolean));
+      // NO OCCURRENCE, NOBODY (Build 104). With nothing to answer there is
+      // nobody who has failed to answer it. This used to fall through with an
+      // empty `answered` set and return the WHOLE roster — so a week with
+      // nothing scheduled, or one whose schedule had simply not loaded yet,
+      // read "18 players haven't replied".
+      if (!ids.size) return [];
       const answered = new Set();
       for (const id of ids) {
         (sessionRows(id) || []).forEach(r => {
@@ -8964,6 +8970,129 @@
         slots: (_trainingSchedule && _trainingSchedule.slots) || [],
         currentWeekStart: availWeekStart(availToday()),
       });
+    }
+
+    /**
+     * IS THIS REQUEST ABOUT THIS OCCURRENCE? (Build 104)
+     *
+     * The Overview's "N players haven't replied" item is raised only once the
+     * coach has asked. "Asked" used to mean that ANY request on this device had
+     * ever been marked sent — last week's, or another group's — so a request
+     * for last Saturday raised a claim about this week. It now means a sent
+     * request for one of the occurrences being counted, in the club and group
+     * being operated:
+     *
+     *   occurrence — the request names this occurrence's own id. A dated
+     *                occurrence (a fixture, a training slot on a date) belongs
+     *                to exactly one week, so its id is its week.
+     *   week       — only the UNDATED generic match card needs it: that id is
+     *                the same every week, so the request counts for the week it
+     *                was SENT in (stamped, else read from the id's timestamp).
+     *   group      — stamped on the entry. A slot id can repeat across groups,
+     *                so an entry with no stamp (written before this build) is
+     *                attributable only where the id is a fixture's own or the
+     *                club has a single group. Anything else fails closed.
+     *   club       — stamped on the entry with the club IN FORCE (the one the
+     *                server has named this session, _clubContextId — not the
+     *                persisted marker, which belongs to the club transition
+     *                alone). The log is wiped on a club switch in any case.
+     */
+    function availabilityRequestMatches(request, session, scope) {
+      if (!request || request.status !== 'sent' || !session) return false;
+      if (String(request.sessionId || '') !== String(session.id || '')) return false;
+      const stamped = v => v !== undefined && v !== null;
+      if (stamped(request.clubId) && request.clubId !== '' && String(request.clubId) !== String((scope && scope.club) || '')) return false;
+      if (stamped(request.groupId)) {
+        if (String(request.groupId) !== String((scope && scope.group) || '')) return false;
+      } else if (!(session.type === 'match' && !session.legacy) && operationalGroups().length > 1) {
+        return false;
+      }
+      if (session.date) return true;
+      const at = _tlIdTs(request.id);
+      const sentWeek = String(request.sentWeek || (at ? availWeekStart(new Date(at).toISOString().slice(0, 10)) : ''));
+      return !!sentWeek && sentWeek === String((scope && scope.week) || '');
+    }
+
+    /** The occurrences of `sessions` the coach has asked about — see availabilityRequestMatches. */
+    function availabilityRequestedSessions(sessions, scope) {
+      const log = (state.availabilityRequests || []);
+      return (sessions || []).filter(session => log.some(request => availabilityRequestMatches(request, session, scope)));
+    }
+
+    /**
+     * MAY A SCREEN SAY WHO HAS NOT REPLIED? — one answer, for the Overview, the
+     * Availability board and Chase all (Build 104).
+     *
+     * A non-responder is somebody who has not answered an OCCURRENCE. So the
+     * claim needs the occurrences of the week, for the group being operated,
+     * and the answers given to them — and until every one of those is known
+     * there is nothing to claim:
+     *
+     *   'unknown'     the availability read failed and nothing is held
+     *   'unresolved'  a multi-group club with no group chosen
+     *   'loading'     the training schedule for THIS group, or the answers,
+     *                 have not landed (a schedule loaded for another group
+     *                 resolves nothing for this one)
+     *   'empty'       everything is known and the week has no occurrence
+     *   'ready'       sessions, roster, nonResponders and requested are real
+     *
+     * The non-responder rule itself is unchanged — availabilityNonResponders:
+     * a player who has answered NONE of the week's occurrences. What changes
+     * is that every surface now reads the same set, and none of them reads it
+     * before it exists.
+     */
+    function availabilityChaseContext(weekStartIso) {
+      const currentWeek = availWeekStart(availToday());
+      const week = String(weekStartIso || currentWeek);
+      const group = String(state.operationalGroupId || '');
+      const club = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
+      const context = (status, extra) => ({ status, week, currentWeek, isCurrentWeek: week === currentWeek, group, club,
+        sessions: [], roster: [], nonResponders: [], requested: [], ...(extra || {}) });
+      if (availabilityReadUnknown()) return context('unknown');
+      if (!group && operationalGroups().length > 1) return context('unresolved');
+      ensureTrainingSchedule();
+      if (!_trainingSchedule || _trainingScheduleGroupId !== trainingGroupParam()) return context('loading');
+      if (currentResolvedAvailability() === null) return context('loading');
+      const sessions = availabilityEventsForWeek(week, {
+        fixtures: contextFixtures().map(normalizeFixture).filter(Boolean),
+        slots: _trainingSchedule.slots || [],
+        currentWeekStart: currentWeek,
+      });
+      if (!sessions.length) return context('empty');
+      return context('ready', {
+        sessions,
+        roster: operationalPlayers().filter(p => p && p.id && !playerIsArchived(p)),
+        nonResponders: availabilityNonResponders(sessions),
+        requested: availabilityRequestedSessions(sessions, { week, group, club }),
+      });
+    }
+
+    /**
+     * RECORD THAT AN AVAILABILITY REQUEST WAS SENT — and save it, here.
+     *
+     * The two senders used to push the entry onto the log and carry on to the
+     * chat write and the push; nothing saved. The entry reached device
+     * storage only if something ELSE happened to save afterwards, so a coach
+     * who sent a request and closed the app had not, as far as the next open
+     * could tell, sent one. Written through at once, before anything is
+     * awaited, and stamped with what the gate above needs to attribute it.
+     */
+    function availabilityLogRequest(session, messageIds) {
+      const entry = {
+        id:         `req-${session.id}-${Date.now()}`,
+        sessionId:  session.id,
+        title:      session.title,
+        sentAt:     new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }),
+        sentWeek:   availWeekStart(availToday()),
+        groupId:    String(state.operationalGroupId || ''),
+        clubId:     String((typeof _clubContextId !== 'undefined' && _clubContextId) || ''),
+        status:     'sent',
+        messageIds: messageIds || [],
+      };
+      state.availabilityRequests = state.availabilityRequests || [];
+      state.availabilityRequests.unshift(entry);
+      saveState('Availability request sent');
+      return entry;
     }
 
     /**
@@ -15630,13 +15759,24 @@
       // screen was honestly saying it could not load. Same machinery, same
       // answer on both screens: see availabilityReadUnknown().
       const availUnknown = typeof availabilityReadUnknown === 'function' && availabilityReadUnknown();
-      const requestEverSent = (state.availabilityRequests || []).some(r => r.status === 'sent');
+      // NO OCCURRENCE, NO CLAIM (Build 104). Everything below is a statement
+      // about this week's occurrences for the group being operated, so it is
+      // made only when those — and the answers to them — are actually known
+      // (availabilityChaseContext). While the schedule or the answers are
+      // still loading, in a week with nothing scheduled, or with no group
+      // resolved, nothing is said: not "haven't replied", and not "not
+      // requested" either. The gate is a request for one of THESE
+      // occurrences, not any request this device ever sent. Absent (a sandbox
+      // that runs this function alone), it fails closed the same way.
+      const chase = typeof availabilityChaseContext === 'function' ? availabilityChaseContext() : null;
+      const chaseReady = !!(chase && chase.status === 'ready');
+      const requestedThisWeek = chaseReady && chase.requested.length > 0;
       if (availUnknown) {
         items.push({ score:55, level:'warning', icon:'',
           text:'Availability could not be loaded',
           detail:"This week's replies are not known — nobody has been marked as no reply.",
           cta:'Try again', action:`availRefreshNow()` });
-      } else if (requestEverSent) {
+      } else if (requestedThisWeek) {
         // Two defects met here and inflated this number badly on a real club:
         //
         //  · state.players is the WHOLE CLUB on every coach's device, so a
@@ -15661,8 +15801,9 @@
             cta:'Chase all', action:`chaseAllNonResponders()` });
         }
       }
-      // Availability not sent this week
-      if (!requestEverSent && overviewRoster().length > 0) {
+      // Availability not sent this week — said only of a week that has
+      // something to ask about, and only once that is known.
+      if (chaseReady && !requestedThisWeek && overviewRoster().length > 0) {
         items.push({ score:45, level:'warning', icon:'',
           text:'Availability not requested this week',
           detail:'Players haven\'t been asked to confirm yet.',
@@ -18192,7 +18333,6 @@
       const allSessionIds  = coachEvents.map(e => e.id);
       const statusFor      = (p, id) => (resolvedAnswerFor(p, id) || {}).response || p[sessionKey(id)] || 'no-reply';
       const repliedAll     = opPlayers.filter(p => allSessionIds.every(id => statusFor(p, id) !== 'no-reply')).length;
-      const chaseAny       = opPlayers.filter(p => allSessionIds.some(id => statusFor(p, id) === 'no-reply')).length;
       const injuryFlags    = opPlayers.filter(p => allSessionIds.some(id =>
         (resolvedAnswerFor(p, id) || {}).reason === 'injury' || p[sessionKey(id) + 'Reason'] === 'injury')).length;
 
@@ -18291,6 +18431,15 @@
       const nowWeekStart = availWeekStart(availToday());
       const isNowWeek = weekStart === nowWeekStart;
       const weekDelta = Math.round((Date.parse(weekStart) - Date.parse(nowWeekStart)) / 604800000);
+      // THE SAME SET the Overview counts and Chase all sends (Build 104), for
+      // the week this board is showing. "N to chase" used to be a different
+      // question — anyone with ANY session unanswered — so the board could say
+      // "4 to chase" beside a button that then reminded one. And with no
+      // occurrence at all, every() over nothing read "6 / 6 replied to all
+      // sessions · All replied". No occurrence, or one not yet known: no strip.
+      const weekChase = typeof availabilityChaseContext === 'function' ? availabilityChaseContext(weekStart) : null;
+      const weekReady = !!(weekChase && weekChase.status === 'ready');
+      const chaseAny  = weekReady ? weekChase.nonResponders.length : 0;
 
       document.getElementById("coach-message").innerHTML = `
         <div class="msg-hub">
@@ -18348,16 +18497,16 @@
                   onclick="availRefreshNow()" title="Refresh live availability now"
                   aria-label="Refresh live availability now">${availabilityLastReadFailed() ? 'Sync failed — retry' : _availLastSync ? 'Synced ' + new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : 'Live sync'}</button>
               </div>
-              ${opPlayers.length > 0 && !availUnknown ? `
+              ${opPlayers.length > 0 && !availUnknown ? `${weekReady ? `
               <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(var(--accent-rgb), 0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
                 <span style="color:var(--muted)">${esc(isNowWeek ? 'This week' : availDatedWeekLabel(weekStart))}:</span>
                 <span style="font-weight:700;color:var(--ink)">${repliedAll} / ${opPlayers.length} replied to all sessions</span>
-                ${chaseAny > 0 ? `<span class="msg-chip no-reply">${chaseAny} to chase</span>` : `<span class="msg-chip available">All replied</span>`}
+                ${chaseAny > 0 ? `<span class="msg-chip no-reply">${chaseAny} to chase</span>` : (repliedAll === opPlayers.length ? `<span class="msg-chip available">All replied</span>` : '')}
                 ${injuryFlags > 0 ? `<span class="msg-chip unavailable">${injuryFlags} injury flag${injuryFlags > 1 ? 's' : ''}</span>` : ''}
-                ${chaseAny > 0 ? `<button type="button" onclick="chaseAllNonResponders()"
+                ${chaseAny > 0 && isNowWeek ? `<button type="button" onclick="chaseAllNonResponders()"
                   style="font-size:10px;padding:2px 9px;border-radius:999px;border:1px solid rgba(245,158,11,0.4);color:#fbbf24;background:rgba(245,158,11,0.08);cursor:pointer;font-weight:700;margin-left:auto"
                   title="Send one reminder push to all players who haven't replied to any session">Chase all</button>` : ''}
-              </div>` : ''}
+              </div>` : ''}` : ''}
               <div style="padding:16px">
                 <div class="msg-session-grid">
                   <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">
@@ -18785,14 +18934,7 @@
       const dateText = session.date || 'date to be confirmed';
       const body = `Please confirm your availability for ${session.title} (${dateText}) in CoachEasier.`;
       const created = createCoachMessage({ recipients: audience, type: "Availability request", body, sessionId });
-      state.availabilityRequests.unshift({
-        id: `req-${Date.now()}`,
-        sessionId,
-        title:   session.title,
-        sentAt:  new Date().toLocaleString([], {dateStyle:"medium", timeStyle:"short"}),
-        status:  "sent",
-        messageIds: created.map(m => m.id)
-      });
+      availabilityLogRequest({ id: sessionId, title: session.title }, created.map(m => m.id));
       // The chat copy goes to THIS GROUP'S channel so players see it in their
       // Messages tab. It used to write the hardcoded club-wide 'squad' — the
       // pre-group-isolation pattern — so a U18 request reached Seniors.
@@ -18834,14 +18976,7 @@
       sessions.forEach(session => {
         const created = createCoachMessage({ recipients: audience, type: "Availability request", body, sessionId: session.id });
         totalCreated += created.length;
-        state.availabilityRequests.unshift({
-          id:         `req-${session.id}-${Date.now()}`,
-          sessionId:  session.id,
-          title:      session.title,
-          sentAt:     new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }),
-          status:     'sent',
-          messageIds: created.map(m => m.id),
-        });
+        availabilityLogRequest(session, created.map(m => m.id));
       });
       // One combined push for all sessions
       sendPushToPlayers(`Availability check — ${sessions.length} sessions`, body, { type: 'availability' });
@@ -19011,16 +19146,26 @@
       // players who may well have replied. Guarded here rather than only in
       // the board, because the Overview's needs-attention card calls this too.
       if (availabilityReadUnknown()) return showToast('Availability could not be loaded — refresh before chasing');
+      // NO OCCURRENCE, NO CHASE (Build 104) — the same gate the Overview and
+      // the board read. This used to return in silence on an empty week,
+      // under a button that had just claimed the whole squad was silent.
+      const gate = typeof availabilityChaseContext === 'function' ? availabilityChaseContext() : null;
+      if (!gate || gate.status !== 'ready') {
+        return showToast(gate && gate.status === 'empty'
+          ? 'Nothing is scheduled this week — there is nobody to chase'
+          : 'Availability is still loading — try again in a moment');
+      }
       // The canonical current week — the same set the Overview card counted,
       // and the same DATED identities the board renders. state.schedule's bare
       // protocol ids would judge "replied" from the legacy stores.
       const sessions = availabilityWeekSessions();
-      if (!sessions.length) return;
-      // The same set the Overview's "N players haven't replied" card counts —
-      // so the toast cannot claim a different number from the card that sent
-      // the coach here. (Recipients are chosen server-side from
-      // audience:'no-reply'; this set decides whether there is anyone to
-      // chase and what we tell the coach.)
+      if (!sessions.length) return showToast('Nothing is scheduled this week — there is nobody to chase');
+      // The same set the Overview's "N players haven't replied" card and the
+      // board's "N to chase" count. It decides whether there is anyone to
+      // chase. WHO IS REMINDED is decided by the server, from its own fresh
+      // answers to the occurrences named below, in this club and group, by
+      // player id — and what the coach is told is what the server says it
+      // sent, never this number.
       const noReplyIds = new Set(availabilityNonResponders(sessions).map(p => p.id));
       if (!noReplyIds.size) return showToast('Everyone has replied ✓');
       const titles = sessions.map(s => s.title).join(', ');
@@ -19036,12 +19181,26 @@
             type:     'availability',
             audience: 'no-reply',
             group:    state.operationalGroupId || undefined,
+            // The occurrences this count was made over: the server excuses
+            // only a player who has answered one of THESE.
+            sessionIds: sessions.map(s => String(s.id)),
             url:      '/?to=availability',
           }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok && !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-        showToast(`Reminder sent to ${noReplyIds.size} player${noReplyIds.size > 1 ? 's' : ''} ✓`);
+        if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+        // THE SERVER'S RESULT, in people. It used to announce the intended
+        // count with a tick whatever had happened — "sent to 4 players ✓"
+        // when one had been targeted and none delivered.
+        const fulfilled = Array.isArray(data.results)
+          ? new Set(data.results.filter(r => r && r.status === 'fulfilled').map(r => String(r.userId || r.label || ''))).size
+          : null;
+        const reached = Number.isFinite(Number(data.reached)) && data.reached !== undefined && data.reached !== null
+          ? Number(data.reached) : (fulfilled !== null ? fulfilled : (Number(data.sent) || 0));
+        const intended = noReplyIds.size;
+        if (reached <= 0) showToast('No reminders delivered — players may not have notifications enabled');
+        else if (reached >= intended) showToast(`Reminder sent to ${reached} player${reached > 1 ? 's' : ''} ✓`);
+        else showToast(`Reminder sent to ${reached} of ${intended} players — ${intended - reached} could not be reached`);
       } catch(e) {
         showToast('Chase failed: ' + (e?.message || 'network'));
       }
@@ -42787,6 +42946,10 @@
         // This read is now the newest to have applied: every read that left
         // before it, however late its reply lands, is stale from here on.
         if (typeof _availabilityAppliedSeq !== 'undefined') _availabilityAppliedSeq = readSeq;
+        // Was nothing known for this group until now? (Build 104) The Overview
+        // withholds its availability item until the answers have landed, so
+        // their first arrival has to repaint it — see below.
+        const _firstLanding = typeof currentResolvedAvailability === 'function' && currentResolvedAvailability() === null;
         // Source of truth for the coach board at render time (see sessionRows).
         const _prevResolvedSig = JSON.stringify(_resolvedAvailability);
         _resolvedAvailability = resolved;
@@ -42824,6 +42987,10 @@
         _availLastSync = new Date().toISOString();
         // A real answer clears the failure state, whatever it contains.
         if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(false);
+        // The answers for this group have just become known: the Overview's
+        // withheld availability item can now be stated, without a tap.
+        if (_firstLanding && typeof coachSectionActive === 'function' && coachSectionActive('overview')
+            && typeof renderCoachOverview === 'function') renderCoachOverview();
         if (ts) {
           ts.textContent = `Synced ${new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
           ts.className = 'msg-chip available';

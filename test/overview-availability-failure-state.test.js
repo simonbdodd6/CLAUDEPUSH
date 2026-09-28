@@ -58,7 +58,13 @@ test('1+2+3. the "N players haven\'t replied" item and its chase action are with
   const branch = attn.slice(at, at + 900);
   assert.match(branch, /text:'Availability could not be loaded'/, 'and says so instead');
   assert.match(branch, /cta:'Try again', action:`availRefreshNow\(\)`/, 'offering the refresh the Availability screen already owns');
-  assert.match(branch, /\} else if \(requestEverSent\) \{/, 'the chase item is the ELSE — never both');
+  // CONTRACT CHANGE (Build 104): the gate is no longer "any request this device
+  // ever sent" (requestEverSent) but a request for one of THIS week's
+  // occurrences in the group being operated (requestedThisWeek). What this
+  // assertion protects is unchanged: the chase item is the ELSE of the
+  // failure item, so the two can never both be raised.
+  assert.match(branch, /\} else if \(requestedThisWeek\) \{/, 'the chase item is the ELSE — never both');
+  assert.doesNotMatch(attn, /requestEverSent/, 'and the device-wide, all-time gate is gone');
   // The fabricated number and its action live only in that else branch.
   const chaseAt = attn.indexOf('availabilityNonResponders(availabilityWeekSessions())');
   assert.ok(chaseAt > at, 'the non-responder count is computed only when the answers are known');
@@ -103,15 +109,86 @@ let chromium = null, devices = null;
 try { ({ chromium, devices } = await import('playwright')); } catch { /* not installed */ }
 
 const GRP = 'grp_initial', TEAM = 'team_stub';
-const SAT = (() => { const x = new Date(); x.setUTCDate(x.getUTCDate() + ((6 - x.getUTCDay() + 7) % 7)); return x.toISOString().slice(0, 10); })();
+// ── THE FIXTURE'S DATE — valid on every weekday ────────────────────────────
+// This journey serves ONE fixture and reads it back on the coach Overview:
+// the Match Availability card (the next fixture still to be played) and the
+// needs-attention item (the occurrences of the CURRENT week). It used to be
+// dated "the coming Saturday", counted from the day the suite ran. On a
+// Sunday the coming Saturday is six days ahead — in NEXT week — so the week
+// the attention item counts was empty, and the recovery assertions below were
+// satisfied by a card label rather than by a real reading.
+//
+// The date now comes from the application's OWN week and occurrence
+// functions, extracted from index.html like every other function under test
+// here (the approach of the three suites corrected in Build 102). Since
+// Build 104 it matters for a second reason: the attention item is raised only
+// by a request for one of THIS week's occurrences, so the fixture the seeded
+// request names has to be one. No week
+// arithmetic is restated: the app's generator is asked, day by day from
+// today, which dates it places in the week it displays, and the fixture is
+// played on the LAST of them — inside the displayed week by construction, and
+// never passed, whichever weekday the suite runs.
+const APP_WEEK = new Function(`
+  ${src.match(/const AVAIL_DAY_INDEX = \{[^}]*\};/)[0]}
+  ${fn('availWeekStart')}
+  ${fn('availAddDays')}
+  ${fn('availSlotDateInWeek')}
+  ${fn('availTrainingEventId')}
+  ${fn('availabilityEventsForWeek')}
+  ${fn('availToday')}
+  ${fn('playerPortalNextFixture')}
+  return { availWeekStart, availAddDays, availabilityEventsForWeek, availToday, playerPortalNextFixture };
+`)();
+/** Does the app's occurrence generator place a fixture played on `dateIso` in the week it displays on `todayIso`? */
+function inDisplayedWeek(dateIso, todayIso) {
+  const week = APP_WEEK.availWeekStart(todayIso);
+  return APP_WEEK.availabilityEventsForWeek(week, { fixtures: [{ id: 'fx_probe', opposition: 'Probe', date: dateIso, status: 'scheduled' }], slots: [], currentWeekStart: week })
+    .some(e => e.id === 'fx_probe' && e.date === dateIso);
+}
+/** The last day of the week the app displays on `todayIso` — in that week, and not yet passed. */
+function matchDayFor(todayIso) {
+  let day = todayIso;
+  for (let i = 0; i < 14; i++) {
+    const next = APP_WEEK.availAddDays(day, 1);
+    if (!inDisplayedWeek(next, todayIso)) break;
+    day = next;
+  }
+  return day;
+}
+const MATCH_DAY = matchDayFor(APP_WEEK.availToday());
 const PLAYERS = Array.from({ length: 18 }, (_, i) => ({ id: 'p' + i, userId: 'u_p' + i, name: 'Player ' + i, position: 'Prop', playerGroupId: GRP }));
 const SESSION = { ok: true, user: { id: 'u1', name: 'Coach Stub', email: 'c@s.test', role: 'coach', platformRole: '' },
   teamMember: { teamId: TEAM, userId: 'u1', role: 'coach', staffLevel: 'head', status: 'active', playerGroupId: null },
   permissions: ['reports', 'messaging', 'manage_players', 'manage_coaches', 'training', 'matchday', 'publish_training'],
   memberships: [{ teamId: TEAM, teamName: 'Stub RFC', role: 'coach', staffLevel: 'head', canonicalRole: 'head_coach', current: true }],
   operational: { player: { groups: [], defaultGroupId: null, mustChoose: false }, staff: { groups: [{ id: GRP, name: 'Seniors', developmentCategory: 'adult' }], defaultGroupId: GRP, mustChoose: false } } };
-const FIXTURES = [{ id: 'fx_sat', groupId: GRP, opposition: 'Kituro', date: SAT, kickoffTime: '14:00', status: 'scheduled' }];
+const FIXTURES = [{ id: 'fx_sat', groupId: GRP, opposition: 'Kituro', date: MATCH_DAY, kickoffTime: '14:00', status: 'scheduled' }];
 const ANSWER_KEY = 'fx_sat';
+
+test('the fixture this journey serves is an occurrence of the week the Overview counts, and has not passed — on every weekday', () => {
+  assert.equal(FIXTURES[0].date, MATCH_DAY, 'the browser tests serve the derived date');
+  assert.equal(ANSWER_KEY, FIXTURES[0].id, 'and the answers and the sent request are about that same occurrence');
+  // Seven consecutive "todays" cover every weekday, whichever day the suite itself runs on.
+  const weekdays = new Set();
+  for (let i = 0; i < 7; i++) {
+    const today = APP_WEEK.availAddDays(APP_WEEK.availToday(), i);
+    const day = matchDayFor(today);
+    const fixture = { ...FIXTURES[0], date: day };
+    const week = APP_WEEK.availWeekStart(today);
+    weekdays.add(new Date(today + 'T12:00:00Z').getUTCDay());
+    // The attention item counts the CURRENT week's occurrences (availabilityWeekSessions →
+    // availabilityEventsForWeek): the fixture must be one of them…
+    const events = APP_WEEK.availabilityEventsForWeek(week, { fixtures: [fixture], slots: [], currentWeekStart: week });
+    assert.deepEqual(events.map(e => [e.id, e.type, e.date]), [['fx_sat', 'match', day]], `today ${today}: the fixture is THE occurrence of the current week`);
+    // …and not one of the following week's (the Sunday case, stated as a rule)
+    assert.deepEqual(APP_WEEK.availabilityEventsForWeek(APP_WEEK.availAddDays(week, 7), { fixtures: [fixture], slots: [], currentWeekStart: week }).map(e => e.id), [],
+      `today ${today}: it does not belong to next week`);
+    // The Match Availability card reads the next fixture still to be played
+    assert.ok(day >= today, `today ${today}: ${day} has not passed`);
+    assert.equal(APP_WEEK.playerPortalNextFixture([fixture], today)?.id, 'fx_sat', `today ${today}: it is the next fixture`);
+  }
+  assert.equal(weekdays.size, 7, 'every weekday was covered');
+});
 
 function server(mode) {
   const st = { mode };

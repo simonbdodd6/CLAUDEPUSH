@@ -278,6 +278,52 @@ export async function resolveAvailabilityForIdentities(teamId, identities = []) 
   }));
 }
 
+const ANSWERS = new Set(['available', 'unavailable', 'maybe']);
+
+/**
+ * WHO HAS ANSWERED — for a coach's no-reply chase (Build 104).
+ *
+ * Asked of ONE club's own records, in the named group(s), and answered with
+ * DURABLE ids only (userId / playerId / legacyPlayerId, lowercased). Never a
+ * display name, and never another club's or another group's record: the
+ * reads go through the same group-scoped loaders every availability write
+ * and board read use, so the tenant boundary is theirs.
+ *
+ *   sessionIds given  → anyone holding an answer to ANY of those occurrences.
+ *                       Answering any of the week's occurrences is answering
+ *                       — the rule the Overview and the board count by.
+ *   none given        → anyone in these groups with an answer stamped inside
+ *                       the lookback window (the request shape of a client
+ *                       from before this build, which names no occurrence).
+ *
+ * recentResponders() below is the older, global form. It matched display
+ * names across every club, so a same-named player answering elsewhere
+ * silenced this club's reminder; the coach chase no longer calls it.
+ */
+export async function respondersByIdentity(clubId, groupIds = [], { sessionIds = [], withinDays = 7, now = Date.now() } = {}) {
+  const ids = new Set();
+  const add = value => {
+    if (!value || typeof value !== 'object' || !ANSWERS.has(value.response)) return;
+    for (const id of [value.userId, value.playerId, value.legacyPlayerId]) if (id) ids.add(String(id).toLowerCase());
+  };
+  const groups = [...new Set((Array.isArray(groupIds) ? groupIds : []).map(g => String(g || '')).filter(Boolean))];
+  const wanted = [...new Set((Array.isArray(sessionIds) ? sessionIds : []).map(s => String(s || '')).filter(Boolean))];
+  const cutoff = now - withinDays * 24 * 60 * 60 * 1000;
+  for (const groupId of groups) {
+    if (wanted.length) {
+      const stores = await Promise.all(wanted.map(sessionId => loadGroupAvailability(clubId, groupId, sessionId)));
+      stores.forEach(store => Object.values(store || {}).forEach(add));
+      continue;
+    }
+    const bySession = await loadAllGroupAvailability(clubId, groupId);
+    Object.values(bySession).forEach(store => Object.values(store || {}).forEach(value => {
+      // An answer with no timestamp cannot prove it is recent, so it excuses nobody.
+      if (value?.respondedAt && new Date(value.respondedAt).getTime() >= cutoff) add(value);
+    }));
+  }
+  return ids;
+}
+
 /** Labels with an availability reply during the chase-up lookback period.
  *  Deliberately a global union (all clubs + legacy): its consumers (weekly
  *  reminder cron, no-reply push audiences) already scope their RECIPIENTS by

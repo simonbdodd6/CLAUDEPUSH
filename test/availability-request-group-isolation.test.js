@@ -84,6 +84,11 @@ function client({ groups, opGid, players }) {
     async function chatLoadStateModule() { state._chatLoaded = true; }
     async function chatFetchConversations() {}
     function sendPushToPlayers(title, body, opts) { state._push = { title, body, opts }; }
+    // Build 104: both senders record the request through availabilityLogRequest
+    // (which saves it, and stamps its club, group and week) — the real one.
+    ${fn('availWeekStart')}
+    ${fn('availToday')}
+    ${fn('availabilityLogRequest')}
     ${fn('createCoachMessage')}
     ${fn('availabilityChatChannel')}
     ${fn('chatEnsureGroupChannel')}
@@ -115,6 +120,9 @@ test('A: a U18 request writes to U18’s channel — and ensures it exists first
   assert.equal(create.groupId, 'grp_u18', 'and bound to the group server-side');
   assert.ok(chat.indexOf(create) < chat.indexOf(send), 'ensure BEFORE send');
   assert.ok(!chat.some(b => b.convId === 'squad'), 'nothing touches the club-wide channel');
+  // Build 104: the request log says WHICH group asked, so another group's
+  // Overview can never read this request as its own.
+  assert.deepEqual(c.state.availabilityRequests.map(r => [r.sessionId, r.status, r.groupId]), [['tue', 'sent', 'grp_u18']]);
 });
 
 test('C: a Seniors request in a multi-group club writes to SENIORS’ channel, not squad', async () => {
