@@ -1,9 +1,9 @@
 // Immediate Web Push delivery for coach "Send now" actions.
 import webpush from 'web-push';
 import { load, save, clubMemberSubscriptions, subscriptionsForMembers } from './_lib.js';
-import { loadClubStructure } from './_structureStore.js';
+import { loadClubStructure, INITIAL_GROUP_ID } from './_structureStore.js';
 import { operationalGroupsFor, resolvePlayerGroup } from './_accessScope.js';
-import { recentResponders } from './_availabilityStore.js';
+import { respondersByIdentity } from './_availabilityStore.js';
 import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key } from './_keys.js';
 import { resolveVariables } from './_variables.js';
@@ -46,6 +46,21 @@ export function actionsFor(type, sessionId = 'game') {
     { action: 'unavailable', title: 'Not available' },
     { action: 'maybe', title: 'Maybe' },
   ];
+}
+
+// The occurrences a no-reply chase is ABOUT (Build 104). A coach's Chase all
+// names every occurrence of the week it counted (sessionIds); a per-session
+// reminder names one (sessionId). Only well-formed ids are read, and a bare
+// legacy id — what a request falls back to when it names nothing — is not an
+// occurrence, so it scopes nothing.
+const OCCURRENCE_ID_RE = /^[a-z0-9_-]{1,80}$/i;
+const MAX_CHASE_OCCURRENCES = 40;
+export function chaseOccurrenceIds(body = {}) {
+  const named = Array.isArray(body?.sessionIds) ? body.sessionIds : [];
+  const ids = [...new Set(named.filter(id => typeof id === 'string' && OCCURRENCE_ID_RE.test(id)))].slice(0, MAX_CHASE_OCCURRENCES);
+  if (ids.length) return ids;
+  const one = typeof body?.sessionId === 'string' ? body.sessionId.trim() : '';
+  return one && OCCURRENCE_ID_RE.test(one) && !NON_ACTIONABLE_SESSION_IDS.has(one) ? [one] : [];
 }
 
 export default async function handler(req, res) {
@@ -197,9 +212,21 @@ export default async function handler(req, res) {
     subscriptions = subscriptionsForMembers(subscriptions, groupMemberIds);
   }
   if (audience === 'no-reply') {
-    const responded = await recentResponders(7);
+    // WHO HAS ANSWERED is asked of THIS club's records, in the group(s) this
+    // chase reaches, about the occurrences it names — and matched by durable
+    // id only. It used to be a seven-day union over EVERY club, matched by
+    // display name as well: last week's answers excused players from this
+    // week's session, and a same-named player answering in another club
+    // silenced this club's reminder (Build 103 audit). The session above has
+    // already fixed the club, and a named group has already been asserted
+    // against the sender's own scope.
+    const chaseGroups = requestedGroup
+      ? [requestedGroup]
+      : (((await loadClubStructure(teamId))?.groups || []).filter(g => g.status !== 'archived').map(g => g.id));
+    const responded = await respondersByIdentity(teamId, chaseGroups.length ? chaseGroups : [INITIAL_GROUP_ID],
+      { sessionIds: chaseOccurrenceIds(req.body), withinDays: 7 });
     subscriptions = subscriptions.filter(item =>
-      ![item.label, item.userId, item.playerId, item.legacyPlayerId].some(value => value && responded.has(value))
+      ![item.userId, item.playerId, item.legacyPlayerId].some(value => value && responded.has(String(value).toLowerCase()))
     );
   }
 
@@ -213,7 +240,7 @@ export default async function handler(req, res) {
 
   if (!subscriptions.length) {
     const allLabels = clubSubscriptions.map(s => s.label || s.userId || s.playerId);
-    return res.status(200).json({ ok: true, sent: 0, failed: 0, total: 0,
+    return res.status(200).json({ ok: true, sent: 0, failed: 0, total: 0, reached: 0, targeted: 0,
       note: targetLabel
         ? `No subscription found for "${targetLabel}". Subscribed players: ${allLabels.join(', ') || 'none'}`
         : 'No subscribers yet' });
@@ -235,6 +262,11 @@ export default async function handler(req, res) {
   }));
   const sent = sendResults.filter(result => result.status === 'fulfilled').length;
   const failed = sendResults.length - sent;
+  // PEOPLE, not devices: `sent` counts subscriptions, and one player may hold
+  // several. What a coach is told is how many players a reminder reached.
+  const personOf = (item, index) => String(item?.userId || item?.playerId || item?.legacyPlayerId || item?.subscription?.endpoint || index);
+  const targetedPeople = new Set(subscriptions.map(personOf));
+  const reachedPeople = new Set(subscriptions.filter((_, index) => sendResults[index].status === 'fulfilled').map(personOf));
 
   // Remove endpoints permanently rejected by push services so repeated sends
   // do not continually count a deleted phone/browser as a delivery failure.
@@ -266,6 +298,7 @@ export default async function handler(req, res) {
   await kvLtrim(key('message_log'), 500);
   return res.status(200).json({
     ok: true, sent, failed, total: subscriptions.length,
+    reached: reachedPeople.size, targeted: targetedPeople.size,
     target: targetUserId || targetPlayerId || targetLabel || 'all',
     results: sendResults.map((r, i) => ({
       label: subscriptions[i]?.label || '',
