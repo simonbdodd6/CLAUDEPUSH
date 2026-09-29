@@ -144,7 +144,7 @@ function sideNameFrom(structure, sideId) {
  * belongs to the club's INITIAL group — the documented owner of all
  * pre-structure club data (production's Seniors) — never to a newer group.
  */
-function fixtureGroupOf(fx) {
+export function fixtureGroupOf(fx) {
   return String(fx?.groupId || '').trim() || INITIAL_GROUP_ID;
 }
 
@@ -1115,7 +1115,9 @@ function sanitiseScheduleSlot(raw, index = 0) {
  * Idempotent: the seed only runs when no record exists, and it derives from the
  * live tue/thu sessions and club.trainingDays without modifying either.
  */
-async function readTrainingSchedule(teamId, groupId = INITIAL_GROUP_ID) {
+// Exported (Build 105) for the scheduled reminders in api/cron.js, which must
+// see exactly the slots the Availability board is drawn from.
+export async function readTrainingSchedule(teamId, groupId = INITIAL_GROUP_ID) {
   // The group's own record wins; only the INITIAL group may fall through to
   // the legacy club-wide record (and its club-config seeding below). Any
   // OTHER group with no stored schedule starts honestly EMPTY — U18 and
@@ -1252,7 +1254,7 @@ async function trainingScheduleHandler(req, res) {
 // can only ever read or write its OWN fixtures — a caller cannot name another
 // club's team. Writes require MANAGE_FIXTURES (Full / Coach / Manager).
 
-async function readClubFixtures(teamId) {
+export async function readClubFixtures(teamId) {
   const club = (await kvGet(clubKey(teamId))) || {};
   return { club, fixtures: Array.isArray(club.fixtures) ? club.fixtures.map(sanitiseFixtureRecord) : [] };
 }

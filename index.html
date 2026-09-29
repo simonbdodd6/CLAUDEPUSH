@@ -13051,9 +13051,41 @@
       render();
     }
 
+    /**
+     * THE OVERVIEW'S "REQUEST AVAILABILITY" — asked of this week's occurrences,
+     * and RECORDED once it has actually gone (Build 105).
+     *
+     * It used to send a push and leave no trace in the request log, so the
+     * Overview went on saying "Availability not requested this week" to the
+     * coach who had just asked. It also announced a result, and created its
+     * local message rows, whatever the server had answered — offline included.
+     *
+     *   · A request is ABOUT occurrences. With none known for the group being
+     *     operated (nothing scheduled, or the schedule or answers not landed
+     *     yet) nothing is sent: the same gate the Overview item, the board and
+     *     Chase all read (availabilityChaseContext).
+     *   · The log is written through availabilityLogRequest — the one request
+     *     log, stamped with club, group and week — one entry per occurrence,
+     *     and only after the server confirms it reached somebody.
+     *   · One tap is one request: a second tap while the first is in flight
+     *     does nothing.
+     *
+     * Returns { sent } — the PEOPLE the server reached — so a caller can tell
+     * a request that went from one that did not.
+     */
+    let _availRequestNowInFlight = false;
     async function sendAvailabilityNow() {
-      if (!isCoach()) return showToast("Only coaches can send availability requests");
+      if (!isCoach()) { showToast("Only coaches can send availability requests"); return { sent: 0 }; }
+      if (_availRequestNowInFlight) return { sent: 0 };
+      const asked = typeof availabilityChaseContext === 'function' ? availabilityChaseContext() : null;
+      if (!asked || asked.status !== 'ready') {
+        showToast(asked && asked.status === 'empty' ? 'Nothing is scheduled this week — there is nothing to ask about'
+          : asked && asked.status === 'unknown' ? 'Availability could not be loaded — refresh before asking'
+          : 'Availability is still loading — try again in a moment');
+        return { sent: 0 };
+      }
       const body = state.availabilityTemplate || "Please set your availability for this week.";
+      _availRequestNowInFlight = true;
       try {
         const res = await fetch('/api/push', {
           method:  'POST',
@@ -13062,21 +13094,44 @@
             title:     `${state.clubName || 'CoachEasier'} — Availability check`,
             body,
             from:      currentUser()?.name || 'Coach',
-            type:      'availability',   // ← triggers YES/NO buttons on lock screen
+            type:      'availability',
             group:     state.operationalGroupId || undefined,
-            sessionId: 'game',           // default; coach can specify per session later
+            // The request speaks for the whole week, so it names no single
+            // occurrence (and the notification carries no answer buttons).
+            sessionId: 'game',
           }),
         });
-        const data = await res.json();
-        if (data.sent > 0) showToast(`Availability request sent to ${data.sent} player${data.sent>1?'s':''} ✓ — they can reply from the notification`);
-        else if (data.total === 0) showToast("No subscribers yet — players need to enable notifications first");
-        else showToast(`Sent (${data.sent}/${data.total} delivered)`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          showToast('Could not send: ' + (data.error || `HTTP ${res.status}`));
+          return { sent: 0 };
+        }
+        const reached = (data.reached !== undefined && data.reached !== null && Number.isFinite(Number(data.reached)))
+          ? Number(data.reached) : (Number(data.sent) || 0);
+        if (reached <= 0) {
+          showToast(Number(data.total) > 0
+            ? 'The request could not be delivered — nobody was reached'
+            : "No subscribers yet — players need to enable notifications first");
+          return { sent: 0 };
+        }
+        // IT WENT. Only now do the message rows and the request log exist.
+        // The push is group-scoped by the server; the local rows count the
+        // same audience, not the whole club.
+        const created = createCoachMessage({ recipients: operationalPlayers(), type: "Availability request", body });
+        const messageIds = created.map(m => m.id);
+        asked.sessions.forEach(session => availabilityLogRequest(session, messageIds));
+        const intended = asked.roster.length;
+        showToast(reached >= intended
+          ? `Availability request sent to ${reached} player${reached > 1 ? 's' : ''} ✓`
+          : `Availability request sent to ${reached} of ${intended} players — ${intended - reached} could not be reached`);
+        render();
+        return { sent: reached };
       } catch(e) {
-        showToast("Push unavailable offline — message saved locally");
+        showToast("You appear to be offline — the request was not sent");
+        return { sent: 0 };
+      } finally {
+        _availRequestNowInFlight = false;
       }
-      // The push above is group-scoped by the server; the local message rows
-      // must count the same audience, not the whole club.
-      createCoachMessage({ recipients: operationalPlayers(), type:"Availability request", body });
     }
 
     // ─── DRAG & DROP FORMATION ────────────────────────────────────────────────
@@ -17519,7 +17574,10 @@
       if (!(await ceConfirm('Send the weekly availability reminder?', 'Active players in your club get one reminder now to set their availability for the week.', { confirmLabel: 'Send reminder' }))) return;
       if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
       try {
-        await sendAvailabilityNow();
+        // "Sent" is stamped only when it was (Build 105): a request that was
+        // refused, reached nobody or never left must not read as a send.
+        const outcome = await sendAvailabilityNow();
+        if (!outcome || !(outcome.sent > 0)) return;
         const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
         wa.lastSentAt = new Date().toISOString();
         state.weeklyAvailability = wa;
@@ -19026,10 +19084,9 @@
     }
 
     // Send a push reminder to all players who have not replied for a specific session.
-    // Reuses the existing /api/push endpoint with audience:'no-reply'. The server
-    // checks recentResponders(7) — players who answered any session in the last 7 days
-    // are excluded. For single-session targeting, the coach can use the session title
-    // in the push body so players know which session needs a response.
+    // Reuses the existing /api/push endpoint with audience:'no-reply'. The session
+    // named here IS the scope: since Build 104 the server reminds the players of this
+    // group who hold no answer to THIS occurrence, by player id.
     async function remindNonResponders(sessionId) {
       if (!isCoach()) return showToast("Only coaches can send reminders");
       const session = coachAvailEvents().find(e => e.id === sessionId)

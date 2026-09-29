@@ -94,6 +94,13 @@ function client({ groups, opGid, players }) {
     ${fn('chatEnsureGroupChannel')}
     ${fn('sendAvailabilityRequest')}
     ${fn('sendAllAvailabilityRequests')}
+    // Build 105: the Overview action asks about this week's occurrences and logs
+    // what it sent. These tests exercise CHANNEL and AUDIENCE isolation, so — as
+    // for the senders above — the schedule rows stand in for the canonical week.
+    let _availRequestNowInFlight = false;
+    function availabilityChaseContext() {
+      return { status: 'ready', sessions: coachAvailEvents(), roster: operationalPlayers(), nonResponders: [], requested: [] };
+    }
     ${fn('sendAvailabilityNow')}
     return { state, posts,
       sendAvailabilityRequest, sendAllAvailabilityRequests, sendAvailabilityNow,
@@ -171,6 +178,10 @@ test('send-all and the Overview quick action scope their recipients the same way
   assert.ok(c2.state.messages.every(m => m.to === 'Youth One'), 'quick action too');
   const push = c2.posts.find(p => p.url.includes('/api/push'));
   assert.equal(push.body.group, 'grp_u18', 'and its push still names the group');
+  // Build 105: what it asked is recorded in the ONE request log, for ITS group.
+  assert.equal(c2.state.messages.length, 1, 'one row, for the one U18 player');
+  assert.deepEqual(c2.state.availabilityRequests.map(r => [r.sessionId, r.status, r.groupId]).sort(),
+    [['thu', 'sent', 'grp_u18'], ['tue', 'sent', 'grp_u18']]);
 });
 
 test('the channel rule mirrors the Messages UI condition — one convention, verbatim', () => {
