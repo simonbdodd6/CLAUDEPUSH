@@ -150,9 +150,14 @@ test('cron weekly reminder handler targets only active members (end-to-end)', as
   process.env.VAPID_PUBLIC_KEY = vapid.publicKey;
   process.env.VAPID_PRIVATE_KEY = vapid.privateKey;
   process.env.CRON_SECRET = 'cron-secret';
+  // CONTRACT CHANGE (Build 105): the weekly no-reply reminder goes to PLAYERS
+  // who owe an answer for this week, judged in their own group — so the
+  // members here are given the role every real joined player carries. What
+  // this case protects is unchanged: a removed member and a device with no
+  // membership are never reached.
   store.set('app:identity:team_members', JSON.stringify([
-    { teamId: 'beta-test-club', userId: 'amy',  status: 'active' },   // member → targeted
-    { teamId: 'beta-test-club', userId: 'gone', status: 'removed' },  // removed → excluded
+    { teamId: 'beta-test-club', userId: 'amy',  role: 'player', status: 'active' },   // member → targeted
+    { teamId: 'beta-test-club', userId: 'gone', role: 'player', status: 'removed' },  // removed → excluded
   ]));
   const sub = endpoint => ({ subscription: { endpoint, keys: { p256dh: vapid.publicKey, auth: 'AAAAAAAAAAAAAAAAAAAAAA' } } });
   store.set('app:subscriptions', JSON.stringify([

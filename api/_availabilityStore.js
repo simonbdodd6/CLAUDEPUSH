@@ -296,9 +296,10 @@ const ANSWERS = new Set(['available', 'unavailable', 'maybe']);
  *                       the lookback window (the request shape of a client
  *                       from before this build, which names no occurrence).
  *
- * recentResponders() below is the older, global form. It matched display
- * names across every club, so a same-named player answering elsewhere
- * silenced this club's reminder; the coach chase no longer calls it.
+ * This replaced recentResponders(), a seven-day union over every club that
+ * matched display names: a same-named player answering elsewhere silenced
+ * this club's reminder. The coach chase stopped calling it in Build 104 and
+ * the scheduled reminders in Build 105; with no caller left it was removed.
  */
 export async function respondersByIdentity(clubId, groupIds = [], { sessionIds = [], withinDays = 7, now = Date.now() } = {}) {
   const ids = new Set();
@@ -322,32 +323,4 @@ export async function respondersByIdentity(clubId, groupIds = [], { sessionIds =
     }));
   }
   return ids;
-}
-
-/** Labels with an availability reply during the chase-up lookback period.
- *  Deliberately a global union (all clubs + legacy): its consumers (weekly
- *  reminder cron, no-reply push audiences) already scope their RECIPIENTS by
- *  club membership; this set only suppresses double-chasing responders. The
- *  `app:availability:*` pattern matches team-scoped keys too. */
-export async function recentResponders(withinDays = 7) {
-  const cutoff = Date.now() - withinDays * 24 * 60 * 60 * 1000;
-  const patterns = [...new Set([`${APP_PREFIX}:availability:*`, `${LEGACY_PREFIX}:availability:*`])];
-  const redisKeys = (await Promise.all(patterns.map(pattern => kvScanKeys(pattern))))
-    .flat();
-  const sessions = await Promise.all([...new Set(redisKeys)].map(redisKey => kvGet(redisKey)));
-  const labels = new Set();
-
-  sessions.filter(Boolean).forEach(session => {
-    Object.entries(session).forEach(([label, value]) => {
-      // Older responses without a timestamp cannot prove they happened within
-      // seven days, so they must not suppress a current chase-up reminder.
-      if (value?.respondedAt && new Date(value.respondedAt).getTime() >= cutoff) {
-        labels.add(label);
-        if (value.label) labels.add(value.label);
-        if (value.userId) labels.add(value.userId);
-        if (value.playerId) labels.add(value.playerId);
-      }
-    });
-  });
-  return labels;
 }

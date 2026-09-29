@@ -2,7 +2,11 @@
 // cron-job.org calls every 5 minutes; Vercel Cron supplies daily fallback runs.
 import webpush from 'web-push';
 import { load, save, activeMemberIdSet, subscriptionsForMembers } from './_lib.js';
-import { recentResponders } from './_availabilityStore.js';
+import { respondersByIdentity } from './_availabilityStore.js';
+import { loadClubStructure } from './_structureStore.js';
+import { resolvePlayerGroup } from './_accessScope.js';
+import { occurrencesForWeek, weekStartOf, todayIso } from './_availabilityWeek.js';
+import { chaseOccurrenceIds } from './push.js';
 import { kvGet, kvSet, kvSetNX, kvDel, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { resolveVariables } from './_variables.js';
@@ -108,6 +112,88 @@ export function availabilityActions(type, sessionId = 'game') {
     { action: 'unavailable', title: 'Not available' },
     { action: 'maybe', title: 'Maybe' },
   ];
+}
+
+/**
+ * WHO A SCHEDULED NO-REPLY REMINDER MAY REACH, in one club (Build 105).
+ *
+ * The question, asked the way Build 104 taught the coach's own chase to ask
+ * it: which PLAYERS in this club, in THEIR group, have not answered any of
+ * THIS week's occurrences for that group — by player id.
+ *
+ * It used to be answered with a seven-day union of every answer in every
+ * club, against which a recipient was dropped when their DISPLAY NAME
+ * appeared. A John Smith answering in another club silenced this
+ * club's John Smith; two John Smiths in one club were one person; an answer
+ * given last week excused a player from this week.
+ *
+ *   club        — `teamId`, plus `memberIds`: the caller's own set of this
+ *                 club's active members. Nobody outside it is considered.
+ *   group       — each player is judged in the group they PLAY in
+ *                 (resolvePlayerGroup, which resolves nothing for a
+ *                 membership that is not active). Staff-only members owe no
+ *                 answer. A player nobody has placed in a group is never
+ *                 guessed into one.
+ *   occurrence  — this week's, for that group, from the same generator the
+ *                 Availability board uses (occurrencesForWeek over the
+ *                 group's own training slots and fixtures). `named` narrows
+ *                 it to the occurrences a schedule names — and only where
+ *                 they ARE this week's for that group.
+ *   identity    — respondersByIdentity: durable ids, this club's records,
+ *                 this group's keyspace. No display name is read.
+ *
+ * FAIL CLOSED. A group with no occurrence this week reminds nobody. Anything
+ * that cannot be read throws, and the caller reminds nobody in that club.
+ *
+ * publish.js is imported when called, not at load: it imports this module for
+ * the coach's "run scheduler check now" button.
+ */
+export async function subscriptionsOwingAnAnswer(teamId, { members = [], memberIds = null, subscribers = [], now = new Date(), named = [] } = {}) {
+  const { readTrainingSchedule, readClubFixtures, fixtureGroupOf } = await import('./publish.js');
+  const structure = await loadClubStructure(teamId);
+  const allowed = memberIds instanceof Set ? memberIds : null;
+  const byGroup = new Map();
+  for (const member of (Array.isArray(members) ? members : [])) {
+    if (!member || !member.userId) continue;
+    if (String(member.teamId) !== String(teamId)) continue;
+    if (allowed && !allowed.has(String(member.userId))) continue;
+    const { groupId } = resolvePlayerGroup(member, structure);
+    if (!groupId) continue;
+    if (!byGroup.has(groupId)) byGroup.set(groupId, []);
+    byGroup.get(groupId).push(String(member.userId));
+  }
+  const week = weekStartOf(todayIso(now));
+  const { fixtures } = await readClubFixtures(teamId);
+  const wanted = new Set((Array.isArray(named) ? named : []).map(String));
+  const scope = { teamId, week, targets: [], candidates: 0, answered: 0, groups: [] };
+  const seen = new Set();
+  for (const [groupId, playerIds] of byGroup) {
+    const { record } = await readTrainingSchedule(teamId, groupId);
+    let occurrences = occurrencesForWeek(week, {
+      fixtures: fixtures.filter(fx => fixtureGroupOf(fx) === groupId),
+      slots: Array.isArray(record?.slots) ? record.slots : [],
+      currentWeekStart: week,
+    }).map(occurrence => occurrence.id);
+    if (wanted.size) occurrences = occurrences.filter(id => wanted.has(id));
+    const candidates = subscriptionsForMembers(subscribers, new Set(playerIds));
+    scope.candidates += candidates.length;
+    if (!occurrences.length) {
+      scope.groups.push({ groupId, players: playerIds.length, occurrences: 0, reminded: 0, reason: 'no occurrence this week' });
+      continue;
+    }
+    const responded = await respondersByIdentity(teamId, [groupId], { sessionIds: occurrences });
+    const owing = candidates.filter(item =>
+      ![item.userId, item.playerId, item.legacyPlayerId].some(value => value && responded.has(String(value).toLowerCase())));
+    scope.answered += candidates.length - owing.length;
+    for (const item of owing) {
+      const endpoint = item?.subscription?.endpoint;
+      if (!endpoint || seen.has(endpoint)) continue;
+      seen.add(endpoint);
+      scope.targets.push(item);
+    }
+    scope.groups.push({ groupId, players: playerIds.length, occurrences: occurrences.length, reminded: owing.length });
+  }
+  return scope;
 }
 
 // Daily UTC hours the Vercel crons run (keep in sync with vercel.json). Used only
@@ -298,14 +384,35 @@ export default async function handler(req, res) {
     const reminderClubIds = [...new Set(reminderMembers
       .filter(m => m.status === 'active' && m.teamId)
       .map(m => String(m.teamId)))];
-    const scopedMemberIds = new Set();
+    // ── WHO OWES AN ANSWER, club by club (Build 105) ──
+    // Each club is asked about its OWN players, groups and occurrences
+    // (subscriptionsOwingAnAnswer). A club whose records cannot be read
+    // reminds nobody — and does not stop the next club being served.
+    const owing = [];
+    const seenEndpoints = new Set();
+    let candidateCount = 0, answeredCount = 0;
+    const unavailable = [];
     for (const clubId of reminderClubIds) {
-      for (const id of activeMemberIdSet(reminderMembers, clubId)) scopedMemberIds.add(id);
+      let scope;
+      try {
+        scope = await subscriptionsOwingAnAnswer(clubId, {
+          members: reminderMembers, memberIds: activeMemberIdSet(reminderMembers, clubId), subscribers,
+        });
+      } catch {
+        unavailable.push(clubId);
+        continue;
+      }
+      candidateCount += scope.candidates;
+      answeredCount += scope.answered;
+      for (const item of scope.targets) {
+        const endpoint = item.subscription.endpoint;
+        if (seenEndpoints.has(endpoint)) continue;        // one person in two clubs: one reminder per device
+        seenEndpoints.add(endpoint);
+        owing.push(item);
+      }
     }
-    const memberSubscribers = subscriptionsForMembers(subscribers, scopedMemberIds);
-    const responded = await recentResponders(7);
     const reminderPrefs = await loadNotificationPreferenceMap();
-    const targets = memberSubscribers.filter(item => !responded.has(item.label))
+    const targets = owing
       .filter(item => notificationAllowed(reminderPrefs, item.userId, { type: 'availability', sessionId: 'game' }));
     const title = 'Availability reminder';
     const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in CoachEasier. - {{coach_name}}";
@@ -335,10 +442,14 @@ export default async function handler(req, res) {
     // log — correct here, since the content is generic and the totals global.
     await kvLpush(key('message_log'), {
       type: 'reminder', title, body: body.slice(0, 200), sentAt: new Date().toISOString(),
-      audience: 'no-reply', sent, failed, total: targets.length, skipped: responded.size,
+      audience: 'no-reply', sent, failed, total: targets.length, skipped: answeredCount,
     });
     await kvLtrim(key('message_log'), 500);
-    return res.status(200).json({ ok: true, sent, failed, skipped: responded.size, total: targets.length });
+    return res.status(200).json({
+      ok: true, sent, failed, skipped: answeredCount, total: targets.length,
+      // Clubs whose records could not be read this run: nobody there was reminded.
+      ...(unavailable.length ? { unavailable: unavailable.length } : {}),
+    });
   }
 
   const now = new Date();
@@ -377,9 +488,22 @@ export default async function handler(req, res) {
       continue;
     }
     let targetSubscribers = subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, schedule.teamId));
+    let scopeNote;
     if (schedule.audience === 'no-reply') {
-      const responded = await recentResponders(7);
-      targetSubscribers = targetSubscribers.filter(item => !responded.has(item.label));
+      // The schedule's own club, its players in their own groups, this
+      // week's occurrences — or the one the schedule names, where it is this
+      // week's — and ids only (Build 105). Anything unreadable: nobody.
+      try {
+        const scope = await subscriptionsOwingAnAnswer(schedule.teamId, {
+          members: automationMembers, memberIds: activeMemberIdSet(automationMembers, schedule.teamId), subscribers, now,
+          named: chaseOccurrenceIds({ sessionId: schedule.sessionId }),
+        });
+        targetSubscribers = scope.targets;
+        if (!scope.groups.some(group => group.occurrences > 0)) scopeNote = 'No occurrence this week for this schedule; nobody reminded';
+      } catch {
+        targetSubscribers = [];
+        scopeNote = 'Availability could not be read; nobody reminded';
+      }
     }
     const notificationType = template.category === 'availability' ? 'availability' : 'message';
     const schedulePrefs = await loadNotificationPreferenceMap();
@@ -418,7 +542,7 @@ export default async function handler(req, res) {
       body: resolveVariables(template.body, { coachName: schedule.coachName || 'Coach' }).slice(0, 200),
       sentAt: now.toISOString(), audience: schedule.audience || 'all',
       sent, failed, total: targetSubscribers.length,
-      note: !targetSubscribers.length ? 'No eligible players; everyone may have responded' : undefined,
+      note: scopeNote || (!targetSubscribers.length ? 'No eligible players; everyone may have responded' : undefined),
     });
     await kvLtrim(key('message_log'), 500);
     results.push({ scheduleId: schedule.id, templateId: template.id, sent, failed, total: targetSubscribers.length });
