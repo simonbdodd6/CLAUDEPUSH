@@ -6943,6 +6943,10 @@
         { id: "game", type: "Match",    title: "Match",              date: "", focus: "", target: 0, deadline: "", published: false, publishedAt: null }
       ],
       fixtures: [],
+      // When the server last confirmed this device's fixture list (Build 107).
+      // '' = never for this club: the list above is not yet KNOWN, and the
+      // Availability screen must not invent a generic match card from it.
+      fixturesSyncedAt: '',
       messages: [],
       availabilityRequests: [],
       // UNSENT availability submissions, keyed by canonical session id. A
@@ -8969,6 +8973,7 @@
         fixtures: contextFixtures().map(normalizeFixture).filter(Boolean),
         slots: (_trainingSchedule && _trainingSchedule.slots) || [],
         currentWeekStart: availWeekStart(availToday()),
+        fixturesKnown: typeof fixturesKnown === 'function' ? fixturesKnown() : true,
       });
     }
 
@@ -9053,10 +9058,14 @@
       ensureTrainingSchedule();
       if (!_trainingSchedule || _trainingScheduleGroupId !== trainingGroupParam()) return context('loading');
       if (currentResolvedAvailability() === null) return context('loading');
+      // The fixture list is a source too: until the server has confirmed it
+      // for this club, the week's occurrences are not yet knowable (Build 107).
+      if (typeof fixturesKnown === 'function' && !fixturesKnown()) return context('loading');
       const sessions = availabilityEventsForWeek(week, {
         fixtures: contextFixtures().map(normalizeFixture).filter(Boolean),
         slots: _trainingSchedule.slots || [],
         currentWeekStart: currentWeek,
+        fixturesKnown: true,
       });
       if (!sessions.length) return context('empty');
       return context('ready', {
@@ -15088,6 +15097,12 @@
       // typeof-guarded: several suites extract setSection() on its own.
       if (typeof coachSectionEntered === 'function') coachSectionEntered(view === 'coach' ? section : null);
       render();
+      // Entering Availability re-reads the club's fixtures (Build 107) — an
+      // action on entry, not a side effect of painting, and not more than once
+      // every 30s: a player flicking between tabs has nothing new to learn.
+      if (view === 'player' && section === 'availability' && typeof refreshPlayerFixtures === 'function') {
+        refreshPlayerFixtures({ maxAgeMs: 30000 }).catch(() => {});
+      }
     }
 
     /**
@@ -17985,8 +18000,125 @@
         const res = await fetch('/api/publish?resource=fixtures');
         if (!res.ok) return;
         const data = await res.json();
-        if (Array.isArray(data.fixtures)) { state.fixtures = data.fixtures; saveState('Fixtures synced'); }
+        if (Array.isArray(data.fixtures)) {
+          state.fixtures = data.fixtures;
+          if (typeof noteFixturesSynced === 'function') noteFixturesSynced();   // the list is known (Build 107)
+          saveState('Fixtures synced');
+        }
       } catch { /* offline — keep local view */ }
+    }
+
+    // ─── PLAYER FIXTURE FRESHNESS (Build 107) ────────────────────────────────
+    // A player's device learned the club's fixtures ONCE, at page load or
+    // sign-in (loadClubConfigFromServer, latched by _clubConfigChecked), and
+    // returning to the app re-read only the player's own answers. A fixture
+    // added or moved after that load did not exist for the device until the
+    // app was fully reopened — and even then the list landed after the first
+    // paint and nothing repainted the Availability screen, so the player saw
+    // last week's cards, or a generic undated "Match" (with no fixtures known,
+    // the generic card was offered) whose answer was stored under `game` and
+    // never reached the coach's board for the real Saturday match.
+    //
+    // Three rules, all client-side; the server write path is untouched:
+    //   KNOWN    — the list is only a basis for decisions once the server has
+    //              confirmed it for THIS club (fixturesKnown). Until then the
+    //              week's occurrences are "not told yet", never "none".
+    //   REPAINT  — when a confirmed list lands and what the player can SEE
+    //              changed (fixturesFingerprint), the screen they are on is
+    //              repainted. Identical data repaints nothing.
+    //   REFRESH  — returning to the app, and entering Availability, re-read the
+    //              list: one request, shared while in flight, coalesced across
+    //              the visibility/focus pair, never from a render.
+
+    /**
+     * Is this device's fixture list the club's confirmed list? True once a
+     * server reply has been adopted for the club in force, and only while the
+     * persisted state is proven to be that club's (clubStateOwned). Fails
+     * closed: a fresh device, a fresh sign-in, a club switch and the boot
+     * window before the session answer are all "not known".
+     */
+    function fixturesKnown() {
+      try { return clubStateOwned() && !!String(state.fixturesSyncedAt || ''); }
+      catch { return false; }
+    }
+
+    /** A server fixture list was adopted. Returns true when the list just became KNOWN. */
+    function noteFixturesSynced() {
+      const was = fixturesKnown();
+      state.fixturesSyncedAt = new Date().toISOString();
+      return !was && fixturesKnown();
+    }
+
+    /**
+     * What the player can SEE of a fixture list — the fields the Availability,
+     * Home and Fixtures screens read — so a re-read that changes nothing
+     * visible (or only arrives in the sanitised server spelling of the same
+     * record) repaints nothing.
+     */
+    function fixturesFingerprint(list) {
+      return JSON.stringify((Array.isArray(list) ? list : []).map(normalizeFixture).filter(Boolean)
+        .map(f => [f.id, f.groupId, f.sideId, f.team, f.date, f.kickoffTime, f.opposition, f.venue, f.homeAway, f.status, f.competition]));
+    }
+
+    /** Repaint the player screen that shows fixtures. Returns true when one was repainted. */
+    function repaintPlayerFixtures() {
+      if (typeof state === 'undefined' || !state || state.activeView !== 'player') return false;
+      const section = state.activePlayerSection;
+      if (section === 'availability') renderPlayerAvailabilityV2();
+      else if (section === 'home' && typeof renderPlayerHome === 'function') renderPlayerHome();
+      else if (section === 'fixtures' && typeof renderPlayerFixtures === 'function') renderPlayerFixtures();
+      else return false;
+      return true;
+    }
+
+    /**
+     * A confirmed fixture list has just been adopted into state. Repaints the
+     * player's screen when the list became known or what they can see changed.
+     * `before` is the fingerprint taken BEFORE the list was adopted.
+     */
+    function fixturesArrived(before, becameKnown) {
+      const changed = !!becameKnown || fixturesFingerprint(state.fixtures) !== before;
+      if (changed) repaintPlayerFixtures();
+      return changed;
+    }
+
+    let _playerFixturesInFlight = null;   // the one request in flight, shared by every caller meanwhile
+    let _playerFixturesLandedAt = 0;      // when the last re-read landed (ms), for coalescing
+    /**
+     * Re-read the club's fixtures for the player in view. Called from the
+     * lifecycle (return to the app, entering Availability) — never from a
+     * render. `maxAgeMs` skips the request when one landed that recently:
+     * the visibility and focus events fire as a pair on a phone, and a section
+     * re-entered a few seconds later has nothing new to learn.
+     * Resolves true when the screen was repainted, false when nothing changed,
+     * null when nothing was (or could be) asked.
+     */
+    async function refreshPlayerFixtures({ maxAgeMs = 0 } = {}) {
+      if (typeof state === 'undefined' || !state || state.activeView !== 'player') return null;
+      if (typeof sessionSignedOut === 'function' && sessionSignedOut()) return null;
+      if (!clubStateOwned()) return null;                          // no club in force: nothing to ask for
+      if (_playerFixturesInFlight) return _playerFixturesInFlight;
+      if (maxAgeMs > 0 && Date.now() - _playerFixturesLandedAt < maxAgeMs) return null;
+      const forClub = String(_clubContextId || '');
+      _playerFixturesInFlight = (async () => {
+        try {
+          const res = await fetch('/api/publish?resource=fixtures');
+          if (!res.ok) return null;
+          const data = await res.json().catch(() => null);
+          if (!data || !Array.isArray(data.fixtures)) return null;
+          // A reply for a club this device has since left describes the wrong
+          // club (the Build 97 rule): discard it.
+          if (String(_clubContextId || '') !== forClub || !clubStateOwned()) return null;
+          _playerFixturesLandedAt = Date.now();
+          const before = fixturesFingerprint(state.fixtures);
+          const becameKnown = noteFixturesSynced();
+          if (fixturesFingerprint(data.fixtures) !== before) state.fixtures = data.fixtures;
+          if (becameKnown || fixturesFingerprint(state.fixtures) !== before) saveState('Fixtures synced');
+          return fixturesArrived(before, becameKnown);
+        } catch { return null; }                                   // offline — keep the local view
+        finally { _playerFixturesInFlight = null; }
+      })();
+      return _playerFixturesInFlight;
     }
 
     function renderCoachOverview() {
@@ -18346,6 +18478,7 @@
         fixtures: contextFixtures().map(normalizeFixture).filter(Boolean),
         slots: (_trainingSchedule && _trainingSchedule.slots) || [],
         currentWeekStart: availWeekStart(availToday()),
+        fixturesKnown: typeof fixturesKnown === 'function' ? fixturesKnown() : true,
       });
     }
 
@@ -21789,9 +21922,17 @@
      * an upcoming fixture — they had not). A dated fixture never inherits a
      * generic `game` answer — that identity cannot be proven, so it is not
      * claimed.
+     *
+     * `fixturesKnown` (Build 107): whether the fixture list handed in is the
+     * club's CONFIRMED list, or merely what this device holds while the list
+     * is still loading. An empty list that is not yet known is not "no
+     * fixtures" — it is "not told yet" — and offering the generic card then
+     * had a player answer `game` for a real Saturday fixture that arrived a
+     * moment later. Unknown ⇒ no invented match; the screen repaints once
+     * the list lands. Callers that have no such signal keep today's rule.
      */
     function availabilityEventsForWeek(weekStartIso, sources = {}) {
-      const { fixtures = [], slots = [], currentWeekStart = '' } = sources;
+      const { fixtures = [], slots = [], currentWeekStart = '', fixturesKnown = true } = sources;
       const weekEnd = availAddDays(weekStartIso, 6);
       const isCurrentWeek = weekStartIso === currentWeekStart;
       const events = [];
@@ -21829,11 +21970,11 @@
         });
       }
       // The generic weekly match slot survives only for a group with NO
-      // fixture records at all. Any real fixture — any week, any status —
-      // proves this group identifies its matches, so a match question must
-      // name a fixture; the generic card would collect answers that attach
-      // to nothing.
-      if (isCurrentWeek && !weekFixtures.length && !(fixtures || []).length) {
+      // fixture records at all — and only once the list is KNOWN to be empty.
+      // Any real fixture — any week, any status — proves this group
+      // identifies its matches, so a match question must name a fixture; the
+      // generic card would collect answers that attach to nothing.
+      if (isCurrentWeek && fixturesKnown && !weekFixtures.length && !(fixtures || []).length) {
         events.push({ id: 'game', type: 'match', legacy: true, date: '', time: '',
                       title: 'Match', opponent: '', venue: '', sourceId: 'game' });
       }
@@ -21944,6 +22085,8 @@
         fixtures: contextFixtures().map(normalizeFixture).filter(Boolean),
         slots: (_trainingSchedule && _trainingSchedule.slots) || [],
         currentWeekStart: availWeekStart(availToday()),
+        // No generic match while the list is still loading (Build 107).
+        fixturesKnown: typeof fixturesKnown === 'function' ? fixturesKnown() : true,
       });
     }
 
@@ -26890,6 +27033,7 @@
           if (club) {
             applyClubConfigLocally(club);
             if (Array.isArray(club.fixtures)) state.fixtures = club.fixtures;
+            if (typeof noteFixturesSynced === 'function') noteFixturesSynced();   // the club's list is known here too (Build 107)
           }
         }
         // Only the IDENTITY fetch carries the roster (members/users/profiles). A
@@ -45222,6 +45366,7 @@
       _trainingScheduleAttempted = false;
       _groupRecipients = {};         // group ids are per-club (grp_initial collides across clubs)
       _clubConfigChecked = false; _publishedStateLoadedAt = 0;
+      if (typeof _playerFixturesLandedAt !== 'undefined') _playerFixturesLandedAt = 0;   // the next club's fixtures are read at once (Build 107)
       // The Members data is per-club. Flipping `loaded` alone left the previous
       // club's members, users, invites and structure access in memory to be
       // painted under the next club until a refetch happened — and kept if
@@ -45267,6 +45412,7 @@
       state.stateTeamId = null;
       state.players = [];
       state.fixtures = [];
+      state.fixturesSyncedAt = '';   // the next club's list is not known until its server answers (Build 107)
       state.clubName = ''; state.teamName = ''; state.seasonName = '';
       state.clubLogo = ''; state.clubColours = null;
       state.matchCentre = structuredClone(defaultState.matchCentre);
@@ -45447,11 +45593,27 @@
         try { markSynced(); } catch {}
         if (isCoach()) ensureAutopilotSchedule().catch(() => {});
         const data = await res.json();
+        // The club's answer carries its fixture list (a club with no record
+        // has none): from here the list is KNOWN, and a list that changed what
+        // the player can see repaints their screen (Build 107). Before, this
+        // redrew the navigation only, so a fixture that landed after the first
+        // paint stayed off the Availability screen until something else drew it.
+        // (typeof-guarded: several suites extract this function on its own.)
+        const fixturesBefore = typeof fixturesFingerprint === 'function' ? fixturesFingerprint(state.fixtures) : '';
+        const fixturesBecameKnown = typeof noteFixturesSynced === 'function' ? noteFixturesSynced() : false;
+        // A confirmed list just landed: a section entered in the next 30s has
+        // nothing newer to ask for (refreshPlayerFixtures coalesces on this).
+        if (typeof _playerFixturesLandedAt !== 'undefined') _playerFixturesLandedAt = Date.now();
         if (data.club) {
-          if (applyClubConfigLocally(data.club)) { saveState('Club settings loaded'); renderNav(); }
+          const changed = applyClubConfigLocally(data.club);
+          if (changed || fixturesBecameKnown) saveState('Club settings loaded');
+          if (changed) renderNav();
           applyClubBranding();
+          if (typeof fixturesArrived === 'function') fixturesArrived(fixturesBefore, fixturesBecameKnown);
           return;
         }
+        if (fixturesBecameKnown) saveState('Fixtures synced');
+        if (typeof fixturesArrived === 'function') fixturesArrived(fixturesBefore, fixturesBecameKnown);
         if (!isCoach()) return;
         if ((state.clubName || '').trim()) {
           // Existing beta coach: seed the server record from local state once
@@ -47012,6 +47174,10 @@
       // a reload. No timer, no polling — the once-per-session latch is released
       // here and nowhere else.
       if (state.activeView === 'player' && typeof playerAvailRetryNow === 'function') playerAvailRetryNow();
+      // And the club's fixtures (Build 107): a match added or moved while the
+      // app was away must exist for this device without a full reopen. One
+      // request; the visibility and focus events that fire together share it.
+      if (state.activeView === 'player' && typeof refreshPlayerFixtures === 'function') refreshPlayerFixtures({ maxAgeMs: 1500 }).catch(() => {});
       // Returning to the app is the cheapest honest moment to send anything
       // this device is still holding. No timer, no polling.
       availabilityFlushPending().catch(() => {});
