@@ -317,10 +317,25 @@ function completedProfile() {
  * DOM, network and storage stubbed. `posts` records every successful
  * save_athlete_profile POST body.
  */
+// The sync sandbox's clock is FROZEN. Every timestamp the completion path
+// stamps — profile.updatedAt, onboarding.completedAt, the projection's `now` —
+// is this one instant, so a synced payload is byte-for-byte deterministic. It
+// was not: test 21 scans the whole payload for the health numbers it forbids
+// ("104", "188"), and once in roughly five hundred runs the live clock's
+// milliseconds spelled one of them inside a timestamp. Freezing the clock
+// keeps the full-payload scan (a real leak anywhere still fails) without the
+// race. Same shape as the app's own tests pin elsewhere: only the sandbox's
+// Date is replaced; the module under test is untouched.
+const FROZEN_AT = Date.parse('2026-08-26T10:30:00.000Z');
+class FrozenDate extends Date {
+  constructor(...a) { if (a.length === 0) super(FROZEN_AT); else super(...a); }
+  static now() { return FROZEN_AT; }
+}
+
 function syncShell({ profile = completedProfile(), completedAt = null, step = 'review',
                      fetchImpl = null } = {}) {
   const posts = [];
-  const build = new Function('state', 'posts', 'authoringProfileFrom', 'fetchImpl', `
+  const build = new Function('state', 'posts', 'authoringProfileFrom', 'fetchImpl', 'Date', `
     let _perfObError = '', _perfObShowDone = false, _perfObReturn = null, _perfProfileSync = 'device';
     const _perfWkMod = { authoringProfileFrom };
     const fetch = fetchImpl || ((url, opts) => {
@@ -361,7 +376,7 @@ function syncShell({ profile = completedProfile(), completedAt = null, step = 'r
   `);
   const state = { currentUserId: 'u-self', performanceProfile: profile === null ? null : {
     profile, onboarding: { step, startedAt: 'x', completedAt, skippedSteps: [] } } };
-  return { posts, state, api: build(state, posts, authoringProfileFrom, fetchImpl) };
+  return { posts, state, api: build(state, posts, authoringProfileFrom, fetchImpl, FrozenDate) };
 }
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -378,7 +393,7 @@ test('20. "Finish setup" publishes the authoring projection — exactly one POST
 });
 
 test('21. the completion payload is the minimised projection — usable, no health data', async () => {
-  const { posts, api } = syncShell();
+  const { posts, api, state } = syncShell();
   api.perfObSubmit();
   await tick();
   const sent = posts[0].body.profile;
@@ -386,6 +401,12 @@ test('21. the completion payload is the minimised projection — usable, no heal
   assert.equal(authoringProfileUsable(sent), true, 'the server copy can drive generation');
   assert.equal(sent.profileComplete, true);
   const json = JSON.stringify(sent);
+  // Every timestamp in the payload is the frozen instant: the scan below reads
+  // the profile's content, never the digits of a live clock.
+  const stamps = json.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g) || [];
+  assert.ok(stamps.length > 0, 'the payload is stamped');
+  assert.ok(stamps.every(v => v === new Date(FROZEN_AT).toISOString()), 'every stamp is the frozen clock: ' + JSON.stringify(stamps));
+  assert.equal(state.performanceProfile.onboarding.completedAt, new Date(FROZEN_AT).toISOString(), 'completion is stamped by the same clock');
   for (const secret of ['left knee', 'sore after match', 'ACL 2024', 'no deep squats', '104', '188']) {
     assert.ok(!json.includes(secret), `must not sync "${secret}"`);
   }

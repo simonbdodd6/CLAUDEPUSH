@@ -516,6 +516,10 @@ function dualServer() {
   return { srv, st, PLAYERS };
 }
 
+/** A condition wait that names its step when it times out — an anonymous timeout under load told nothing. */
+const awaitStep = (page, step, fnc, timeout = 20000) =>
+  page.waitForFunction(fnc, null, { timeout }).catch(e => { throw new Error(`while waiting for ${step}: ${e.message}`); });
+
 for (const view of ['desktop', 'phone']) {
   test(`browser (${view}): dual role — a good self-read never lets the board convict the squad`, async (t) => {
     if (!chromium) return t.skip('playwright not installed');
@@ -536,7 +540,14 @@ for (const view of ['desktop', 'phone']) {
 
       // The player self-read lands (200) while the board read 500s.
       await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
-      await page.waitForFunction(() => { try { return _playerAvailKnown === true; } catch { return false; } }, null, { timeout: 20000 });
+      await awaitStep(page, 'the player self-read (200) to land', () => { try { return _playerAvailKnown === true; } catch { return false; } });
+      // The two reads answer on their own schedules. Everything below is about
+      // the board AFTER its read has failed — so wait for that failure to have
+      // landed, not just the self-read. Before it lands the hidden board is
+      // still painting its pre-read counts (a loading state the board does not
+      // yet distinguish), and under load that window outlasted the self-read
+      // and this journey failed on the very first check.
+      await awaitStep(page, 'the board read (500) to land', () => { try { return availabilityReadUnknown() === true; } catch { return false; } });
       // Even here, with the player shell on screen, the board markup must not
       // have been built out of answers nobody has.
       assert.equal(await page.evaluate(() => document.querySelectorAll('#coach-message .msg-kpi.chase').length), 0,
@@ -550,7 +561,7 @@ for (const view of ['desktop', 'phone']) {
 
       // The reported journey: switch to the coach shell.
       await page.evaluate(() => { try { setView('coach'); } catch { state.activeView = 'coach'; } try { setSection('coach', 'message'); } catch {} });
-      await page.waitForFunction(() => /Availability could not be loaded/.test(document.getElementById('coach-message')?.innerText || ''), null, { timeout: 20000 });
+      await awaitStep(page, 'the coach board to show its failure state', () => /Availability could not be loaded/.test(document.getElementById('coach-message')?.innerText || ''));
       const board = await page.evaluate(() => (document.getElementById('coach-message')?.innerText || '').replace(/\s+/g, ' '));
       assert.match(board, /Availability could not be loaded/, 'the board says what happened');
       const claims = await page.evaluate(() => [...document.querySelectorAll('#coach-message *')]
@@ -562,7 +573,7 @@ for (const view of ['desktop', 'phone']) {
       // Recovery: the board read succeeds and the real board returns.
       st.board = 'ok';
       await page.evaluate(() => availRefreshNow());
-      await page.waitForFunction(() => !/Availability could not be loaded/.test(document.getElementById('coach-message')?.innerText || ''), null, { timeout: 20000 });
+      await awaitStep(page, 'the board to recover after a good read', () => !/Availability could not be loaded/.test(document.getElementById('coach-message')?.innerText || ''));
       assert.match(await page.evaluate(() => (document.getElementById('coach-message')?.innerText || '')), /No reply/,
         'the normal board is back once the read lands');
 

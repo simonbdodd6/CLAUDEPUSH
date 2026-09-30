@@ -244,8 +244,13 @@ test('fixtureCountdown: 3 days in future returns d+h format', () => {
 });
 
 test('fixtureCountdown: same-day future kick-off returns h+m or m format', () => {
-  // NOW_MS = 2026-06-15T10:00:00Z, kick-off 2026-06-15T14:00 local
-  const result = fixtureCountdown({ date: TODAY, kickoffTime: '14:00' });
+  // NOW_MS = 2026-06-15T10:00:00Z. The kick-off is a LOCAL wall clock, so "later
+  // today" must be later on the machine's own clock: 14:00 local was already
+  // gone in Auckland (Build 106). The last minute of the local day is always
+  // ahead of 10:00Z by at least a quarter of an hour, in every zone.
+  const nowLocal = new Date(NOW_MS);
+  const todayLocal = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
+  const result = fixtureCountdown({ date: todayLocal, kickoffTime: '23:59' });
   assert.ok(result.length > 0, 'should return non-empty for future same-day kick-off');
   assert.ok(!result.includes('d'), `should not include days: "${result}"`);
 });

@@ -32741,18 +32741,32 @@
      * How long the player has been out, from the canonical "Date injured"
      * (dateInjured) — the field the Medical record explicitly treats as the
      * injury start date. Only a real YYYY-MM-DD is trusted; anything missing or
-     * malformed, or a date in the future, yields "—" rather than a guess. Dates
-     * parse at midday so a timezone offset can never shift the day count.
+     * malformed, or a date in the future, yields "—" rather than a guess. The
+     * count is calendar days between the two DATES (Build 106): no timezone
+     * offset and no clock change can shift it.
      */
     function medicalDaysOut(dateInjured, todayISO) {
-      const s = String(dateInjured || '').trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '—';
-      const t = String(todayISO || '').slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return '—';
-      const start = new Date(s + 'T12:00:00');
-      const today = new Date(t + 'T12:00:00');
-      if (isNaN(start.getTime()) || isNaN(today.getTime())) return '—';
-      const days = Math.floor((today.getTime() - start.getTime()) / 86400000);
+      // CALENDAR days from the injury date to today — both date-only values,
+      // counted from their date parts in UTC exactly as availWeekStart and
+      // availAddDays count, so no clock change can lose a day. The old form
+      // subtracted two LOCAL-noon instants and floored elapsed hours over 24:
+      // across a spring clock change seven days were 167 hours, "6 days", in
+      // every timezone that has one — Belgium's last Sunday of March included.
+      // An impossible date (30 Feb) rolls over in JS and is refused by
+      // round-tripping the parts, as availabilitySessionLabel does.
+      const dayOf = iso => {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim());
+        if (!m) return null;
+        const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+        const at = new Date(Date.UTC(y, mo - 1, d));
+        return (at.getUTCFullYear() === y && at.getUTCMonth() === mo - 1 && at.getUTCDate() === d) ? at.getTime() : null;
+      };
+      const start = dayOf(dateInjured);
+      const today = dayOf(String(todayISO || '').slice(0, 10));
+      if (start === null || today === null) return '—';
+      // Whole days between two UTC midnights: UTC has no clock changes, so
+      // the quotient is exact and rounding only guards floating-point noise.
+      const days = Math.round((today - start) / 86400000);
       if (days < 0) return '—';
       if (days === 0) return 'Today';
       return days === 1 ? '1 day' : days + ' days';

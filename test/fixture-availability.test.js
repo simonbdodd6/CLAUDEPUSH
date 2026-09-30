@@ -174,22 +174,25 @@ test('fixtureCountdownDays: null date → null', () => {
   assert.equal(fixtureCountdownDays(undefined), null);
 });
 
+// fixtureCountdownDays counts the device's LOCAL calendar days (local midnight to
+// local midnight). The expected dates must be local too: the UTC date is a day
+// behind in Auckland every morning and a day ahead in Santiago every evening,
+// and these three tests were red there (Build 106).
+const localDatePlus = n => { const d = new Date(); const at = new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`; };
+
 test('fixtureCountdownDays: today → 0', () => {
   const { fixtureCountdownDays } = buildScope();
-  const today = new Date().toISOString().slice(0, 10);
-  assert.equal(fixtureCountdownDays(today), 0);
+  assert.equal(fixtureCountdownDays(localDatePlus(0)), 0);
 });
 
 test('fixtureCountdownDays: tomorrow → 1', () => {
   const { fixtureCountdownDays } = buildScope();
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-  assert.equal(fixtureCountdownDays(tomorrow), 1);
+  assert.equal(fixtureCountdownDays(localDatePlus(1)), 1);
 });
 
 test('fixtureCountdownDays: 7 days ahead → 7', () => {
   const { fixtureCountdownDays } = buildScope();
-  const future = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-  assert.equal(fixtureCountdownDays(future), 7);
+  assert.equal(fixtureCountdownDays(localDatePlus(7)), 7);
 });
 
 test('fixtureCountdownDays: past date → negative', () => {
