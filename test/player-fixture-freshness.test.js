@@ -409,7 +409,9 @@ try { ({ chromium, devices } = await import('playwright')); } catch { /* not ins
 const REWRITES = { roster: { handler: 'publish', query: { resource: 'roster' } } };
 const NET = { log: [], delays: [] };
 const mime = f => f.endsWith('.html') ? 'text/html' : /\.m?js$/.test(f) ? 'text/javascript' : f.endsWith('.css') ? 'text/css' : f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.json') ? 'application/json' : 'application/octet-stream';
-const server = http.createServer(async (req, res) => {
+// One server PER TEST (Build 106): a shared instance left listening by a test
+// the runner cancelled made the next test fail on `listen` before it began.
+const makeServer = () => http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname.startsWith('/api/')) {
     let name = url.pathname.slice(5).split('/')[0];
@@ -418,7 +420,7 @@ const server = http.createServer(async (req, res) => {
     let raw = ''; for await (const c of req) raw += c;
     let body = {}; try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
     const slow = NET.delays.find(d => d.match(name, req.method, query));
-    if (slow) await new Promise(r => setTimeout(r, slow.ms));
+    if (slow) await (slow.gate || new Promise(r => setTimeout(r, slow.ms)));
     if (!handlers[name]) { res.setHeader('content-type', 'application/json'); return res.end('{"ok":true}'); }
     try {
       const out = await run(name, req.method, query, body, req.headers.cookie, res);
@@ -438,7 +440,20 @@ const INIT = () => {
     new MutationObserver(() => { const t = el.textContent.trim(); if (t) window.__toasts.push(t); }).observe(el, { childList: true, characterData: true, subtree: true }); };
   document.addEventListener('DOMContentLoaded', hook);
 };
-const delayClubAndFixtures = ms => { NET.delays.length = 0; if (ms) NET.delays.push({ match: (n, m, q) => n === 'publish' && m === 'GET' && (q.resource === 'club' || q.resource === 'fixtures'), ms }); };
+// HOLD the club and fixture replies until the test releases them (Build 106).
+// A fixed delay made the "not yet on screen" checks a race: on a loaded machine
+// the 500ms the test slept stretched past the 1200ms the reply was delayed, the
+// reply landed first, and the precondition failed — the very flake that
+// blocked the release gate once. A held reply cannot land until released.
+const holdClubAndFixtures = () => {
+  let release;
+  const gate = new Promise(r => { release = r; });
+  NET.delays.length = 0;
+  NET.delays.push({ match: (n, m, q) => n === 'publish' && m === 'GET' && (q.resource === 'club' || q.resource === 'fixtures'), gate });
+  return () => { NET.delays.length = 0; release(); };
+};
+/** The player's screen has painted its cards (any card at all). */
+const painted = page => waitFor(() => page.evaluate(() => document.querySelectorAll('#player-availability .avail-player-card').length > 0 || /Nothing scheduled|All responses submitted/.test(document.getElementById('player-availability')?.innerText || '')), 10000);
 const fixtureGets = () => NET.log.filter(x => x.name === 'publish' && x.method === 'GET' && x.query.resource === 'fixtures').length;
 const requests = () => NET.log.length;
 
@@ -490,6 +505,8 @@ for (const view of ['desktop', 'phone']) {
     const phone = view === 'phone';
     const budget = {};
     let ctx;
+    let release = () => {};          // releases any held reply, so a failed step can never leave the server waiting
+    const server = makeServer();
     try {
       await new Promise(r => server.listen(0, '127.0.0.1', r));
       const BASE = `http://127.0.0.1:${server.address().port}`;
@@ -546,15 +563,16 @@ for (const view of ['desktop', 'phone']) {
 
       // 9–12. Delayed club data on a reopen: the fixture added since lands after the first paint, and the screen repaints.
       const moved = await addFixture(c, c.U18, { opposition: 'Late Arrival', date: WEEKFN.availAddDays(WEEK, 3), time: '18:00', team: 'U18 Premier' });
-      delayClubAndFixtures(1200);
+      release = holdClubAndFixtures();
       NET.log.length = 0;
       j = await open(browser, BASE, c.people.Jordan.email, { phone, storageState: snapshot });
       ctx = j.ctx;
       await goAvailability(j.page);
-      await sleep(500);
+      assert.ok(await painted(j.page), 'the screen painted from the device state');
       s = await screen(j.page);
       assert.ok(!s.cards.some(x => x.sessionId === moved.id), 'before the reply lands the new fixture is not yet on screen (the device state predates it)');
       assert.ok(!s.cards.some(x => x.sessionId === 'game'), 'and no generic card is invented meanwhile');
+      release();
       assert.ok(await waitFor(() => j.page.evaluate(id => [...document.querySelectorAll('#player-availability .avail-btn')].some(b => (b.getAttribute('onclick') || '').includes(id)), moved.id), 8000), 'the fixture appears without a tap once the reply lands');
       await sleep(600);
       budget.delayedReopen = { requests: requests(), fixtureGets: fixtureGets() };
@@ -564,16 +582,17 @@ for (const view of ['desktop', 'phone']) {
       await ctx.close(); ctx = null;
 
       // 13–15. A fresh sign-in on a new device, club and fixture replies slow: no generic card while unresolved, then the real match.
-      delayClubAndFixtures(1500);
+      release = holdClubAndFixtures();
       NET.log.length = 0;
       const w = await open(browser, BASE, c.people.Wes.email, { phone });
       ctx = w.ctx;
       await goAvailability(w.page);
-      await sleep(500);
+      assert.ok(await painted(w.page), 'the screen painted while the fixture replies are held');
       s = await screen(w.page);
       assert.equal(s.known, false, 'fixtures are not yet known');
       assert.ok(!s.cards.some(x => x.sessionId === 'game'), 'UNKNOWN: no generic "Match" is offered');
       assert.ok(!s.cards.some(x => x.sessionId === premier.id), 'and the real fixture is not there yet either');
+      release();
       assert.ok(await waitFor(() => w.page.evaluate(id => [...document.querySelectorAll('#player-availability .avail-btn')].some(b => (b.getAttribute('onclick') || '').includes(id)), premier.id), 10000), 'the real Saturday match appears once the list lands');
       s = await screen(w.page);
       assert.equal(s.known, true);
@@ -583,7 +602,6 @@ for (const view of ['desktop', 'phone']) {
       assert.deepEqual(stored(c, 'game'), [], 'nothing was ever written under game');
       assert.deepEqual(w.errors, []);
       await ctx.close(); ctx = null;
-      delayClubAndFixtures(0);
 
       // Placement, unchanged in this build: a player with no group sees every group's fixtures; a Seniors player never the U18 match.
       const n = await open(browser, BASE, c.people.Nog.email, { phone }); ctx = n.ctx;
@@ -600,22 +618,22 @@ for (const view of ['desktop', 'phone']) {
       // 16–17. A group with no fixture at all: nothing invented while unresolved; the generic card once the list is known-empty.
       const e = await makeClub('Empty' + view, [{ key: 'Solo', name: 'Solo Player', group: 'U18' }]);
       await addSlot(e, e.U18, 'Thu');
-      delayClubAndFixtures(1500);
+      release = holdClubAndFixtures();
       const so = await open(browser, BASE, e.people.Solo.email, { phone }); ctx = so.ctx;
       await goAvailability(so.page);
-      await sleep(500);
+      assert.ok(await painted(so.page), 'the screen painted while the fixture replies are held');
       s = await screen(so.page);
       assert.equal(s.known, false);
       assert.ok(!s.cards.some(x => x.sessionId === 'game'), 'UNKNOWN: no generic card');
+      release();
       assert.ok(await waitFor(() => so.page.evaluate(() => fixturesKnown() && [...document.querySelectorAll('#player-availability .avail-btn')].some(b => (b.getAttribute('onclick') || '').includes("'game'"))), 10000), 'KNOWN AND EMPTY: the generic card appears, without a tap');
       assert.deepEqual(await tapAvailable(so.page, 'game', phone), ['Availability saved'], 'and can be answered');
       assert.deepEqual(stored(e, 'game'), [{ group: 'U18', who: ['Solo Player'] }]);
       assert.deepEqual(so.errors, []);
       await ctx.close(); ctx = null;
-      delayClubAndFixtures(0);
       t.diagnostic('request budget ' + JSON.stringify(budget));
     } finally {
-      delayClubAndFixtures(0);
+      release(); NET.delays.length = 0;
       try { await ctx?.close(); } catch {}
       await browser.close(); await new Promise(r => server.close(r));
     }
@@ -627,6 +645,7 @@ test('browser (timezones): the U18 Saturday fixture stays in the current week in
   let browser;
   try { browser = await chromium.launch(); } catch { return t.skip('no browser available'); }
   let ctx;
+  const server = makeServer();
   try {
     await new Promise(r => server.listen(0, '127.0.0.1', r));
     const BASE = `http://127.0.0.1:${server.address().port}`;

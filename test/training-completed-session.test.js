@@ -405,13 +405,36 @@ const OPEN = [];
 async function closeAll() { while (OPEN.length) { const o = OPEN.pop(); try { await o.ctx.close(); } catch {} try { o.srv.close(); } catch {} } }
 
 /** Open the planner with the clock fixed at `when`, on the session `sessId`. */
-async function planner(browser, view, when, sessId) {
+/**
+ * The instant at which a wall clock in `zone` reads `local` (YYYY-MM-DDTHH:mm:ss).
+ * `new Date('2026-09-24T18:00:00')` is parsed in the MACHINE's timezone, so a
+ * page pinned to Europe/Brussels was handed "18:00 in Santiago" — 23:00 in
+ * Brussels — and saw a 20:30 session as already started. The page's zone and
+ * the machine's are different things; every instant below is built for the
+ * page's. Converges through the zone's own offset (once, or twice across a
+ * clock change) so it needs no offset table.
+ */
+function zonedInstant(zone, local) {
+  const [d, t] = local.split('T'); const [y, mo, da] = d.split('-').map(Number); const [hh, mi, ss = 0] = t.split(':').map(Number);
+  let guess = Date.UTC(y, mo - 1, da, hh, mi, ss);
+  const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  for (let i = 0; i < 4; i++) {
+    const p = Object.fromEntries(fmt.formatToParts(new Date(guess)).map(x => [x.type, x.value]));
+    const seen = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
+    if (seen === Date.UTC(y, mo - 1, da, hh, mi, ss)) break;
+    guess -= seen - Date.UTC(y, mo - 1, da, hh, mi, ss);
+  }
+  return new Date(guess);
+}
+const ZONES = ['Europe/Brussels', 'UTC', 'America/Santiago', 'Pacific/Auckland'];
+
+async function planner(browser, view, when, sessId, zone = 'Europe/Brussels') {
   const srv = plannerServer();
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const BASE = `http://127.0.0.1:${srv.address().port}`;
   const ctx = await browser.newContext({
     ...(view === 'phone' ? devices['Pixel 5'] : { viewport: { width: 1440, height: 900 } }),
-    serviceWorkers: 'block', timezoneId: 'Europe/Brussels' });
+    serviceWorkers: 'block', timezoneId: zone });
   await ctx.addInitScript(seed => localStorage.setItem('coach-eye-real-workflow-mvp-state-v1', JSON.stringify(seed)), B_SEED);
   const page = await ctx.newPage();
   // setFixedTime, not install(): only Date/now is overridden, so the app's
@@ -459,7 +482,7 @@ for (const view of ['desktop', 'phone']) {
     try { browser = await chromium.launch(); } catch { return t.skip('no browser available'); }
     try {
       // A. FUTURE — Thursday's session, seen on Wednesday.
-      let p = await planner(browser, view, new Date(`${B_WED}T09:00:00`), 'thu');
+      let p = await planner(browser, view, zonedInstant('Europe/Brussels', `${B_WED}T09:00:00`), 'thu');
       let e = await editable(p.page);
       assert.ok(e.addBtn && e.table && e.blockFields > 0 && e.saveChip, 'the editable planner is on screen');
       assert.ok(!e.done, 'and no completed view');
@@ -467,14 +490,14 @@ for (const view of ['desktop', 'phone']) {
       await p.close();
 
       // B. SAME DAY, BEFORE THE START — Thursday 20:30, seen at 18:00.
-      p = await planner(browser, view, new Date(`${B_THU}T18:00:00`), 'thu');
+      p = await planner(browser, view, zonedInstant('Europe/Brussels', `${B_THU}T18:00:00`), 'thu');
       e = await editable(p.page);
       assert.ok(e.addBtn && e.blockFields > 0, 'still being planned right up to kick-off');
       assert.ok(!e.done);
       await p.close();
 
       // C. SAME DAY, AFTER THE START — the same session at 20:31.
-      p = await planner(browser, view, new Date(`${B_THU}T20:31:00`), 'thu');
+      p = await planner(browser, view, zonedInstant('Europe/Brussels', `${B_THU}T20:31:00`), 'thu');
       e = await editable(p.page);
       assert.ok(e.done, 'the completed view has taken over');
       assert.equal(e.addBtn, 0, 'no Add block');
@@ -488,7 +511,7 @@ for (const view of ['desktop', 'phone']) {
       await p.close();
 
       // D. PREVIOUS DAY — Tuesday's session, seen on Wednesday morning.
-      p = await planner(browser, view, new Date(`${B_WED}T09:00:00`), 'tue');
+      p = await planner(browser, view, zonedInstant('Europe/Brussels', `${B_WED}T09:00:00`), 'tue');
       e = await editable(p.page);
       assert.ok(e.done && e.addBtn === 0 && e.doneFields === 0 && !e.saveChip, 'a past session is read-only');
 
@@ -543,3 +566,38 @@ for (const view of ['desktop', 'phone']) {
     } finally { await closeAll(); await browser.close(); }
   });
 }
+
+/**
+ * THE RULE IS A WALL CLOCK, WHEREVER THE DEVICE IS (Build 106). A 20:30
+ * session is being planned at 18:00 and finished at 20:31 by the device's own
+ * clock — in Brussels, in UTC, in Santiago, in Auckland. Day boundaries hold
+ * too: the last minute of Wednesday and the first of Thursday both leave
+ * Thursday's session editable. Each page is pinned to its zone AND handed an
+ * instant built for that zone, so the machine's timezone plays no part.
+ */
+test('browser (zones): a session starts by the device\'s own wall clock in Brussels, UTC, Santiago and Auckland', { timeout: 240000 }, async (t) => {
+  if (!chromium) return t.skip('playwright not installed');
+  let browser;
+  try { browser = await chromium.launch(); } catch { return t.skip('no browser available'); }
+  try {
+    for (const zone of ZONES) {
+      for (const [local, expectDone, why] of [
+        [`${B_WED}T23:59:00`, false, 'the last minute of the day before'],
+        [`${B_THU}T00:01:00`, false, 'the first minute of the day'],
+        [`${B_THU}T18:00:00`, false, 'two and a half hours before kick-off'],
+        [`${B_THU}T20:30:00`, false, 'the very minute it starts'],
+        [`${B_THU}T20:31:00`, true,  'one minute after kick-off'],
+      ]) {
+        const p = await planner(browser, 'desktop', zonedInstant(zone, local), 'thu', zone);
+        const seen = await p.page.evaluate(() => ({ local: new Date().toString().slice(0, 24), tz: Intl.DateTimeFormat().resolvedOptions().timeZone }));
+        assert.equal(seen.tz, zone, 'the page runs in ' + zone);
+        assert.equal(seen.local.slice(16, 21), local.slice(11, 16), `${zone}: the page's wall clock reads ${local.slice(11, 16)} (${seen.local})`);
+        const e = await editable(p.page);
+        assert.equal(e.done, expectDone, `${zone} at ${local.slice(11, 16)}: ${why} → ${expectDone ? 'completed' : 'still being planned'}`);
+        if (!expectDone) assert.ok(e.addBtn && e.table && e.blockFields > 0, `${zone} at ${local.slice(11, 16)}: the editable planner is on screen`);
+        assert.deepEqual(p.errors, []);
+        await p.close();
+      }
+    }
+  } finally { await closeAll(); await browser.close(); }
+});
