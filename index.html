@@ -18644,7 +18644,7 @@
       const weekReady = !!(weekChase && weekChase.status === 'ready');
       const chaseAny  = weekReady ? weekChase.nonResponders.length : 0;
 
-      document.getElementById("coach-message").innerHTML = `
+      const hub = `
         <div class="msg-hub">
           <!-- Coach-first header: page title + a simple week navigator. The setup/admin
                action buttons were removed (Messages is in the left nav, replies refresh
@@ -18845,6 +18845,32 @@
                  (loadLiveTemplates / loadLiveLog remain defined for the full build). -->
           </section>
         </div>`;
+      // THE HUB IS REPAINTED ONLY WHEN ITS MARKUP CHANGED (Build 112). render()
+      // runs whenever any loader lands — six passes inside the first 250ms of
+      // a cold load, plus the settle of the board read — and every pass
+      // rebuilt this section from scratch: measured, three of the eight boot
+      // rewrites were byte-identical to what the section already held, and
+      // on a load that landed on the Overview the hidden hub was rewritten
+      // ten times (five identical) before the coach ever opened it, then
+      // twice more on entry, both identical. An identical rewrite re-parses
+      // ~15KB of markup, re-creates the <details open> below (whose toggle
+      // re-runs loadLiveSchedulesOnToggle) and discards whatever transient
+      // state the DOM held — focus, scroll, a value being typed.
+      //
+      // The same rule as the login panel (renderNav), the group switcher and
+      // 21c0b321's nav hosts: the last-applied SOURCE is kept on the host
+      // and compared, never innerHTML (which re-serialises). The skip holds
+      // only while the host still shows the hub this renderer painted: an
+      // emptied section (sign-out clears every section) or safeRender's
+      // error card repaints whatever the marker says. Nothing about what is
+      // rendered changes — the chip, the counts and the rows are the same
+      // markup, painted once per change instead of once per render.
+      const host = document.getElementById("coach-message");
+      const holdsHub = !!(host.firstElementChild && host.firstElementChild.classList
+        && host.firstElementChild.classList.contains('msg-hub'));
+      if (holdsHub && host._ceAppliedMarkup === hub) return;
+      host.innerHTML = hub;
+      host._ceAppliedMarkup = hub;
     }
 
 
