@@ -27035,7 +27035,24 @@
       // The club this read is FOR. A reply that lands after a switch belongs to
       // the club that was left; applying it would paint that club's members
       // under this one. Discarded instead — the next render fetches again.
+      //
+      // A CLUB BECOMING KNOWN IS NOT A SWITCH (Build 117). The first read of a
+      // cold load often leaves before the session has named the club ('');
+      // the strict comparison then threw away a perfectly good reply when the
+      // club was adopted mid-flight, and the attempt it recorded held every
+      // retry off for 15s — an empty roster on the Overview, Members and the
+      // board until then. A read is stale only when the club it was made for
+      // was KNOWN and is no longer in force (Build 97's rule for the board
+      // read), or when the store it was made for has been reset (a club
+      // transition empties it), replaced (sign-out) or taken over by a newer
+      // read meanwhile — which also covers a read that left at '' and
+      // outlived a whole switch.
       const _forClub = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
+      const _store = _adminData, _readToken = {};
+      _store.readToken = _readToken;
+      const _stale = () => _adminData !== _store || _store.readToken !== _readToken || !_store.loading
+        || (!!_forClub && String((typeof _clubContextId !== 'undefined' && _clubContextId) || '') !== _forClub);
+      let _discarded = false;
       try {
         const [identityRes, inviteRes, clubRes, structureRes] = await Promise.all([
           fetch('/api/identity'),
@@ -27045,16 +27062,25 @@
           // structure card hidden for members who cannot administer it.
           fetch('/api/publish?resource=structure').catch(() => null),
         ]);
-        if (String((typeof _clubContextId !== 'undefined' && _clubContextId) || '') !== _forClub) return;   // stale reply for a club we have left
+        // Every body is read BEFORE the context is checked, so nothing below is
+        // applied across an await — a switch landing between two bodies used
+        // to let the first one be filed under the next club.
+        const [identityBody, inviteBody, clubBody, structureBody] = await Promise.all([
+          identityRes.ok ? identityRes.json() : null,
+          inviteRes.ok ? inviteRes.json() : null,
+          clubRes.ok ? clubRes.json() : null,
+          (structureRes && structureRes.ok) ? structureRes.json() : null,
+        ]);
+        if (_stale()) { _discarded = true; return; }   // stale reply for a club we have left
         if (identityRes.ok) {
-          const d = await identityRes.json();
+          const d = identityBody;
           _adminData.users    = d.users || [];
           _adminData.members  = d.team_members || [];
           _adminData.profiles = d.player_profiles || [];
         }
-        if (inviteRes.ok) _adminData.invites = (await inviteRes.json()).invites || [];
+        if (inviteRes.ok) _adminData.invites = inviteBody.invites || [];
         if (structureRes && structureRes.ok) {
-          const d = await structureRes.json();
+          const d = structureBody;
           _adminData.structure = d.structure || null;
           // Canonical per-group staff access, computed SERVER-side with the
           // same resolver that gates every API surface — the Members screen
@@ -27068,7 +27094,7 @@
           _adminData.clubWideStaff = d.clubWideStaff || [];
         }
         if (clubRes.ok) {
-          const club = (await clubRes.json()).club;
+          const club = clubBody.club;
           if (club) {
             applyClubConfigLocally(club);
             if (Array.isArray(club.fixtures)) state.fixtures = club.fixtures;
@@ -27084,11 +27110,23 @@
         // transient refresh error), and `failed` records this attempt's outcome.
         _adminData.loaded = _adminData.loaded || identityRes.ok;
         _adminData.failed = !identityRes.ok;
-      } catch(e) { console.warn('[loadAdminData]', e); _adminData.failed = true; }
+      } catch(e) {
+        // A read that failed AFTER its context was left is a stale read, not
+        // this club's failure: no flag, no backoff.
+        if (_stale()) _discarded = true;
+        else { console.warn('[loadAdminData]', e); _adminData.failed = true; }
+      }
       finally {
-        _adminData.loading = false;
-        _adminData.attempted = true;
-        _adminDataAttemptAt = Date.now();
+        if (!_discarded) {
+          _adminData.loading = false;
+          _adminData.attempted = true;
+          _adminDataAttemptAt = Date.now();
+        } else if (_adminData === _store && _store.readToken === _readToken) {
+          // Discarded, not failed: release the latch this read still holds and
+          // record NO attempt, so the next ensureAdminData() asks again at once.
+          // (A reset already released it; a newer read owns it — leave that one.)
+          _store.loading = false;
+        }
         renderClubAdmin();
         // Re-render the screen that asked for this data so the newly available
         // structure appears immediately, with no navigation dance.
