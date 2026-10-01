@@ -43079,7 +43079,7 @@
       const ts = document.getElementById('avail-refresh-ts');
       if (ts) { ts.textContent = 'Syncing…'; ts.className = 'msg-chip msg-chip-btn no-reply'; }
       _availRefreshInFlight = Promise.resolve()
-        .then(() => refreshLiveAvailability())
+        .then(() => refreshLiveAvailability({ manual: true }))   // the coach asked NOW: never inherits a tick already out (Build 111)
         .catch(() => {})
         .finally(() => { _availRefreshInFlight = null; });
       return _availRefreshInFlight;
@@ -43091,20 +43091,65 @@
       // pull and the Members dots — and it was the one critical-path endpoint
       // with no guard: measured, three concurrent /api/availability reads.
       //
-      // A caller joins the request already out only when that request does at
-      // least as much as it needs. The work sets are nested: a board-only tick
-      // repaints the board, skipPanelReload adds the picker and push card, and
-      // a full refresh also reloads the side panels. So a cheap caller may join
-      // an expensive request, never the reverse — an explicit "Sync now" still
-      // reloads the panels rather than silently inheriting a poll tick.
+      // The NETWORK read is the same whatever the caller wants; only the work
+      // AFTER it differs, and those work sets are nested: a board-only tick
+      // repaints the board when the data changed, skipPanelReload repaints and
+      // refreshes the picker and push card, and a full refresh also reloads
+      // the side panels. So every caller joins the request already out for
+      // its group. A caller asking for no more than that request will do
+      // simply awaits it. A HEAVIER caller awaits the same read and then adds
+      // only the work the lighter caller skipped, each piece once (_settle).
+      // Build 111: on a cold load the Overview's recent-activity pull (a
+      // board-only read) left first and the Availability section's live cycle
+      // (skipPanelReload) followed 40ms behind; the old rule — a heavier
+      // caller never joins a lighter read — made that two identical reads.
+      //
+      // The one caller that still asks for itself is an explicit "Sync now"
+      // (manual): the coach asked the server NOW, and must get an answer made
+      // now, not the reply of a tick that left earlier and may land with a
+      // state a player has since changed. It stays the newest read, and the
+      // Build 97 ordering below keeps the older reply from regressing it.
       //
       // Keyed on the group in force, so a read for another group is never
       // shared; the reply's own group stamp and stale checks are untouched.
       // typeof-guarded for the sandboxes that extract this function alone.
       const _weight = opts.boardOnly ? 0 : (opts.skipPanelReload ? 1 : 2);
       const _key = String(state.operationalGroupId || '');
+      // The work a caller of this weight asks for, less what has already been
+      // done for this read. `out` is shared by everyone who joined the read,
+      // so a piece of work claimed here is never scheduled twice.
+      const _settle = (o, out) => {
+        const w = o.boardOnly ? 0 : (o.skipPanelReload ? 1 : 2);
+        if ((w >= 1 || out.changed) && !out.rendered) { out.rendered = true; renderMessageCenter(); }
+        const wantPanels = w >= 1 && !out.panels, wantLoads = w >= 2 && !out.loads;
+        if (wantPanels) out.panels = true;
+        if (wantLoads) out.loads = true;
+        if (!wantPanels && !wantLoads) return;
+        setTimeout(() => {
+          if (wantPanels) { renderAudiencePicker(); renderPushStatusCard(); }
+          // The side panels re-fetch /api/schedules + /api/templates. A
+          // caller that has just loaded them itself (loadLiveMessaging)
+          // passes skipPanelReload, so one cycle no longer pays for that
+          // pair twice. A manual refresh, and the refresh on returning to
+          // the tab, still reload them — that is the point of asking.
+          if (wantLoads) { loadLiveSchedules(true); loadLiveTemplates(); loadLiveLog(); }
+        }, 50);
+      };
       const _inFlight = typeof _liveAvailabilityInFlight !== 'undefined' ? _liveAvailabilityInFlight : null;
-      if (_inFlight && _inFlight.key === _key && _inFlight.weight >= _weight) return _inFlight.promise;
+      if (_inFlight && _inFlight.key === _key) {
+        if (_inFlight.weight >= _weight) return _inFlight.promise;
+        if (!opts.manual) {
+          // Heavier than the read in flight: ONE request. Raise the latch's
+          // weight so a third caller of this weight joins too, await the
+          // read, then do only what remains for this weight — nothing on a
+          // read that did not apply (failed, stale, or for a context since left).
+          _inFlight.weight = _weight;
+          const out = await _inFlight.promise;
+          if (out && out.applied) _settle(opts, out);
+          return out;
+        }
+        // manual: falls through to a read of its own, which becomes the latch.
+      }
       const _promise = (async () => {
       // The chip IS the control (avail-refresh-ts). The separate avail-refresh-btn
       // went with the legacy Message Centre body, so the lookup that used to
@@ -43227,24 +43272,11 @@
         // changed (or on a full/manual refresh) — so the selected session updates
         // LIVE without the coach switching sessions. Lightweight board-only poll
         // ticks repaint ONLY when data changed (no churn while idle) and skip the
-        // heavier side-panel reloads.
-        if (!opts.boardOnly || _resolvedChanged) renderMessageCenter();
-        if (!opts.boardOnly) {
-          setTimeout(() => {
-            renderAudiencePicker();
-            renderPushStatusCard();
-            // The side panels re-fetch /api/schedules + /api/templates. A
-            // caller that has just loaded them itself (loadLiveMessaging)
-            // passes skipPanelReload, so one cycle no longer pays for that
-            // pair twice. A manual refresh, and the refresh on returning to
-            // the tab, still reload them — that is the point of asking.
-            if (!opts.skipPanelReload) {
-              loadLiveSchedules(true);
-              loadLiveTemplates();
-              loadLiveLog();
-            }
-          }, 50);
-        }
+        // heavier side-panel reloads. The same bookkeeping serves a heavier
+        // caller that joined this read (see _settle above).
+        const out = { applied: true, changed: _resolvedChanged, rendered: false, panels: false, loads: false };
+        _settle(opts, out);
+        return out;
       } catch(e) {
         console.warn('[refreshLiveAvailability]', e);
         if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(true);

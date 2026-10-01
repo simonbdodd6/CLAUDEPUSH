@@ -88,7 +88,8 @@ test('2+4+5. a click runs the availability refresh (the same action on any width
   const h = runHandler();
   await h.tap();
   await Promise.resolve();
-  assert.deepEqual(h.calls, ['no-opts'], 'the existing refresh, with its own defaults');
+  // Build 111: the control is the one MANUAL caller — it asks the server itself, never riding a tick already out.
+  assert.deepEqual(h.calls, ['{"manual":true}'], 'the existing refresh, marked as the coach\'s own ask');
   // The markup carries no width-dependent behaviour: one handler, one path.
   assert.equal(CONTROL.includes('ontouchstart'), false, 'no separate touch path');
   assert.doesNotMatch(fn('availRefreshNow'), /innerWidth|matchMedia|isMobile|userAgent/, 'no device branch');
@@ -101,7 +102,7 @@ test('6. a second tap while one refresh is in flight does not start another', as
   // the refresh is started on the next microtask (so a synchronous throw inside
   // it can never strand the latch) — let that turn run before counting
   await Promise.resolve();
-  assert.deepEqual(h.calls, ['no-opts'], 'one refresh only');
+  assert.deepEqual(h.calls, ['{"manual":true}'], 'one refresh only');
   assert.equal(h.inFlight(), true);
   h.finish(); await first;
   assert.equal(h.inFlight(), false, 'and the latch clears afterwards');

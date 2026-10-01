@@ -75,7 +75,7 @@ test('refreshLiveAvailability keeps the chip and carries no dead button', () => 
 test('the Live Sync control itself still works (unchanged by this cleanup)', () => {
   assert.match(code, /<button type="button" id="avail-refresh-ts"/);
   assert.match(code, /onclick="availRefreshNow\(\)"/);
-  assert.match(fn('availRefreshNow'), /refreshLiveAvailability\(\)/);
+  assert.match(fn('availRefreshNow'), /refreshLiveAvailability\(\{ manual: true \}\)/);   // Build 111: the coach's own ask
 });
 
 test('the two already-clean ids stay clean', () => {

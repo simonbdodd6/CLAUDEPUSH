@@ -70,6 +70,10 @@ function board({ group = 'grp_a', club = 'club-a', players = [{ id: 'p1', userId
     ${fn('refreshLiveAvailability')} ${fn('availRefreshNow')} ${fn('refreshAvailabilityOnReturn')}
     return {
       refresh: opts => refreshLiveAvailability(opts), liveSync: () => availRefreshNow(), onReturn: () => refreshAvailabilityOnReturn(),
+      // Build 111: an automatic caller now JOINS the read in flight, so two reads for one group are only
+      // out together when (a) the second is an explicit "Sync now" (manual), or (b) the latch has moved on
+      // to another group's read and back (A → B → A). detach() stands for (b).
+      manual: () => refreshLiveAvailability({ manual: true }), detach: () => { _liveAvailabilityInFlight = null; },
       deliver: (n, resolved) => deferred[n].resolve({ ok: true, json: async () => ({ resolved }) }),
       fail:    n => deferred[n].resolve({ ok: false, status: 500, json: async () => ({}) }),
       reads: () => deferred.length, urls: () => urls,
@@ -90,7 +94,7 @@ test('A. basic out-of-order: R1 leaves, R2 leaves, R2 lands first — R1 landing
   const b = board();
   const r1 = b.refresh({ boardOnly: true });          // a poll tick
   await tick();
-  const r2 = b.refresh();                             // a full refresh: not joined (weight 2 > 0)
+  const r2 = b.manual();                              // an explicit Sync now: asks for itself (Build 111 keeps this)
   await tick();
   assert.equal(b.reads(), 2, 'two reads left');
   b.deliver(1, ANS('unavailable')); await r2; await tick();
@@ -103,7 +107,7 @@ test('A. basic out-of-order: R1 leaves, R2 leaves, R2 lands first — R1 landing
 test('B. normal order: R1 lands, then R2 lands — R2 becomes authoritative', async () => {
   const b = board();
   const r1 = b.refresh({ boardOnly: true }); await tick();
-  const r2 = b.refresh(); await tick();
+  const r2 = b.manual(); await tick();
   b.deliver(0, ANS('available')); await r1; await tick();
   assert.equal(b.row('P One', SID), 'available');
   b.deliver(1, ANS('maybe')); await r2; await tick();
@@ -114,8 +118,8 @@ test('B. normal order: R1 lands, then R2 lands — R2 becomes authoritative', as
 test('C. three reads delivered R2, R1, R3 — R3 is the final authority (R1 never applies)', async () => {
   const b = board();
   const r1 = b.refresh({ boardOnly: true }); await tick();
-  const r2 = b.refresh({ skipPanelReload: true }); await tick();   // weight 1: not joined to the tick
-  const r3 = b.refresh(); await tick();                            // weight 2: not joined to either
+  b.detach(); const r2 = b.refresh({ skipPanelReload: true }); await tick();   // the latch moved on (A → B → A): its own read
+  b.detach(); const r3 = b.refresh(); await tick();                            // and again
   assert.equal(b.reads(), 3);
   b.deliver(1, ANS('maybe')); await r2; await tick();
   assert.equal(b.row('P One', SID), 'maybe');
@@ -130,8 +134,8 @@ test('C. three reads delivered R2, R1, R3 — R3 is the final authority (R1 neve
 test('D. oldest last: delivered R3, R2, R1 — R3 only', async () => {
   const b = board();
   const r1 = b.refresh({ boardOnly: true }); await tick();
-  const r2 = b.refresh({ skipPanelReload: true }); await tick();
-  const r3 = b.refresh(); await tick();
+  b.detach(); const r2 = b.refresh({ skipPanelReload: true }); await tick();
+  b.detach(); const r3 = b.refresh(); await tick();
   b.deliver(2, ANS('unavailable')); await r3; await tick();
   const afterR3 = b.snapshot();
   b.deliver(1, ANS('maybe')); await r2; await tick();
@@ -143,7 +147,7 @@ test('D. oldest last: delivered R3, R2, R1 — R3 only', async () => {
 test('E. a stale reply has ZERO side effects: map, stamp, sync time, failure flag, roster fields, chip, render, save', async () => {
   const b = board({ players: [{ id: 'p1', userId: 'u1', name: 'P One', [`avail_${SID}`]: 'available' }] });
   const r1 = b.refresh({ boardOnly: true }); await tick();
-  const r2 = b.refresh(); await tick();
+  const r2 = b.manual(); await tick();
   b.deliver(1, ANS('unavailable')); await r2; await tick();
   const after = b.snapshot();
   assert.equal(b.state.players[0][`avail_${SID}`], 'unavailable', 'R2 patched the roster field');
@@ -152,7 +156,7 @@ test('E. a stale reply has ZERO side effects: map, stamp, sync time, failure fla
   assert.equal(b.state.players[0][`avail_${SID}`], 'unavailable');
   // a stale FAILED reply is equally inert: no failure flag, no chip
   const r3 = b.refresh({ boardOnly: true }); await tick();
-  const r4 = b.refresh(); await tick();
+  const r4 = b.manual(); await tick();
   b.deliver(3, ANS('maybe')); await r4; await tick();
   const after4 = b.snapshot();
   b.fail(2); await r3; await tick();
@@ -172,16 +176,23 @@ test('F. Live Sync vs poll: the tick leaves first, Live Sync lands first — Liv
   assert.equal(b.row('P One', SID), 'unavailable', 'the late tick did not regress the board');
 });
 
-test('G. visibility/focus: an older refresh in flight, the return-to-tab refresh lands first — the older reply is ignored', async () => {
+test('G. visibility/focus: returning to the tab joins the read already out (Build 111); an older reply landing later is still ignored', async () => {
   const b = board();
   const older = b.refresh({ boardOnly: true }); await tick();
   b.onReturn(); await tick();
-  assert.equal(b.reads(), 2, 'returning to the tab issued its own full read');
+  assert.equal(b.reads(), 1, 'returning to the tab joined the tick already out — one read');
   assert.equal(b.counts().flushes, 1, 'and the pending flush ran, as before');
-  b.deliver(1, ANS('maybe')); await tick(); await tick();
-  assert.equal(b.row('P One', SID), 'maybe');
-  b.deliver(0, ANS('available')); await older; await tick();
-  assert.equal(b.row('P One', SID), 'maybe');
+  b.deliver(0, ANS('maybe')); await older; await tick(); await tick();
+  assert.equal(b.row('P One', SID), 'maybe', 'both received the one reply');
+  assert.equal(b.counts().renders, 1, 'the return-to-tab refresh repainted once');
+  // ordering: an older read still out when the latch has moved on (A → B → A) is still ignored once a newer one applied
+  const stale = b.refresh({ boardOnly: true }); await tick();
+  b.detach(); b.onReturn(); await tick();
+  assert.equal(b.reads(), 3);
+  b.deliver(2, ANS('unavailable')); await tick(); await tick();
+  assert.equal(b.row('P One', SID), 'unavailable');
+  b.deliver(1, ANS('available')); await stale; await tick();
+  assert.equal(b.row('P One', SID), 'unavailable', 'the older reply did not regress the board');
 });
 
 test('H. context change: a reply for group A (or club A) cannot touch the board once group B (or club B) is in force', async () => {
@@ -215,7 +226,7 @@ test('I. a FAILED newer read applies nothing and does not outrank an older valid
   // older read landing after it still applies — it is the only authoritative data there is.
   const b = board();
   const r1 = b.refresh({ boardOnly: true }); await tick();
-  const r2 = b.refresh(); await tick();
+  const r2 = b.manual(); await tick();
   b.fail(1); await r2; await tick();
   assert.equal(b.counts().failed, true, 'R2 failed: flagged');
   assert.equal(b.counts().applied, 0, 'and applied nothing');
@@ -225,25 +236,29 @@ test('I. a FAILED newer read applies nothing and does not outrank an older valid
   assert.equal(b.counts().applied, 1);
   // and once R1 has applied, an even older read (R0 shape) cannot regress it
   const r3 = b.refresh({ boardOnly: true }); await tick();
-  const r4 = b.refresh(); await tick();
+  const r4 = b.manual(); await tick();
   b.deliver(3, ANS('maybe')); await r4; await tick();
   b.fail(2); await r3; await tick();
   assert.equal(b.row('P One', SID), 'maybe'); assert.equal(b.counts().failed, false, 'a stale failure is inert');
 });
 
-test('J. coalesced reads share one request and one sequence; a heavier caller still gets its own', async () => {
+test('J. coalesced reads share one request and one sequence; an automatic heavier caller joins too; only Sync now asks for itself', async () => {
   const b = board();
   const t1 = b.refresh({ boardOnly: true }); await tick();
   const t2 = b.refresh({ boardOnly: true }); await tick();
   assert.equal(b.reads(), 1, 'the second tick joined the first — no extra read');
   assert.equal(b.counts().readSeq, 1);
   const full = b.refresh(); await tick();
-  assert.equal(b.reads(), 2, 'a full refresh does not ride a board-only tick');
-  b.deliver(0, ANS('available')); await Promise.all([t1, t2]); await tick();
+  assert.equal(b.reads(), 1, 'an automatic full refresh rides the board-only tick (Build 111)');
+  b.deliver(0, ANS('available')); await Promise.all([t1, t2, full]); await tick();
   assert.equal(b.row('P One', SID), 'available');
-  b.deliver(1, ANS('maybe')); await full; await tick();
-  assert.equal(b.row('P One', SID), 'maybe');
-  assert.equal(b.counts().readSeq, 2); assert.equal(b.counts().applied, 2);
+  assert.equal(b.counts().readSeq, 1); assert.equal(b.counts().applied, 1);
+  const t3 = b.refresh({ boardOnly: true }); await tick();
+  const sync = b.manual(); await tick();
+  assert.equal(b.reads(), 3, 'an explicit Sync now still asks for itself');
+  b.deliver(1, ANS('maybe')); await t3; b.deliver(2, ANS('unavailable')); await sync; await tick();
+  assert.equal(b.row('P One', SID), 'unavailable');
+  assert.equal(b.counts().readSeq, 3); assert.equal(b.counts().applied, 3);
 });
 
 test('SOURCE. the guard sits before the failure branch and every mutation; the bump after it; the sequence taken as the read leaves', () => {
@@ -256,7 +271,7 @@ test('SOURCE. the guard sits before the failure branch and every mutation; the b
   assert.ok(at('_availabilityAppliedSeq = readSeq') < at('_resolvedAvailability = resolved;'), 'and before the map is replaced');
   assert.match(body, /_ctxAtStart\.club && c\.club !== _ctxAtStart\.club/, 'club: a change between two known values');
   assert.match(body, /_ctxAtStart\.group && c\.group !== _ctxAtStart\.group/, 'group: likewise');
-  assert.match(fn('availRefreshNow'), /\.then\(\(\) => refreshLiveAvailability\(\)\)/, 'Live Sync unchanged');
+  assert.match(fn('availRefreshNow'), /\.then\(\(\) => refreshLiveAvailability\(\{ manual: true \}\)\)/, 'Live Sync asks for itself (Build 111)');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
