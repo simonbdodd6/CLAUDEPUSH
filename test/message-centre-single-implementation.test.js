@@ -80,7 +80,7 @@ test('every live caller of renderMessageCenter still has something to call', () 
   assert.ok(calls >= 4, `the four live call sites must survive (found ${calls})`);
   // The render registry, the live refresh, and the board's filter and sort.
   assert.match(script, /safeRender\(null,\s*\(\) => renderMessageCenter\(\)\)/);
-  assert.match(script, /_resolvedChanged\) renderMessageCenter\(\)/);
+  assert.match(script, /!out\.rendered\) \{ out\.rendered = true; renderMessageCenter\(\); \}/, 'the live refresh (Build 111: once per shared read)');
   assert.match(strip(extractFn(html, 'setAvailabilityBoardFilter')), /renderMessageCenter\(\)/);
   assert.match(strip(extractFn(html, 'setAvailabilityBoardSort')), /renderMessageCenter\(\)/);
 });

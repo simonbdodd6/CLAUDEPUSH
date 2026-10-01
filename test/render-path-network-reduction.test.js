@@ -95,7 +95,7 @@ test('availability: the three cold-load callers collapse to one read', async () 
   s.reply(0, RESOLVED); await Promise.all(ps);
 });
 
-test('availability: a cheap caller joins an expensive request, never the reverse', async () => {
+test('availability: a cheap caller joins an expensive request; an automatic heavier one joins too; only an explicit Sync now asks for itself', async () => {
   // A board-only tick may ride on a full refresh: it gets more than it asked.
   const full = refreshScope();
   const f = full.refreshLiveAvailability();                       // full: reloads panels
@@ -106,11 +106,21 @@ test('availability: a cheap caller joins an expensive request, never the reverse
   full.reply(0, RESOLVED); await Promise.all([f, cheap]); full.runTimers();
   assert.equal(full.panels.schedules, 1, 'the full refresh still reloaded the panels');
 
-  // But an explicit "Sync now" must never inherit a poll tick's cheap work.
+  // An AUTOMATIC full refresh behind a poll tick rides the tick's read and still does its own work (Build 111).
+  const auto = refreshScope();
+  const t = auto.refreshLiveAvailability({ boardOnly: true });
+  await auto.tick();
+  const ret = auto.refreshLiveAvailability();
+  await auto.tick();
+  assert.equal(auto.calls.length, 1, 'the automatic full refresh joins the tick — one request');
+  auto.reply(0, RESOLVED); await Promise.all([t, ret]); auto.runTimers();
+  assert.equal(auto.panels.schedules, 1, 'and it still reloads the panels once');
+
+  // But an explicit "Sync now" must never inherit a poll tick's reply.
   const poll = refreshScope();
   const p = poll.refreshLiveAvailability({ boardOnly: true });
   await poll.tick();
-  const manual = poll.refreshLiveAvailability();
+  const manual = poll.refreshLiveAvailability({ manual: true });
   await poll.tick();
   assert.equal(poll.calls.length, 2, 'the manual refresh starts its own request');
   poll.reply(0, RESOLVED); poll.reply(1, RESOLVED); await Promise.all([p, manual]); poll.runTimers();
