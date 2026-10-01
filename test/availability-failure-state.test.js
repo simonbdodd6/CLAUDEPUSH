@@ -317,16 +317,17 @@ test('2. the board prints no "to chase" count and offers no "Chase all" when the
   assert.match(board, /const availUnknown\s*=\s*availabilityReadUnknown\(\)/, 'the board asks the honest question once');
   assert.match(board, /\$\{opPlayers\.length > 0 && !availUnknown \? `/,
     'the week strip — "N to chase" and the Chase all button — is withheld');
-  const strip = board.slice(board.indexOf('!availUnknown'), board.indexOf('!availUnknown') + 1800);
+  const strip = board.slice(board.indexOf('opPlayers.length > 0 && !availUnknown'), board.indexOf('opPlayers.length > 0 && !availUnknown') + 1800);
   assert.match(strip, /to chase/, 'the withheld strip is indeed the chase strip');
   assert.match(strip, /chaseAllNonResponders\(\)/, 'including its action');
 });
 
 test('1. the board prints no "No reply" count when the read failed, and says why', () => {
   const board = fn('renderMessageCenterV2');
-  assert.match(board, /\$\{availUnknown \? `<section class="msg-card"[^`]*\$\{availErrorHTML\}<\/section>` : `\s*\n\s*<section class="msg-kpi-grid avail-summary">/,
+  // The error block is the FIRST branch; the loading block (Build 110) sits between it and the real grid.
+  assert.match(board, /\$\{availUnknown \? `<section class="msg-card"[^`]*\$\{availErrorHTML\}<\/section>`\s*\n\s*: availLoading \? `<section class="msg-card"[^`]*\$\{availLoadingHTML\}<\/section>` : `\s*\n\s*<section class="msg-kpi-grid avail-summary">/,
     'the KPI row (Available/Maybe/Unavailable/No reply) is replaced by the error block');
-  assert.match(board, /<div class="msg-player-list msg-board-list">\$\{availUnknown \? availErrorHTML : playerRows\(boardRows\)\}<\/div>/,
+  assert.match(board, /<div class="msg-player-list msg-board-list">\$\{availUnknown \? availErrorHTML : availLoading \? availLoadingHTML : playerRows\(boardRows\)\}<\/div>/,
     'and so is the squad list, so no player is shown as having not replied');
   assert.match(board, /Availability could not be loaded/, 'the message names the real problem');
   assert.match(board, /nobody has been marked as "no reply"/, 'and says explicitly what has NOT happened');

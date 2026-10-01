@@ -18536,6 +18536,18 @@
       const availErrorHTML = `<p class="ovw-empty" style="padding:14px 16px;margin:0">
         <strong>Availability could not be loaded</strong>The server did not answer, so this week's replies are not known — nobody has been marked as "no reply".
         <button type="button" class="ovw-retry" onclick="availRefreshNow()">Try again</button></p>`;
+      // LOADING is not a result either (Build 110). Before the first board
+      // read — or the schedule, or the fixture list — has landed, the rows
+      // above were built from fields nobody has filled in: every player "No
+      // reply", "NO REPLY 18" in the grid, 0 everywhere else. The chase
+      // context already names that state (Build 104, 'loading'); the board
+      // now says so too and claims nothing until the read lands. The fast
+      // path is unchanged: the landing repaints, exactly as before.
+      const availLoading   = !availUnknown && typeof availabilityChaseContext === 'function'
+        && availabilityChaseContext(coachAvailWeek()).status === 'loading';
+      const availPending   = availUnknown || availLoading;      // nothing below may state a count
+      const availLoadingHTML = `<p class="ovw-empty avail-loading" style="padding:14px 16px;margin:0" role="status">
+        <strong>Loading availability…</strong>Reading this week's replies — nobody has been marked as "no reply" yet.</p>`;
 
       const playerRows = list => list.map(({player, status, reason, respondedAt}) => {
         const isInjury   = reason === 'injury';
@@ -18574,14 +18586,14 @@
         return `<button class="msg-session-card ${selected?.id === session.id ? "active" : ""}" type="button" onclick="openMessageDetail('${session.id}')">
           <div class="register-head">
             <strong><span style="margin-right:5px">${icon}</span>${esc(sessionDisplayTitle(session))}</strong>
-            <span class="msg-chip ${availUnknown ? '' : chase === 0 && total > 0 ? 'available' : chase > 0 ? 'no-reply' : ''}">${availUnknown ? '—' : `${yes}/${total}`}</span>
+            <span class="msg-chip ${availPending ? '' : chase === 0 && total > 0 ? 'available' : chase > 0 ? 'no-reply' : ''}">${availPending ? '—' : `${yes}/${total}`}</span>
           </div>
           <small style="color:var(--muted)">${[
             session.date ? '' : esc("Availability open"),   // the weekday now leads the title; an undated session keeps its old line
             session.deadline ? '<span style="color:var(--amber)">by ' + esc(session.deadline) + '</span>' : '',
           ].filter(Boolean).join(' · ')}</small>
-          <div class="avail-progress"><div class="avail-progress-fill" style="width:${availUnknown ? 0 : pct}%"></div></div>
-          ${availUnknown ? '' : `
+          <div class="avail-progress"><div class="avail-progress-fill" style="width:${availPending ? 0 : pct}%"></div></div>
+          ${availPending ? '' : `
           <div class="msg-pill-row" style="margin-top:8px">
             <span class="msg-chip available">${yes} ✓</span>
             <span class="msg-chip unavailable">${no} ✗</span>
@@ -18661,7 +18673,8 @@
           </header>
 
           ${`
-          ${availUnknown ? `<section class="msg-card" style="margin-bottom:12px">${availErrorHTML}</section>` : `
+          ${availUnknown ? `<section class="msg-card" style="margin-bottom:12px">${availErrorHTML}</section>`
+            : availLoading ? `<section class="msg-card" style="margin-bottom:12px">${availLoadingHTML}</section>` : `
           <section class="msg-kpi-grid avail-summary">
             <article class="msg-kpi available"><span>Available</span><strong>${available.length}</strong></article>
             <article class="msg-kpi maybe"><span>Maybe</span><strong>${maybe.length}</strong></article>
@@ -18742,7 +18755,7 @@
                     <p>${esc(sessionDisplayTitle(selected || {}))}${selected?.focus ? ' · <span style="color:var(--amber)">' + esc(selected.focus) + '</span>' : ''} · tap a player for details.</p>
                   </div>
                   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-                    ${availUnknown ? '' : `<span class="msg-chip ${boardNoReply.length ? "no-reply" : "available"}">${boardAnswered.length}/${boardRows.length} shown</span>`}
+                    ${availPending ? '' : `<span class="msg-chip ${boardNoReply.length ? "no-reply" : "available"}">${boardAnswered.length}/${boardRows.length} shown</span>`}
                     ${selected?.target > 0 ? (() => {
                       const avail  = boardAvailable.length;
                       const needed = selected.target - avail;
@@ -18751,7 +18764,7 @@
                     })() : ''}
                   </div>
                 </div>
-                ${availUnknown ? '' : `
+                ${availPending ? '' : `
                 <div class="availability-board-tools">
                   <div class="availability-filter-group">${filterButtons}</div>
                   <div style="display:flex;gap:8px;align-items:center">
@@ -18768,7 +18781,7 @@
                 </div>`}
                 <!-- V2: one sortable, filterable squad list (status quick-filters +
                      Position/Attendance/Response sort). Each row → player panel. -->
-                <div class="msg-player-list msg-board-list">${availUnknown ? availErrorHTML : playerRows(boardRows)}</div>
+                <div class="msg-player-list msg-board-list">${availUnknown ? availErrorHTML : availLoading ? availLoadingHTML : playerRows(boardRows)}</div>
               </article>
             </div>
           </section>`}
@@ -18777,8 +18790,8 @@
           <!-- The open player's card reads THIS player's reply. With no read to
                read it from, it would state one anyway ("This session: No reply"),
                so it closes while availability is unknown and returns on recovery. -->
-          <div id="player-detail-panel" class="msg-player-detail-panel" style="${state.selectedMessagePlayerId && !availUnknown ? "margin-top:14px" : "display:none"}">
-            ${state.selectedMessagePlayerId && !availUnknown ? buildPlayerDetailHtml(selectedPlayer, selectedStatus) : ""}
+          <div id="player-detail-panel" class="msg-player-detail-panel" style="${state.selectedMessagePlayerId && !availPending ? "margin-top:14px" : "display:none"}">
+            ${state.selectedMessagePlayerId && !availPending ? buildPlayerDetailHtml(selectedPlayer, selectedStatus) : ""}
           </div>
 
           <section class="msg-command-grid${BETA_SIMPLE_UI ? ' beta-hidden' : ''}" style="grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr)">
