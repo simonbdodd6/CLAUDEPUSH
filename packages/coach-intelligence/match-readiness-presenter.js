@@ -12,7 +12,7 @@
  * Input: { readiness: <M209 summary>, trend?: <M210 trend> }
  */
 
-import { canonicalStringify } from '@brain/evidence-gateway'
+import { canonicalStringify } from './canonical-stringify.js'
 
 const SUPPORTED_FORMATS = Object.freeze(['object', 'text', 'json'])
 

@@ -11,7 +11,7 @@
  * (already permitted for coach-intelligence by dependency-cruiser, as in M125/M127/M185).
  */
 
-import { canonicalStringify } from '@brain/evidence-gateway'
+import { canonicalStringify } from './canonical-stringify.js'
 
 const SUPPORTED_FORMATS = Object.freeze(['object', 'text', 'json'])
 

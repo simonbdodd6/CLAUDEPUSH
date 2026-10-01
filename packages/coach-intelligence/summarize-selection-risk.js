@@ -11,7 +11,7 @@
  * Reads only — no mutation, filesystem, persistence, APIs, network, randomness or clock.
  */
 
-import { canonicalStringify } from '@brain/evidence-gateway'
+import { canonicalStringify } from './canonical-stringify.js'
 
 const SUPPORTED_FORMATS = Object.freeze(['line', 'text', 'markdown', 'json'])
 const SEVERITIES = Object.freeze(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])

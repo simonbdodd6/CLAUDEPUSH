@@ -12,7 +12,7 @@
  * Input: an M213 buildReadinessEvidenceBundle result.
  */
 
-import { canonicalStringify } from '@brain/evidence-gateway'
+import { canonicalStringify } from './canonical-stringify.js'
 
 const SUPPORTED_FORMATS = Object.freeze(['object', 'text', 'json'])
 
