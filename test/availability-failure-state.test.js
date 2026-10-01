@@ -482,7 +482,12 @@ function boardServer(mode) {
  * the squad of silence on the strength of one player's own answer.
  */
 function dualServer() {
-  const st = { self: 'ok', board: 'fail' };
+  // boardReads counts board requests that reached the stub; hold() makes the
+  // stub answer the board read only after release() — see the journey below.
+  const st = { self: 'ok', board: 'fail', boardReads: 0, gate: null };
+  let release = () => {};
+  st.hold = () => { st.gate = new Promise(r => { release = r; }); };
+  st.release = () => { release(); st.gate = null; };
   const PLAYERS = Array.from({ length: 18 }, (_, i) => ({ id: 'p' + i, userId: 'u_p' + i, name: 'Player ' + i, position: 'Prop', playerGroupId: GRP }));
   PLAYERS[0] = { id: 'p0', userId: 'u1', name: 'Coach Player', position: 'Prop', playerGroupId: GRP };
   const DUAL = { ok: true, user: { id: 'u1', name: 'Coach Player', email: 'cp@s.test', role: 'coach', platformRole: '' },
@@ -491,7 +496,7 @@ function dualServer() {
     memberships: [{ teamId: TEAM, teamName: 'Stub RFC', role: 'coach', staffLevel: 'head', canonicalRole: 'head_coach', current: true }],
     operational: { player: { groups: [{ id: GRP, name: 'Seniors', developmentCategory: 'adult' }], defaultGroupId: GRP, mustChoose: false },
                    staff:  { groups: [{ id: GRP, name: 'Seniors', developmentCategory: 'adult' }], defaultGroupId: GRP, mustChoose: false } } };
-  const srv = http.createServer((req, res) => {
+  const srv = http.createServer(async (req, res) => {
     const u = req.url || '/';
     const send = o => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
     if (u.startsWith('/api/availability')) {
@@ -499,6 +504,8 @@ function dualServer() {
         if (st.self === 'fail') { res.statusCode = 500; return send({ error: 'boom' }); }
         return send({ responses: { fx_sat: { response: 'available', reason: '' } } });
       }
+      st.boardReads++;
+      if (st.gate) await st.gate;
       if (st.board === 'fail') { res.statusCode = 500; return send({ error: 'boom' }); }
       return send({ resolved: {}, roster: PLAYERS });
     }
@@ -520,6 +527,11 @@ function dualServer() {
 /** A condition wait that names its step when it times out — an anonymous timeout under load told nothing. */
 const awaitStep = (page, step, fnc, timeout = 20000) =>
   page.waitForFunction(fnc, null, { timeout }).catch(e => { throw new Error(`while waiting for ${step}: ${e.message}`); });
+/** The same, for a condition on the test's own side (the stub server), polled rather than slept for. */
+const until = async (fnc, step, timeout = 20000) => {
+  const t0 = Date.now();
+  while (!fnc()) { if (Date.now() - t0 > timeout) throw new Error(`while waiting for ${step}: timed out after ${timeout}ms`); await new Promise(r => setTimeout(r, 25)); }
+};
 
 for (const view of ['desktop', 'phone']) {
   test(`browser (${view}): dual role — a good self-read never lets the board convict the squad`, async (t) => {
@@ -539,15 +551,23 @@ for (const view of ['desktop', 'phone']) {
       const page = await ctx.newPage();
       const errors = []; page.on('pageerror', e => errors.push(e.message));
 
-      // The player self-read lands (200) while the board read 500s.
+      // The player self-read lands (200), THEN the board read 500s — the order
+      // of the reported journey, and the one this test is about. The stub holds
+      // the board read until the self-read has been processed, because the two
+      // answers were otherwise ordered by chance: the board's 500 path reads no
+      // body while the self-read awaits its JSON, so when both answers arrived
+      // together the failure could be processed first and the self-read's
+      // success then cleared the shared failure flag — availabilityReadUnknown()
+      // never became true, nothing retried in the player view, and the wait
+      // below expired under suite load.
+      st.hold();
       await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
       await awaitStep(page, 'the player self-read (200) to land', () => { try { return _playerAvailKnown === true; } catch { return false; } });
-      // The two reads answer on their own schedules. Everything below is about
-      // the board AFTER its read has failed — so wait for that failure to have
-      // landed, not just the self-read. Before it lands the hidden board is
-      // still painting its pre-read counts (a loading state the board does not
-      // yet distinguish), and under load that window outlasted the self-read
-      // and this journey failed on the very first check.
+      await until(() => st.boardReads >= 1, 'the board read to reach the stub');
+      assert.ok(st.boardReads >= 1, 'the board read reached the stub while the self-read was being processed');
+      st.release();
+      // Everything below is about the board AFTER its read has failed — so wait
+      // for that failure to have landed, not just the self-read.
       await awaitStep(page, 'the board read (500) to land', () => { try { return availabilityReadUnknown() === true; } catch { return false; } });
       // Even here, with the player shell on screen, the board markup must not
       // have been built out of answers nobody has.
@@ -580,7 +600,7 @@ for (const view of ['desktop', 'phone']) {
 
       assert.deepEqual(errors, [], 'no page errors');
       await ctx.close();
-    } finally { await browser.close(); srv.close(); }
+    } finally { st.release(); await browser.close(); srv.close(); }
   });
 }
 

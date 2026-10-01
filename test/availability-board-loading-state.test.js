@@ -319,7 +319,13 @@ for (const view of ['desktop', 'phone']) {
       ctl.hold();
       let h = await open();
       assert.ok(await waitFor(() => h.page.evaluate(() => !!document.querySelector('#coach-message .avail-loading')), 15000), 'the loading block appears');
+      // The loading block is the hub's FIRST paint, before any read has left:
+      // the board read leaves only after the identity link's own fetch. Under
+      // suite load that gap outlasted the check, so wait for the request to
+      // reach the stub (the server-side signal) before asserting it left.
+      assert.ok(await waitFor(() => ctl.reads.length >= 1, 15000), 'the board read reaches the stub');
       assert.ok(ctl.reads.length >= 1, 'the board read left');
+      assert.ok(await h.page.evaluate(() => !!document.querySelector('#coach-message .avail-loading')), 'and the board is still loading while the read is held');
       let s = await h.page.evaluate(boardState);
       assert.equal(s.status, 'loading');
       assert.deepEqual(s.kpi, [], 'no KPI tiles while loading: ' + JSON.stringify(s.kpi));
