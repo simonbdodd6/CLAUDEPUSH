@@ -157,8 +157,33 @@ test('9. position relevance is a signal, not a restriction', () => {
 
 test('10. no programme-generation logic in Performance regions', () => {
   for (const region of perfRegions()) {
-    for (const banned of ['generateProgramme', 'generateWorkout', 'buildProgramme', 'prescribeLoad', 'autoProgress']) {
+    for (const banned of ['generateWorkout', 'buildProgramme', 'prescribeLoad', 'autoProgress']) {
       assert.ok(!region.includes(banned), `no ${banned}`);
+    }
+    // SC9.36 — `generateProgramme` moved from "banned word" to "the only
+    // permitted way to generate", so the guard now pins WHERE it comes from
+    // rather than forbidding the name. index.html may CALL the engine's
+    // contract; it may not define generation, and it may not reach for any
+    // other generator. That is strictly more than the old check asserted.
+    for (const m of region.matchAll(/generateProgramme/g)) {
+      const before = region.slice(Math.max(0, m.index - 30), m.index);
+      assert.match(before, /engine\.$/,
+        `generateProgramme must be called on the engine module, not "${before.trim().slice(-30)}"`);
+    }
+    assert.ok(!/function\s+generateProgramme|generateProgramme\s*=/.test(region),
+      'index.html must not define generation of its own');
+  }
+});
+
+test('10b. the pre-Gate-2 generator is unreachable from index.html', () => {
+  // The defect SC9.36 closed: index.html assembled engineInput →
+  // generateBlueprint → programmeDraftFromBlueprint by hand, against a copy of
+  // the domain modules that predates Gate 2, the youth frequency floor and the
+  // athlete-state pathway. No live route may reach that chain again.
+  for (const region of perfRegions()) {
+    for (const banned of ['generateBlueprint', 'programmeDraftFromBlueprint', 'engineInputFromAuthoringProfile']) {
+      const code = region.split('\n').map(l => l.replace(/^\s*(\/\/|\*).*$/, '')).join('\n');
+      assert.ok(!code.includes(banned), `${banned} must not be called from index.html`);
     }
   }
 });

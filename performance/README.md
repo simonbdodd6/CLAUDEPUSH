@@ -2,6 +2,216 @@
 
 Premium strength & conditioning module.
 
+---
+
+## ⚠️ SOURCE OF TRUTH
+
+**This directory is NOT where the Performance Intelligence lives.** It is a
+VERBATIM MIRROR of the subset Core physically serves. The canonical
+implementation is the standalone repository:
+
+```
+~/Developer/active/CoachEasier-Performance-Intelligence
+```
+
+Since SC9.36, 49 of the 50 `.js` files here are byte-identical to their
+canonical counterparts. **Do not edit them.** A fix made here is a fork; make it
+in the standalone repository and re-copy. Two implementations of the same
+coaching rules is the condition SC9.35 and SC9.36 exist to end.
+
+The single exception is **`services/workout-runtime.js`**, which is Core's own
+composition barrel for `index.html`'s dynamic import. It says so at the top.
+
+### Why this directory exists at all
+
+`index.html` loads `./performance/...` as same-origin ES modules at runtime, so
+Core must physically contain what it serves. A sibling repository is not
+servable and the CSP allows no external host. So the engine is vendored, not
+referenced.
+
+### What is reachable
+
+Four entry points, and nothing else, reach this directory from the application:
+
+| Entry point | Reached from | Purpose |
+|---|---|---|
+| `engine.js` | `index.html` (`perfEngine()`) | **programme generation** |
+| `services/exercise-catalogue.js` | `index.html` (dynamic import) | the library UI |
+| `services/workout-runtime.js` | `index.html` (dynamic import) | workout execution |
+| `domain/authoring-profile.js` | `api/publish.js` | `gateRestrictionSignal` |
+
+`services/performance-data.js` and `types/index.js` are retained only because
+`index.html` names the former in a "kept in lockstep with" comment. Neither is
+imported.
+
+## ✅ RESOLVED — the pre-Gate-2 generation path (SC9.35 finding, closed by SC9.36)
+
+SC9.35 found that the LIVE coach authoring flow generated programmes by
+assembling `engineInputFromAuthoringProfile → generateBlueprint →
+programmeDraftFromBlueprint` by hand, against a copy of the domain modules that
+predated Gate 2. A programme published through it carried none of the Gate 2
+decisions, no youth strength-frequency floor, and no athlete-state pathway — so
+a declared restriction excluded nothing.
+
+**SC9.36 replaced it.** `perfGenerateDraft()` now makes one call to
+`engine.generateProgramme(...)`. The old chain is not merely unused: the runtime
+barrel withholds all three functions, so no live route can reach it, and a test
+asserts that. There is **no fallback** — if the engine refuses, generation fails
+and says so.
+
+## The integration boundary
+
+```
+CoachEasier Core  (index.html → perfGenerateDraft)
+      │  ONE import, loaded on demand
+      ▼
+performance/engine.js          ← the only module Core may import
+      ├── generateProgramme    → { programme, version, provenance, blueprint, context }
+      ├── releaseDecision      → { releasable, requiresCoachReview, blockedBy, … }
+      ├── validateProgramme    → critique (advisory, provisional)
+      ├── analyseProgramme     → { dose, attribution, observations }
+      ├── explainProgramme     → { trace, reviewPackage }
+      └── outstandingQuestions → practitioner handoff
+```
+
+### What Core supplies
+
+The **SC8 authoring projection** as `profile` — not an SC2 profile, which
+carries wellness, pain and health detail that must never reach a coach's
+device. The engine detects `kind: 'authoring_profile'` and maps it with the
+reader that restores the restriction signals from the projection's flags.
+Passing a projection to the general reader would silently return "no
+restriction" for a restricted athlete, so Core hands it over **whole** and does
+not build engine inputs.
+
+Also: `catalogue`, `teamCategory` (the operational group's structured
+`developmentCategory`), `athleteName`, `athleteUserId`, `author`, `clubId`,
+`weeks`, `schedule`, `now`.
+
+### The two callers (SC9.37)
+
+Generation happens in exactly two places, and both call the same contract:
+
+| Caller | Where | For whom |
+|---|---|---|
+| `perfGenerateDraft()` | `index.html`, client | a COACH authoring for an athlete |
+| `op: 'generate_own_programme'` | `api/publish.js`, **server** | an ATHLETE, for themselves |
+
+The athlete's path is server-side deliberately. A player may not author
+programme content — the server refuses every other programme write from a
+player — so their request carries nothing but the ask, and the server generates
+from its own copy of their profile. It is also the only way the profile can be
+read without the coach-facing minors gate, which would otherwise withhold an
+athlete's own restriction signal from their own programme.
+
+The athlete's path does NOT go through `save_draft` → `publishProgramme`:
+that middle step requires an explicit coach acknowledgement for a flagged
+programme, which is right for coach authoring and would mean most youth
+athletes never receive anything. `createSelfGeneratedProgramme` writes a
+published programme and an active assignment in one step, gated on
+`releaseDecision(...).releasable` and nothing else. The review signals are
+stamped on the record for the coach. Source is `athlete_generated`, never
+`blueprint_generated` — that value means a coach reviewed it.
+
+### What reaches a player
+
+`playerProgramme()` from the contract, stored on the assignment as
+`playerView`, and projected through `PLAYER_ASSIGNMENT_FIELDS`. That is two
+whitelists in series. `requiresReview`, `reviewFlags`, `provenance`,
+`profileFingerprint` and `engineContractVersion` are all deliberately absent
+from the player projection: review is a conversation between the engine and the
+coach, and the athlete is not its subject.
+
+`developmentContextSnapshot` IS sent and predates SC9.37 — it is the athlete's
+own squad classification, which is why youth programming applies to them.
+
+### Regeneration
+
+One live programme at a time. A second request is refused with
+`active_assignment_exists` rather than quietly replacing a block the athlete is
+part-way through, because losing an active programme and the progression built
+on it is worse than any programme the second request would have produced.
+
+Changing the profile does NOT rebuild. The server compares a fingerprint of the
+programming inputs and returns `profileChangedSinceBuild`, so the athlete is
+told their programme predates a change they made and can talk to their coach.
+The fingerprint itself stays on the server.
+
+### What Core must never import
+
+Anything under `domain/`. Those modules compose in an order that matters and
+fail quietly when assembled wrongly; `engine.js` exists to prevent exactly that.
+`services/workout-runtime.js` re-exports some `domain/` functions for the SC7
+workout surface — that is execution, not generation, and it deliberately
+withholds every generation function.
+
+### Athlete state
+
+**Core supplies none today, and that is deliberate.** `athleteState` describes
+what an authorised system knows about an athlete's availability and restrictions
+right now. Core has no defensible source: session availability answers "can you
+make Tuesday", which is not a statement about fitness to train, and the medical
+record is outside this endpoint's scope by design. Mapping either would be
+fabrication.
+
+The engine records absence as `supplied: false`, never as clearance, so omitting
+it is safe. The parameter is the seam a future build fills — **`MISSING DATA ≠
+CLEARANCE` and `UNKNOWN ≠ AVAILABLE`.** A stale restriction is applied and
+escalated, never lifted. An unavailable athlete throws `athlete_unavailable`
+rather than receiving a document. An unknown restriction tag throws rather than
+being partially honoured.
+
+The restriction signal Core DOES carry — the projection's `restrictions` flags —
+reaches the engine and does exclude work, and is gated for minors on the server
+before it ever leaves (`gateRestrictionSignal`).
+
+### Catalogue
+
+One catalogue, `services/exercise-catalogue.js`, byte-identical to the canonical
+one and carrying the SC9.32 contraindication tags (14 exercises across 4 tags).
+There is no separate "Core operational" catalogue: the library UI, the workout
+runtime and the engine all read the same file. It is a mirror — edit it in the
+standalone repository.
+
+### Release policy
+
+A generated programme is **released**; review signals go to the coach alongside
+it, never in front of it. Only a `blocking`-severity flag holds a programme, and
+Core reads that from `releaseDecision()` rather than restating a policy of its
+own. `releasable` and `requiresCoachReview` are different questions. The hard
+gates are the engine's throws and its eligibility exclusions — a programme that
+exists has already passed them.
+
+The coach's existing review acknowledgement on the publish step is unchanged:
+SC9.36 changed where a programme comes from, not how a coach publishes one.
+
+### Errors
+
+The engine fails **by name**. `index.html`'s `perfEngineErrorText()` translates
+the names a coach can act on and keeps the raw name in brackets for support.
+Nothing retries, degrades or substitutes.
+
+### Contract version
+
+`ENGINE_CONTRACT_VERSION` identifies the contract, and moves when observable
+behaviour does. It is persisted with each draft as `engineContractVersion` — the
+**string only**. The engine `context` carries eligibility sets and the resolved
+athlete state and is never stored, never sent to a player, and never kept on the
+authoring state.
+
+### Keeping the mirror honest
+
+`test/performance-engine-integration.test.js` pins a SHA-256 digest of the
+prescriptions generated for a fixed U18 athlete. The standalone repository's
+`performance/tests/sc936-core-integration-contract.test.js` pins the same
+constant against the canonical engine. If they ever disagree, this mirror has
+drifted — **resync from the standalone repository; do not edit the constant.**
+
+Full contracts: `performance/docs/core-integration.md`, `athlete-state.md` and
+`restriction-catalogue-mapping.md` **in the standalone repository**.
+
+---
+
 - **SC1** — module architecture, navigation shells, premium gating.
 - **SC2** — athlete profile model, intelligent onboarding, privacy &
   visibility boundaries, versioned persistence.

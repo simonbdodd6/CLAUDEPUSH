@@ -39,11 +39,26 @@ import {
   occupyingAssignments, saveProgrammeDraft, publishProgramme, createAssignmentRecord,
   updateAssignmentStatus, reviewProgression, projectAssignmentForPlayer,
   projectAssignmentForCoach, saveAuthoringProfile, authoringProfileFor,
+  createSelfGeneratedProgramme, OCCUPYING_STATUSES,
 } from './_performanceStore.js';
 import { loadTeams, setTenantClubName } from './_identityStore.js';
 import { canonicalRole, isStaffRole } from './_permissions.js';
-import { gateRestrictionSignal } from '../performance/domain/authoring-profile.js';
+import { gateRestrictionSignal, authoringProfileUsable, missingAuthoringInputs }
+  from '../performance/domain/authoring-profile.js';
+// SC9.37 — the athlete's own programme is generated HERE, on the server, from
+// the server's own copy of their profile. It is the same canonical contract
+// index.html calls for coach authoring (SC9.36); there is exactly one
+// generator. A player may not author programme content, so the player's
+// request carries none — only the fact that they asked.
+import { generateProgramme, releaseDecision, playerProgramme, ENGINE_CONTRACT_VERSION }
+  from '../performance/engine.js';
+import { getCatalogue } from '../performance/services/exercise-catalogue.js';
+// Programme LIFECYCLE, not generation: the same freeze-and-snapshot the coach
+// path performs, so an athlete-generated assignment is shaped identically.
+import { publishProgrammeVersion, snapshotForProgrammeAssignment }
+  from '../performance/domain/programme-versioning.js';
 import { load, save } from './_lib.js';
+import { createHash } from 'node:crypto';
 import { auditLog, requestIp } from './_security.js';
 import { findDuplicate } from '../src/fixture-import.js';
 import { runWeeklyAvailabilityCheck } from './cron.js';
@@ -2933,6 +2948,46 @@ function scopedAthleteIds(session, structure, members) {
   return new Set(active.filter(m => allowed.has(String(m.playerGroupId || ''))).map(m => String(m.userId)));
 }
 
+/**
+ * SC9.37 — what the athlete's programme was built from, as one short hash.
+ *
+ * Only the PROGRAMMING inputs, so a cosmetic edit does not read as a change
+ * and a real one does. Stored, never projected to the athlete: it exists so
+ * they can be told their programme predates something they changed, which is a
+ * different statement from showing them a hash.
+ */
+function performanceProfileFingerprint(ap) {
+  const p = ap || {};
+  const material = JSON.stringify([
+    p.personal?.ageBand ?? null,
+    p.rugby?.primaryPosition ?? null, p.rugby?.playingLevel ?? null, p.rugby?.seasonPhase ?? null,
+    p.training?.experience ?? null, p.training?.preferredSessionMinutes ?? null,
+    [...(p.equipment?.locations || [])].sort(), [...(p.equipment?.items || [])].sort(),
+    [...(p.schedule?.availableDays || [])].sort(), [...(p.schedule?.rugbyDays || [])].sort(),
+    p.schedule?.matchDay ?? null, p.schedule?.maxSessionMinutes ?? null,
+    (p.goals || []).map((g) => [g.type, g.importance]).sort(),
+    p.restrictions?.trainingRestricted === true,
+  ]);
+  return createHash('sha256').update(material).digest('hex').slice(0, 32);
+}
+
+/**
+ * The athlete's own squad context, resolved from THIS club's membership and
+ * structure. Never from anything the request said about itself.
+ */
+function performanceOwnContext(session, structure, mine, userId, roster) {
+  const me = mine.find((m) => String(m.userId) === String(userId)) || null;
+  const gid = String(me?.playerGroupId || '');
+  const group = (structure.groups || []).find((g) => g.id === gid) || null;
+  const player = (roster?.players || []).find((x) => String(x.userId || '') === String(userId)) || null;
+  return {
+    memberId: me?.id || null,
+    name: player?.name || session.user?.name || 'Player',
+    groupId: gid, groupName: group?.name || '',
+    developmentCategory: group?.developmentCategory || null,
+  };
+}
+
 async function performanceHandler(req, res) {
   let session;
   try {
@@ -2960,8 +3015,103 @@ async function performanceHandler(req, res) {
   // no coach notes about them.
   if (capacity === 'player') {
     if (req.method === 'POST') {
-      // The ONLY write a player may make: their own authoring profile. The
-      // athlete id comes from the session, so a forged athleteUserId in the
+      // SC9.37 — the athlete asks for their own programme.
+      //
+      // They still cannot AUTHOR one: nothing in this request body becomes
+      // programme content. The server reads the athlete's profile from its own
+      // record, generates through the canonical engine, and applies the
+      // engine's release decision. What the athlete supplies is the request.
+      if (String(req.body?.op || '') === 'generate_own_programme') {
+        const ap = authoringProfileFor(record, actor.userId);
+        if (!authoringProfileUsable(ap)) {
+          return res.status(400).json({
+            ok: false, code: 'profile_incomplete',
+            error: 'Your Performance profile is not complete yet.',
+            missing: missingAuthoringInputs(ap),
+          });
+        }
+
+        const roster = await readScoped(rosterKey(clubId), 'roster', clubId);
+        const own = performanceOwnContext(session, structure, mine, actor.userId, roster);
+        const catalogue = getCatalogue();
+        const now = new Date().toISOString();
+        const startDate = now.slice(0, 10);
+
+        let built;
+        try {
+          built = generateProgramme({
+            profile: ap, catalogue,
+            teamCategory: own.developmentCategory,
+            athleteName: own.name, athleteUserId: actor.userId,
+            author: actor.userId, clubId, weeks: 4, now,
+          });
+        } catch (error) {
+          // FAIL, DO NOT DEGRADE. There is no second generator to fall back to
+          // and no weaker programme to offer: the engine refused, so we refuse.
+          return res.status(422).json({
+            ok: false, code: 'generation_failed',
+            error: String(error?.message || 'generation_failed'),
+          });
+        }
+
+        // The engine's gate, not ours. `requiresCoachReview` is a signal and
+        // travels with the programme; only `releasable` holds anything back.
+        const release = releaseDecision(built.blueprint);
+        if (!release.releasable) {
+          return res.status(422).json({
+            ok: false, code: 'not_releasable',
+            error: 'This programme was held rather than released.',
+          });
+        }
+
+        // The player-safe WHITELIST. Built here, while the blueprint still
+        // exists, because the blueprint is never stored and never sent.
+        const teams = await loadTeams().catch(() => []);
+        const club = (teams || []).find(t => String(t.id) === String(clubId)) || null;
+        const playerView = playerProgramme({
+          programme: built.programme, blueprint: built.blueprint, catalogue,
+          athlete: { name: own.name, club: club?.name || null, team: own.groupName || null },
+        });
+
+        publishProgrammeVersion(built.programme, 1, { actor: actor.userId, now });
+        const snapshot = snapshotForProgrammeAssignment(built.programme, 1, { catalogue, now });
+
+        let saved;
+        try {
+          saved = await createSelfGeneratedProgramme(clubId, {
+            athleteUserId: actor.userId, athleteMemberId: own.memberId, athleteName: own.name,
+            groupId: own.groupId, groupName: own.groupName,
+            title: built.programme.title, goal: built.programme.goal, phase: built.programme.season,
+            programme: built.programme, provenance: built.provenance,
+            engineContractVersion: built.context.contractVersion,
+            playerView, snapshot,
+            programmeVersionId: snapshot.programmeVersionId, versionNumber: snapshot.versionNumber,
+            startDate,
+            developmentContextSnapshot: built.provenance?.developmentContext || null,
+            reviewFlags: (built.blueprint.flags || [])
+              .filter(f => f.severity === 'requires_review' || f.severity === 'warning')
+              .map(f => f.id),
+            requiresReview: release.requiresCoachReview === true,
+            profileFingerprint: performanceProfileFingerprint(ap),
+          }, actor);
+        } catch (error) {
+          return res.status(error?.status || 400).json({
+            ok: false, code: error?.code || 'save_failed',
+            error: error?.message || 'Could not save your programme',
+          });
+        }
+
+        await auditLog('performance_programme_self_generated', {
+          athleteUserId: actor.userId, changedBy: actor.userId, teamId_club: clubId,
+          ip: requestIp(req),
+        });
+        return res.status(200).json({
+          ok: true, assignment: projectAssignmentForPlayer(saved.assignment),
+        });
+      }
+
+      // The ONLY other write a player may make: their own authoring profile.
+      // The athlete id comes from the session, so a forged athleteUserId in the
       // body cannot overwrite anyone else's record.
       if (String(req.body?.op || '') !== 'save_athlete_profile') {
         return res.status(403).json({ ok: false, error: 'Players cannot author or assign programmes' });
@@ -2979,11 +3129,26 @@ async function performanceHandler(req, res) {
     if (req.method !== 'GET') {
       return res.status(403).json({ ok: false, error: 'Players cannot author or assign programmes' });
     }
-    const own = assignmentsForAthlete(record, actor.userId).map(projectAssignmentForPlayer);
-    // Their own profile, so it follows them to a new device.
+    const ownProfile = authoringProfileFor(record, actor.userId);
+    const ownAssignments = assignmentsForAthlete(record, actor.userId);
+    const own = ownAssignments.map(projectAssignmentForPlayer);
+    // SC9.37 — can this athlete build their own programme, and is the one they
+    // have still built from what their profile says now?
+    //
+    // A BOOLEAN, computed here. The fingerprint itself stays on the server: the
+    // athlete needs to know their programme is older than a change they made,
+    // which is a statement, not a hash for their device to compare.
+    const live = ownAssignments.find(a => OCCUPYING_STATUSES.includes(a.status)) || null;
+    const fingerprint = performanceProfileFingerprint(ownProfile);
     return res.status(200).json({
       ok: true, capacity: 'player', assignments: own,
-      profile: authoringProfileFor(record, actor.userId),
+      profile: ownProfile,
+      selfService: {
+        canGenerate: authoringProfileUsable(ownProfile),
+        missing: missingAuthoringInputs(ownProfile),
+        hasLiveProgramme: !!live,
+        profileChangedSinceBuild: !!(live && live.profileFingerprint && live.profileFingerprint !== fingerprint),
+      },
     });
   }
 

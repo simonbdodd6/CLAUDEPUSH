@@ -48,6 +48,12 @@ export const ASSIGNMENT_SOURCES = [
   'coach_authored',        // coach built it by hand
   'blueprint_generated',   // SC5 deterministic blueprint, coach-reviewed
   'template_instance',     // instantiated from an approved template
+  // SC9.37. The athlete asked for their own programme and the engine released
+  // it. Deliberately NOT 'blueprint_generated': that value means a coach
+  // reviewed the output before it went anywhere, and here nobody did — the
+  // release decision did. A record that cannot tell those apart cannot answer
+  // "who signed this off", which is the one question an audit will ask.
+  'athlete_generated',
 ];
 
 /** Why an assignment left its previous state — audit-grade, not free text. */

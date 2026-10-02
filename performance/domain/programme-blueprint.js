@@ -12,11 +12,12 @@
 // Pure module: no DOM, no fetch, no localStorage.
 
 import { ENGINE_VERSION, flagDef, reason } from '../types/coaching.js';
+import { resolvePhase } from './blueprint-to-programme.js';
 import { resolveDevelopmentContext } from './development-context.js';
 import { adjustDemandsForAthlete, getPositionDemands, topQualities } from './position-demands.js';
 import {
   ARCHETYPE_PLANS, decideDose, decideFrequency, decideMatchWeekPlacement,
-  decideSessionArchetypes, evaluatePatternCoverage, patternRequirements,
+  decideSessionArchetypes, evaluatePatternCoverage, patternRequirements, rugbyLoadFor,
 } from './coaching-rules.js';
 import { CONSERVATIVE_EQUIPMENT, complexityCeiling, partitionEligibility, selectForSlot } from './exercise-selection.js';
 
@@ -77,7 +78,7 @@ function collectRestrictionTags(p) {
  * @param {{catalogue:Array, collections?:Array}} refs
  * @returns {object} blueprint — structured, explainable, auditable
  */
-export function generateBlueprint(input, { catalogue = [] } = {}) {
+export function generateBlueprint(input, { catalogue = [], athleteState = null } = {}) {
   const reasons = [];
   const flagSet = new Set(['beta_rules_provisional']);
 
@@ -91,6 +92,10 @@ export function generateBlueprint(input, { catalogue = [] } = {}) {
   // 2. Fail-safe input handling.
   if (!input.equipment) flagSet.add('equipment_unknown');
   if (!input.restrictionsKnown) flagSet.add('restrictions_unknown');
+  // SC9.31. Externally supplied athlete state arrives already resolved — this
+  // module renders its flags and reasons, it does not interpret it.
+  for (const f of athleteState?.flags || []) flagSet.add(f);
+  for (const st of athleteState?.statements || []) reasons.push({ code: st.code, text: st.text });
   if (!input.profileComplete) flagSet.add('profile_incomplete');
   if (input.hasActiveRestriction) flagSet.add('medical_restriction_review');
 
@@ -112,7 +117,7 @@ export function generateBlueprint(input, { catalogue = [] } = {}) {
       developmentContext: dev, frequency: 0, sessions: [], matchWeek: { placements: [] },
       qualityPriorities: [], patternPlan: { required: [], recommended: [] },
       coverage: { covered: [], missing: [] }, dose: { volume: null, intensity: null },
-      optionalWork: false, reasons, flagSet, input,
+      optionalWork: false, reasons, flagSet, input, rugbyLoad: rugbyLoadFor(input), athleteState,
     });
   }
 
@@ -123,8 +128,15 @@ export function generateBlueprint(input, { catalogue = [] } = {}) {
 
   // 5. Dose categories — phase baseline constrained by training age,
   // development context and schedule congestion (see decideDose pipeline).
-  const rugbyLoad = (input.rugbyDays?.length || 0) + (input.matchCount ?? (input.matchDay ? 1 : 0));
-  const dose = decideDose({ phase: input.phase, experience: input.experience, context: dev.context, goal: primaryGoal, rugbyLoad });
+  const rugbyLoad = rugbyLoadFor(input);
+  // The phase CONTRACT must be resolved before the dose is decided, not after.
+  // `post_season` is programmed as `return_to_general_training`, but decideDose
+  // was handed the raw value, matched no entry in the phase tables and fell
+  // back to moderate intensity — so an athlete the engine had already decided
+  // was rebuilding general capacity was dosed as though mid-competition. The
+  // volume tables agreed by coincidence; the intensity tables did not.
+  const dosePhase = resolvePhase(input.phase).phase;
+  const dose = decideDose({ phase: dosePhase, experience: input.experience, context: dev.context, goal: primaryGoal, rugbyLoad });
   dose.flags.forEach((f) => flagSet.add(f));
   reasons.push(...dose.reasons);
 
@@ -156,9 +168,20 @@ export function generateBlueprint(input, { catalogue = [] } = {}) {
       const picks = [];
       const unresolved = [];
       for (const slot of blockPlan.slots || []) {
-        const pick = selectForSlot(eligible, {
+        // A block must not prescribe the same exercise twice. Two slots can
+        // legitimately admit one exercise — a trap bar jump satisfies both the
+        // jump slot and a power hinge — and writing it out twice is not a
+        // programme any coach would hand over. Excluding what the block has
+        // already taken lets the next-best exercise fill the slot, or leaves it
+        // honestly unresolved.
+        const takenInBlock = new Set(picks.map((p) => p.exerciseId));
+        const available = takenInBlock.size ? eligible.filter((ex) => !takenInBlock.has(ex.id)) : eligible;
+        const pick = selectForSlot(available, {
           pattern: slot.pattern, quality: slot.quality || null, goals: goalTypes,
           position: input.position, phase: input.phase, level,
+          // The block a slot belongs to is part of what makes an exercise
+          // appropriate for it — a warm-up drill is not a main lift.
+          blockType: blockPlan.type,
         });
         if (pick) {
           picks.push({ exerciseId: pick.exercise.id, name: pick.exercise.name, score: pick.score, reasons: pick.reasons });
@@ -183,6 +206,30 @@ export function generateBlueprint(input, { catalogue = [] } = {}) {
   const coverage = evaluatePatternCoverage(patternPlan, selectedAll);
   if (coverage.missing.length) flagSet.add('pattern_coverage_gap');
 
+  // A pattern the engine ASKED FOR that no eligible exercise can satisfy is a
+  // different state from one the week simply did not include, and the two were
+  // reported identically — as silence.
+  //
+  // SC9.28 found this through neck work for a youth front row: the engine asks
+  // for neck coverage, every neck exercise is excluded for youth by its own
+  // safety rating, and the coverage report was clean. It is not confined to
+  // neck work or to youth, so the check is written against the eligible set
+  // rather than against any exercise or context by name.
+  //
+  // This reports. It does not relax anything: an unreachable pattern stays
+  // unreachable, and the flag says a human has to source it.
+  const canCover = (pattern) => eligible.some((ex) =>
+    ex.classification?.pattern === pattern
+    || (ex.classification?.secondaryPatterns || []).includes(pattern));
+  const unavailable = [...coverage.missing, ...coverage.recommendedMissing]
+    .filter((pattern) => !canCover(pattern));
+  if (unavailable.length) {
+    flagSet.add('pattern_unavailable_for_athlete');
+    for (const pattern of unavailable) {
+      reasons.push(reason('pattern_unavailable', { pattern, context: dev.context }));
+    }
+  }
+
   // 10. Match-week placement constraints.
   const matchWeek = decideMatchWeekPlacement({ matchDay: input.matchDay });
   reasons.push(...matchWeek.reasons);
@@ -199,7 +246,7 @@ export function generateBlueprint(input, { catalogue = [] } = {}) {
   return finalize({
     developmentContext: dev, frequency: freq.frequency, sessions, matchWeek,
     qualityPriorities, boostedQualities: boosted, patternPlan, coverage, dose,
-    optionalWork, reasons, flagSet, input, excludedCount: excluded.length,
+    optionalWork, reasons, flagSet, input, excludedCount: excluded.length, rugbyLoad, athleteState,
   });
 }
 
@@ -208,7 +255,7 @@ function conflictingGoals(goalTypes) {
   return pairs.some(([a, b]) => goalTypes.includes(a) && goalTypes.includes(b));
 }
 
-function finalize({ developmentContext, frequency, sessions, matchWeek, qualityPriorities, boostedQualities = [], patternPlan, coverage, dose, optionalWork, reasons, flagSet, input, excludedCount = 0 }) {
+function finalize({ developmentContext, frequency, sessions, matchWeek, qualityPriorities, boostedQualities = [], patternPlan, coverage, dose, optionalWork, reasons, flagSet, input, excludedCount = 0, rugbyLoad = 0, athleteState = null }) {
   const flags = [...flagSet].map((id) => {
     const def = flagDef(id);
     return { id, severity: def?.severity || 'warning', label: def?.label || id };
@@ -236,6 +283,15 @@ function finalize({ developmentContext, frequency, sessions, matchWeek, qualityP
       conflicts: developmentContext.conflicts,
     },
     frequency,
+    // What the engine was told about this athlete's current state, and what it
+    // was not. `null` is never written: an absent state is recorded as an
+    // explicit `supplied: false` so nothing downstream can read silence as
+    // clearance.
+    athleteState,
+    // Carried, not recomputed downstream. The blueprint's `input` is minimised
+    // and omits rugbyDays; an explanation layer that re-derived this from what
+    // survived reported one commitment for an athlete generated against three.
+    rugbyLoad,
     volumeCategory: dose.volume,
     intensityCategory: dose.intensity,
     qualityPriorities,

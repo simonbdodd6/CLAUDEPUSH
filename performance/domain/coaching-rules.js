@@ -25,6 +25,44 @@ const FREQ_BASE = {
 const YOUTH_FREQ_CAP = { youth_u16: { default: 3, in_season: 2 }, youth_u18: { default: 4, in_season: 3 }, unknown: { default: 2, in_season: 2 } };
 
 /**
+ * The bottom of the youth resistance-training frequency band.
+ *
+ * NOT A NEW NUMBER. The NSCA youth position stand specifies 2-3 non-consecutive
+ * days per week, and Gate 2 Q6 already recorded that the engine honours it —
+ * "youth receive 1-3 sets across 2 sessions". `YOUTH_FREQ_CAP` above encodes the
+ * same band as a ceiling. This is the same band's floor, applied where the
+ * structured-day cap below was overriding it.
+ *
+ * It is a FLOOR, not a target: it never raises frequency above what the phase,
+ * the youth cap or the athlete's availability already allowed.
+ */
+const YOUTH_MIN_STRENGTH_SESSIONS = 2;
+
+/**
+ * Contexts the floor applies to: youth resolved from real evidence.
+ *
+ * `unknown` is deliberately excluded. The engine's standing rule is that an
+ * unresolved context unlocks nothing, and a floor is an unlock.
+ */
+const RESOLVED_YOUTH = new Set(['youth_u16', 'youth_u18']);
+
+/**
+ * How much rugby a week already carries: team sessions plus matches.
+ *
+ * ONE definition, deliberately. This number decided the frequency cap and the
+ * dose reduction, and it was separately recomputed by the explanation layer
+ * from a blueprint that does not carry `rugbyDays` — so a programme built
+ * against three commitments was explained as though it had one. Same formula,
+ * different inputs, no way for a reader to tell which was right.
+ *
+ * `matchCount` overrides the match day when a caller knows better (a double
+ * fixture week); otherwise a match day counts as one.
+ */
+export function rugbyLoadFor({ rugbyDays = [], matchDay = null, matchCount = undefined } = {}) {
+  return (rugbyDays?.length || 0) + (matchCount ?? (matchDay ? 1 : 0));
+}
+
+/**
  * Decide S&C frequency for one week.
  * @param {{availableDays:string[], rugbyDays:Array, matchDay:string|null,
  *          matchCount?:number, phase:string, experience:string, context:string,
@@ -66,11 +104,36 @@ export function decideFrequency(input) {
 
   // Rugby congestion: rugby sessions + matches consume recovery. Cap S&C so
   // total structured days stay ≤ 5 for adults, ≤ 4 for youth/unknown.
-  const rugbyLoad = (rugbyDays?.length || 0) + matchCount;
+  //
+  // SC9.29. This cap counts every structured day as equivalent — a 45-minute
+  // supervised gym session and an 80-minute contact match cost the same. For a
+  // youth athlete with the ordinary rugby week (two team sessions and a match)
+  // it left exactly one gym day, which is below the band the NSCA position
+  // stand specifies and below what Gate 2 Q6 recorded the engine as honouring.
+  // An identical adult kept two. The number 4 carries no citation.
+  //
+  // Congestion is ALREADY answered once, by `decideDose`: rugbyLoad >= 3
+  // reduces volume a category. Answering it a second time by deleting the
+  // session was the unevidenced half, so the floor below protects the session
+  // and the dose reduction continues to carry the congestion response.
+  const rugbyLoad = rugbyLoadFor({ rugbyDays, matchCount });
   const totalCap = context === 'adult' ? 5 : 4;
   if (rugbyLoad + frequency > totalCap) {
-    frequency = Math.max(1, totalCap - rugbyLoad);
+    const congested = Math.max(1, totalCap - rugbyLoad);
+    // Never above what the phase, the youth cap and availability already
+    // allowed — `frequency` carries all three at this point.
+    const floor = RESOLVED_YOUTH.has(context)
+      ? Math.min(YOUTH_MIN_STRENGTH_SESSIONS, frequency)
+      : 1;
+    frequency = Math.max(congested, floor);
     reasons.push(reason('freq_congestion', { frequency, rugbyLoad }));
+    if (floor > congested) {
+      // The floor held the session that the day-count would have removed. The
+      // week IS dense, and saying so is the honest alternative to either
+      // silently dropping below the guidance or silently exceeding the cap.
+      reasons.push(reason('freq_youth_floor', { frequency, rugbyLoad, total: rugbyLoad + frequency }));
+      flags.push('youth_week_density_review');
+    }
   }
   if (matchCount >= 2 && frequency > 1) {
     frequency = 1;
@@ -309,7 +372,11 @@ export function patternRequirements({ frequency, goals = [], position = null, co
     if (context === 'adult' || supervisionAvailable) {
       recommended.add('neck_flexion');
       recommended.add('isometric_contact');
-      reasons.push(reason('pattern_required', { pattern: 'neck_flexion', driver: 'forward position' }));
+      // RECOMMENDED, and said as such. This was announced with the
+      // `pattern_required` code, which renders "coverage required this week" —
+      // a stronger claim than the list it was actually added to, and one the
+      // coverage report then contradicted by finding nothing missing.
+      reasons.push(reason('pattern_optional', { pattern: 'neck_flexion', driver: 'forward position' }));
     }
   }
   for (const p of required) if (recommended.has(p)) recommended.delete(p);
@@ -328,5 +395,11 @@ export function evaluatePatternCoverage(requirements, selectedExercises) {
     for (const p of ex.classification.secondaryPatterns || []) covered.add(p);
   }
   const missing = requirements.required.filter((p) => !covered.has(p));
-  return { covered: [...covered].sort(), missing };
+  // Recommended patterns that went uncovered were previously computed nowhere,
+  // so a week that skipped every one of them reported nothing missing. They are
+  // NOT promoted to `missing` — optional is optional, and inflating the gap
+  // would make the required list mean less. They are reported alongside it so a
+  // reader can see what the engine asked for and did not deliver.
+  const recommendedMissing = (requirements.recommended || []).filter((p) => !covered.has(p));
+  return { covered: [...covered].sort(), missing, recommendedMissing };
 }

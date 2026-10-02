@@ -56,6 +56,14 @@ export function exposuresFromWorkout(workout) {
       exerciseId: log.exerciseId,
       exerciseVersion: log.exerciseVersion,
       date: workout.completedAt,
+      // WHERE in the programme this work came from. The workout already knows;
+      // without it, evidence cannot be attributed to a week and block
+      // completion would have to be guessed from the calendar (SC9.3).
+      weekNumber: Number.isInteger(workout.sourceSessionSnapshot?.week)
+        ? workout.sourceSessionSnapshot.week : null,
+      sourceSessionId: workout.sourceSessionId || null,
+      sourcePrescriptionId: log.sourcePrescriptionId || null,
+      assignmentId: workout.programmeAssignmentId || null,
       classified,
       eligible,
       excludedReason,

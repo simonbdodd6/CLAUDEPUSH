@@ -5434,6 +5434,99 @@
     .perf-review-missing { color:var(--status-maybe); font-weight:650; }
 
     /* Profile screen */
+    /* ── SC9.37 · the athlete's own programme ────────────────────────────────
+       Club identity and the CoachEasier lockup sit on the programme itself,
+       because this IS a club-owned surface: it is the athlete's Boitsfort
+       programme, produced by CoachEasier. Everything below reuses the existing
+       brand tokens — no second palette. */
+    .perf-build-card { gap:0; }
+    .perf-build-lead { font-size:13.5px; margin:8px 0 0; line-height:1.5; }
+    .perf-build-missing { margin:12px 0 0; padding-left:18px; display:grid; gap:4px;
+      font-size:13px; color:var(--ink); }
+    .perf-build-btn { margin-top:16px; width:100%; }
+    .perf-build-foot { font-size:12px; margin:10px 0 0; }
+    .perf-build-error { margin:12px 0 0; padding:10px 12px; border-radius:10px; font-size:13px;
+      color:var(--red); background:rgba(239,68,68,0.10); border:1px solid rgba(239,68,68,0.28); }
+    .perf-stale-note { margin:12px 0 0; padding:10px 12px; border-radius:10px; font-size:12.5px;
+      color:var(--ink); background:var(--amber-soft, rgba(245,158,11,0.10));
+      border:1px solid rgba(245,158,11,0.30); }
+
+    /* The programme header — the one place the lockup appears. */
+    .perf-prog { margin-top:18px; border-top:3px solid var(--brand); }
+    .perf-prog-head { display:grid; gap:0; }
+    .perf-prog-brand { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; margin-bottom:10px; }
+    .perf-prog-club { font-size:11.5px; font-weight:800; letter-spacing:.09em; text-transform:uppercase;
+      color:var(--brand-2); }
+    .perf-prog-mark { font-size:10.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+      color:var(--muted); padding-left:8px; border-left:1px solid var(--brand-line); }
+    .perf-prog-title { margin:0; font-size:20px; font-weight:800; letter-spacing:-0.02em;
+      color:var(--ink); line-height:1.25; }
+    .perf-prog-for { margin:5px 0 0; font-size:13px; font-weight:650; color:var(--ink); }
+    .perf-prog-lead { margin:8px 0 0; font-size:13px; color:var(--muted); line-height:1.5; }
+    .perf-prog-facts { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+    .perf-prog-facts span { font-size:12px; color:var(--muted); padding:5px 11px; border-radius:999px;
+      background:var(--brand-soft); border:1px solid var(--brand-line); }
+    .perf-prog-facts strong { color:var(--ink); font-weight:800; }
+
+    /* Weeks — progressive disclosure, one open at a time by default. */
+    .perf-weeks { display:grid; gap:10px; margin-top:14px; }
+    .perf-week { border:1px solid var(--line); border-radius:13px; background:var(--panel);
+      overflow:hidden; }
+    .perf-week[open] { border-color:var(--brand-line); }
+    .perf-week-sum { list-style:none; cursor:pointer; display:flex; align-items:center;
+      justify-content:space-between; gap:12px; padding:14px 16px; min-height:52px; }
+    .perf-week-sum::-webkit-details-marker { display:none; }
+    .perf-week-sum:hover { background:var(--panel-2); }
+    .perf-week-n { font-size:14.5px; font-weight:800; color:var(--ink); letter-spacing:-0.01em; }
+    .perf-week-focus { font-size:11.5px; font-weight:750; letter-spacing:.05em; text-transform:uppercase;
+      color:var(--brand-2); padding:4px 10px; border-radius:999px; background:var(--brand-soft); }
+    .perf-week-note { margin:0 16px 4px; font-size:12.5px; color:var(--muted); line-height:1.5; }
+    .perf-day { padding:4px 16px 14px; }
+    .perf-day-head { font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+      color:var(--muted); padding:12px 0 8px; border-top:1px solid var(--line); margin-top:8px; }
+    .perf-sess-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+      margin-bottom:10px; }
+    .perf-sess-head strong { font-size:14.5px; color:var(--ink); letter-spacing:-0.01em; }
+    .perf-sess-min { font-size:12px; color:var(--muted); flex-shrink:0; }
+    /* `perf-pblock`, not `perf-block`: that name is already the SC7 workout
+       block-list component (a flex row with a number badge), and reusing it
+       laid every exercise list out sideways. Same word, different component. */
+    .perf-pblock { margin-top:16px; }
+    .perf-pblock-label { font-size:11px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
+      color:var(--brand-2); margin-bottom:6px; }
+    .perf-pblock-note { margin:0; font-size:12.5px; color:var(--muted); }
+    .perf-ex-list { display:grid; gap:2px; }
+    .perf-ex { padding:9px 0; border-bottom:1px solid var(--line); }
+    .perf-ex:last-child { border-bottom:0; padding-bottom:0; }
+    .perf-ex-name { font-size:14px; font-weight:700; color:var(--ink); line-height:1.35; }
+    /* Dose, effort and rest stay on one readable row and WRAP rather than
+       shrink: a cramped "3 × 8" is the one thing an athlete must not misread. */
+    .perf-ex-dose { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:5px; }
+    .perf-ex-sets { font-size:13.5px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums;
+      padding:3px 9px; border-radius:7px; background:var(--panel-2); border:1px solid var(--line); }
+    .perf-ex-rpe { font-size:12px; font-weight:750; color:var(--brand-2); padding:3px 9px;
+      border-radius:7px; background:var(--brand-soft); border:1px solid var(--brand-line); }
+    .perf-ex-rest { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+    .perf-ex-cue { margin-top:5px; font-size:12.5px; color:var(--muted); line-height:1.45; }
+    .perf-prog-guide { margin-top:14px; gap:14px; }
+    .perf-guide-item strong { display:block; font-size:13.5px; color:var(--ink); margin-bottom:4px; }
+    .perf-guide-item p { margin:0; font-size:12.5px; line-height:1.55; }
+    .perf-guide-item + .perf-guide-item { margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
+
+    @media (max-width: 560px) {
+      /* The lockup wraps to two lines on a phone, and a border-left divider
+         then renders as a stray vertical bar at the start of the second line.
+         The line break is the separator once it wraps. */
+      .perf-prog-mark { border-left:0; padding-left:0; }
+      .perf-prog-title { font-size:18px; }
+      .perf-week-sum { padding:13px 14px; }
+      .perf-day { padding:4px 14px 12px; }
+      .perf-week-note { margin-left:14px; margin-right:14px; }
+      /* Long exercise names must wrap, never push the row sideways. */
+      .perf-ex-name { overflow-wrap:anywhere; }
+      .perf-prog-facts span { font-size:11.5px; }
+    }
+
     .perf-group-title { font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:26px 0 12px; }
     .perf-group-title:first-of-type { margin-top:8px; }
     .perf-bench-row { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px; color:var(--ink); }
@@ -41065,19 +41158,22 @@
     // produced by the deterministic rules from the athlete's own profile.
     let _perfAuthor = { step: null, athleteUserId: null, draft: null, provenance: null, athleteProfile: null,
                         programmeId: null, weeks: 4, ack: false, busy: false, error: null,
-                        startDate: null, intent: 'assign', assignProgrammeId: null };
+                        startDate: null, intent: 'assign', assignProgrammeId: null,
+                        release: null, engineContractVersion: null };
 
     function perfResetAuthoring() {
       _perfAuthor = { step: null, athleteUserId: null, draft: null, provenance: null, athleteProfile: null,
                       programmeId: null, weeks: 4, ack: false, busy: false, error: null,
-                      startDate: null, intent: 'assign', assignProgrammeId: null };
+                      startDate: null, intent: 'assign', assignProgrammeId: null,
+                      release: null, engineContractVersion: null };
       renderPerformance();
     }
 
     function perfStartAuthoring(athleteUserId = null) {
       _perfAuthor = { ..._perfAuthor, step: athleteUserId ? 'generate' : 'pick',
                       athleteUserId, draft: null, provenance: null, athleteProfile: null,
-                      programmeId: null, error: null, ack: false };
+                      programmeId: null, error: null, ack: false,
+                      release: null, engineContractVersion: null };
       if (!_perfAssign.loaded) perfLoadAssignments();
       renderPerformance();
     }
@@ -41086,6 +41182,49 @@
       _perfAuthor = { ..._perfAuthor, step: 'assign', assignProgrammeId: programmeId,
                       startDate: perfToday(), intent: 'assign', error: null };
       renderPerformance();
+    }
+
+    // ═══ SC9.36 — THE CANONICAL PERFORMANCE ENGINE ═══════════════════════════
+    //
+    // performance/engine.js is the ONE module Core generates through. Until
+    // SC9.36 this screen assembled the chain by hand — engineInput →
+    // generateBlueprint → programmeDraftFromBlueprint — against Core's own
+    // year-old copy of the domain modules. That path predates the Gate 2
+    // coaching decisions, the youth strength-frequency floor, and the athlete
+    // state pathway, which meant a coach could author and publish a programme
+    // in which a declared restriction excluded nothing at all.
+    //
+    // Loaded on demand: only a coach authoring a programme needs it, and
+    // import() is memoised by the module system, so this runs once per session.
+    let _perfEnginePromise = null;
+    function perfEngine() {
+      if (!_perfEnginePromise) _perfEnginePromise = import('./performance/engine.js');
+      return _perfEnginePromise;
+    }
+
+    /**
+     * Engine refusals, in words a coach can act on.
+     *
+     * The engine fails BY NAME — `athlete_unavailable`,
+     * `blueprint_has_no_sessions` — which is correct for a contract and no use
+     * to a person. The raw name is kept in brackets so a failure can still be
+     * traced from a screenshot, and anything unrecognised passes through
+     * untouched rather than being replaced by a reassuring generic.
+     *
+     * Nothing here retries, degrades or substitutes: a refusal is final.
+     */
+    function perfEngineErrorText(e) {
+      const raw = String(e?.message || '');
+      const name = raw.split(':')[0].trim();
+      const said = {
+        athlete_unavailable: 'This athlete\'s record says they are not currently available to train, so no programme was generated. Update their availability before building one.',
+        blueprint_has_no_sessions: 'The coaching rules produced no sessions for this athlete — check their availability and schedule.',
+        profile_required: 'No athlete profile reached the engine.',
+        profile_must_be_an_object: 'This athlete\'s profile is not in a form the engine can read.',
+        author_required: 'You must be signed in as a coach to author a programme.',
+        not_an_authoring_profile: 'This athlete\'s profile is not the coach-readable projection the engine expects.',
+      }[name];
+      return said ? `${said} (${name})` : (raw || 'Could not generate a programme.');
     }
 
     /**
@@ -41116,19 +41255,53 @@
         }
         _perfAuthor.athleteProfile = ap;
         const profile = ap;
-        const input = _perfWkMod.engineInputFromAuthoringProfile(ap, { teamCategory: athlete.developmentCategory || null });
-        const blueprint = _perfWkMod.generateBlueprint(input, { catalogue: _perfWkMod.getCatalogue() });
-        if (!blueprint.frequency) throw new Error('The coaching rules produced no sessions for this athlete — check their availability and schedule.');
-        const built = _perfWkMod.programmeDraftFromBlueprint(blueprint, {
-          catalogue: _perfWkMod.getCatalogue(), athleteName: athlete.name, athleteUserId: athlete.userId,
-          author: state.currentUserId || 'coach', clubId: null, weeks: _perfAuthor.weeks,
-          schedule: profile.schedule || {}, now: perfWkNow(),
+
+        // ONE call. The projection goes in WHOLE — Core does not build engine
+        // inputs, does not assemble a blueprint, and does not reinterpret what
+        // comes back. Everything the engine needs is a named argument here;
+        // everything it decides is internal to it.
+        //
+        // athleteState is NOT supplied, and that is deliberate rather than
+        // unfinished. It describes what an authorised system knows about this
+        // athlete's availability and restrictions right now, and Core has no
+        // defensible source for it yet: session availability answers "can you
+        // make Tuesday", which is not a statement about fitness to train, and
+        // the medical record is out of this endpoint's scope by design. The
+        // engine records its absence as `supplied: false` — never as clearance
+        // — so omitting it is safe, and inventing it would not be.
+        const engine = await perfEngine();
+        const built = engine.generateProgramme({
+          profile: ap,
+          catalogue: _perfWkMod.getCatalogue(),
+          teamCategory: athlete.developmentCategory || null,
+          athleteName: athlete.name, athleteUserId: athlete.userId,
+          author: state.currentUserId || 'coach', clubId: null,
+          weeks: _perfAuthor.weeks, schedule: profile.schedule || {}, now: perfWkNow(),
         });
+
+        // SC9.34 release semantics, READ from the engine rather than restated
+        // here. `releasable` and `requiresCoachReview` are different questions:
+        // a review signal travels with a programme, never in front of it, so
+        // only a blocking severity stops anything. Nothing in Core honoured
+        // that distinction before — this is the one place it is decided.
+        const release = engine.releaseDecision(built.blueprint);
+        if (!release.releasable) {
+          throw new Error(`This programme was held rather than released: ${release.blockedBy.map(f => f.label).join('; ')}.`);
+        }
+
         _perfAuthor.draft = built.programme;
         _perfAuthor.provenance = built.provenance;
+        _perfAuthor.release = release;
+        // The contract STRING only. `built.context` carries eligibility sets
+        // and the resolved athlete state, and none of that is Core's to hold.
+        _perfAuthor.engineContractVersion = built.context.contractVersion;
         _perfAuthor.step = 'review';
       } catch (e) {
-        _perfAuthor.error = e.message || 'Could not generate a programme.';
+        // NO FALLBACK. If the engine refuses, the generation fails and says so.
+        // Reaching for the old generator here would hand the coach a programme
+        // built without the safety decisions, which is the whole defect SC9.36
+        // exists to close.
+        _perfAuthor.error = perfEngineErrorText(e);
       }
       _perfAuthor.busy = false; renderPerformance();
     }
@@ -41152,6 +41325,9 @@
           athleteUserId: _perfAuthor.athleteUserId, athleteName: athlete?.name || '',
           groupId: athlete?.groupId || '', source: 'blueprint_generated',
           programme: draft, provenance: _perfAuthor.provenance, requiresReview,
+          // SC9.36 — which Performance contract produced this. The version
+          // string only: `context` never leaves the generating call.
+          engineContractVersion: _perfAuthor.engineContractVersion,
         });
         const programmeId = saved.programme.programmeId;
         // SC4 freezes the training content; the server records the published fact.
@@ -41439,6 +41615,186 @@
      * the server sends a player only their own record, and this renders it.
      * No other athlete, no coach notes, no health data.
      */
+    /**
+     * SC9.37 — the athlete asks for their own programme.
+     *
+     * The request carries NOTHING but the ask. The server reads their profile
+     * from its own record, generates through the canonical engine, applies the
+     * engine's release decision and stores the player-safe projection. This
+     * device neither authors nor decides; it asks and then renders.
+     */
+    async function perfBuildOwnProgramme() {
+      if (_perfSelfBuild.busy) return;
+      _perfSelfBuild = { busy: true, error: null }; renderPerformance();
+      try {
+        const res = await fetch('/api/publish?resource=performance', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ op: 'generate_own_programme' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          // No fallback and no lesser programme: the reason is shown as it is.
+          throw new Error(perfBuildErrorText(data));
+        }
+        await perfLoadAssignments(true);
+      } catch (e) {
+        _perfSelfBuild.error = e.message || 'Your programme could not be built just now.';
+      }
+      _perfSelfBuild.busy = false; renderPerformance();
+    }
+
+    /** Server refusals, in words an athlete can act on. */
+    function perfBuildErrorText(data) {
+      const code = String(data?.code || '');
+      if (code === 'profile_incomplete') {
+        return `Your profile still needs: ${(data.missing || []).join(', ')}.`;
+      }
+      if (code === 'active_assignment_exists') return 'You already have a programme running.';
+      if (code === 'not_releasable') {
+        return 'Your programme was held for a coach to look at. Speak to your S&C coach.';
+      }
+      if (code === 'generation_failed') {
+        return 'We could not build a programme from your profile yet. Check your training days '
+             + 'and equipment, then try again.';
+      }
+      return data?.error || 'Your programme could not be built just now.';
+    }
+
+    /**
+     * The empty state, which is now an OFFER rather than a wait.
+     *
+     * It used to read "when your coach assigns you a programme it appears
+     * here", which for most athletes was where it ended.
+     */
+    function perfSelfBuildHtml() {
+      const ss = _perfAssign.selfService;
+      const err = _perfSelfBuild.error
+        ? `<p class="perf-build-error" role="alert">${esc(_perfSelfBuild.error)}</p>` : '';
+
+      // FAIL CLOSED. `selfService` is the SERVER's answer to "may this person
+      // build their own programme", and it is sent only to an athlete. A staff
+      // member who also plays reaches this screen through the coach shell and
+      // does not get it — offering them the button would produce a 403 they
+      // could do nothing about. They see the honest state instead, and their
+      // coach surfaces still author programmes exactly as before.
+      if (!ss) {
+        return `
+          <div class="card perf-card">
+            <strong class="perf-card-title">No programme yet</strong>
+            <p class="muted perf-build-lead">
+              Your strength &amp; conditioning programme appears here, with every session laid out
+              week by week.</p>
+          </div>`;
+      }
+
+      if (ss.canGenerate === false) {
+        const missing = ss.missing || [];
+        return `
+          <div class="card perf-card perf-build-card">
+            <strong class="perf-card-title">Let's build your programme</strong>
+            <p class="muted perf-build-lead">We need a few things about you first — it takes about two minutes.</p>
+            ${missing.length ? `<ul class="perf-build-missing">${missing.map(m =>
+              `<li>${esc(m.charAt(0).toUpperCase() + m.slice(1))}</li>`).join('')}</ul>` : ''}
+            ${err}
+            <button class="btn primary wk-big perf-build-btn" type="button" onclick="setPerfTab('profile')">
+              Complete my profile</button>
+          </div>`;
+      }
+
+      return `
+        <div class="card perf-card perf-build-card">
+          <strong class="perf-card-title">Ready when you are</strong>
+          <p class="muted perf-build-lead">
+            Your profile is complete. We'll build a four-week strength &amp; conditioning programme
+            around your position, your training experience and the days you can get to the gym.</p>
+          ${err}
+          <button class="btn primary wk-big perf-build-btn" type="button"
+            ${_perfSelfBuild.busy ? 'disabled' : ''} onclick="perfBuildOwnProgramme()">
+            ${_perfSelfBuild.busy ? 'Building your programme…' : 'Build my programme'}</button>
+          <p class="muted perf-build-foot">Your coach can see it too, and can change it any time.</p>
+        </div>`;
+    }
+
+    /**
+     * The player's programme, rendered from the SC9.34 player-safe projection
+     * and from nothing else.
+     *
+     * Everything here is already plain English by the time it arrives: the
+     * whitelist carries names, doses, effort, rest and cues, and carries no
+     * exercise id, score, flag or engine identifier to leak. This function adds
+     * no coaching information of its own — it lays out what it was given.
+     */
+    function perfPlayerProgrammeHtml(view, opts = {}) {
+      if (!view || !Array.isArray(view.schedule) || !view.schedule.length) return '';
+      const openWeek = Number.isInteger(opts.openWeek) ? opts.openWeek : 1;
+
+      const identity = [view.club, view.team].filter(Boolean).map(esc).join(' · ');
+      const head = `
+        <div class="perf-prog-head">
+          <div class="perf-prog-brand">
+            ${identity ? `<span class="perf-prog-club">${identity}</span>` : ''}
+            <span class="perf-prog-mark">CoachEasier Performance</span>
+          </div>
+          <h3 class="perf-prog-title">${esc(view.title || 'Strength & Conditioning Programme')}</h3>
+          ${view.playerName ? `<p class="perf-prog-for">Built for ${esc(view.playerName)}</p>` : ''}
+          <p class="perf-prog-lead">Built around your rugby, your training experience and your weekly schedule.</p>
+          <div class="perf-prog-facts">
+            <span><strong>${view.weeks}</strong> weeks</span>
+            <span><strong>${view.sessionsPerWeek}</strong> sessions a week</span>
+            ${(view.trainingDays || []).length ? `<span>${esc(view.trainingDays.join(' & '))}</span>` : ''}
+          </div>
+        </div>`;
+
+      const weeks = view.schedule.map(w => `
+        <details class="perf-week" ${w.week === openWeek ? 'open' : ''}>
+          <summary class="perf-week-sum">
+            <span class="perf-week-n">Week ${w.week}</span>
+            <span class="perf-week-focus">${esc(w.focus || '')}</span>
+          </summary>
+          ${w.note ? `<p class="perf-week-note">${esc(w.note)}</p>` : ''}
+          ${(w.days || []).map(d => `
+            <div class="perf-day">
+              <div class="perf-day-head">${esc(d.day)}</div>
+              ${(d.sessions || []).map(sn => `
+                <div class="perf-sess">
+                  <div class="perf-sess-head">
+                    <strong>${esc(sn.title || 'Session')}</strong>
+                    ${sn.minutes ? `<span class="perf-sess-min">${sn.minutes} min</span>` : ''}
+                  </div>
+                  ${(sn.blocks || []).map(b => `
+                    <div class="perf-pblock">
+                      <div class="perf-pblock-label">${esc(b.label)}</div>
+                      ${b.warmUpCollection && !(b.exercises || []).length
+                        ? '<p class="perf-pblock-note">Your usual warm-up.</p>'
+                        : `<div class="perf-ex-list">${(b.exercises || []).map(ex => `
+                            <div class="perf-ex">
+                              <div class="perf-ex-name">${esc(ex.name)}</div>
+                              <div class="perf-ex-dose">
+                                <span class="perf-ex-sets">${esc(ex.dose)}</span>
+                                ${ex.effort ? `<span class="perf-ex-rpe">${esc(ex.effort)}</span>` : ''}
+                                ${ex.rest ? `<span class="perf-ex-rest">Rest ${esc(ex.rest)}</span>` : ''}
+                              </div>
+                              ${ex.cue ? `<div class="perf-ex-cue">${esc(ex.cue)}</div>` : ''}
+                            </div>`).join('')}</div>`}
+                    </div>`).join('')}
+                </div>`).join('')}
+            </div>`).join('')}
+        </details>`).join('');
+
+      const guidance = [
+        view.howEffortWorks ? { t: 'How hard should it feel?', b: view.howEffortWorks } : null,
+        view.howProgressionWorks ? { t: 'Why the weeks change', b: view.howProgressionWorks } : null,
+      ].filter(Boolean);
+
+      return `
+        <div class="card perf-card perf-prog">${head}</div>
+        <div class="perf-weeks">${weeks}</div>
+        ${guidance.length ? `<div class="card perf-card perf-prog-guide">
+          ${guidance.map(g => `<div class="perf-guide-item">
+            <strong>${esc(g.t)}</strong><p class="muted">${esc(g.b)}</p></div>`).join('')}
+        </div>` : ''}`;
+    }
+
     function perfProgrammeViewHtml() {
       if (!_perfWkMod) return perfAssignLoadingHtml('My Programme');
       if (!_perfAssign.loaded) { perfLoadAssignments(); return perfAssignLoadingHtml('My Programme'); }
@@ -41446,16 +41802,12 @@
       const today = perfToday();
       const current = perfCurrentAssignment();
       if (!current) {
+        // SC9.37 — an athlete no longer waits to be given a programme. A coach
+        // can still author one for them; this is the path that does not need a
+        // coach to be free that week.
         return `
           <div class="perf-page-head"><div><h2>My Programme</h2><p class="muted">Strength &amp; conditioning</p></div></div>
-          <div class="card perf-card">
-            <strong class="perf-card-title">No programme assigned</strong>
-            <p class="muted" style="font-size:13px;margin:8px 0 0">
-              When your coach assigns you a strength &amp; conditioning programme it appears here, with every
-              session laid out week by week.</p>
-            <p class="muted" style="font-size:12.5px;margin:10px 0 0">
-              In the meantime you can complete your athlete profile and browse the exercise library.</p>
-          </div>`;
+          ${perfSelfBuildHtml()}`;
       }
       const status = _perfWkMod.effectiveStatus(current, today);
       const pos = _perfWkMod.programmePosition(current, today);
@@ -41492,6 +41844,10 @@
           </small>
           ${notes ? `<p class="muted" style="font-size:12.5px;margin:10px 0 0">${notes}</p>` : ''}
         </div>
+        ${_perfAssign.selfService?.profileChangedSinceBuild ? `
+          <p class="perf-stale-note">
+            You've changed your profile since this programme was built. It stays as it is until
+            you finish this block — ask your coach if you'd like a new one.</p>` : ''}
         ${plan.length ? `
           <div class="perf-group-title">This week</div>
           <div class="card perf-card">
@@ -41506,7 +41862,8 @@
                 </div>
                 ${s2.isToday ? `<button class="btn primary" type="button" onclick="setPerfTab('workouts')">Open</button>` : ''}
               </div>`).join('')}
-          </div>` : ''}`;
+          </div>` : ''}
+        ${perfPlayerProgrammeHtml(current.playerView, { openWeek: pos?.week || 1 })}`;
     }
 
     function perfProgrammesHtml() {
@@ -41976,7 +42333,12 @@
      * see what — it renders what the server was willing to send.
      */
     let _perfAssign = { loaded: false, loading: false, error: null, capacity: null,
-                        athletes: [], programmes: [], assignments: [], entitlement: null };
+                        athletes: [], programmes: [], assignments: [], entitlement: null,
+                        selfService: null };
+
+    // SC9.37 — the athlete building their OWN programme. Separate from
+    // _perfAuthor, which is the coach authoring one FOR somebody.
+    let _perfSelfBuild = { busy: false, error: null };
 
     /**
      * THE athlete set for every coach Performance surface.
@@ -42030,6 +42392,10 @@
             loaded: true, loading: false, error: null, capacity: data.capacity || null,
             athletes: data.athletes || [], programmes: data.programmes || [],
             assignments: data.assignments || [], entitlement: data.entitlement || null,
+            // SC9.37 — whether this athlete can build their own programme, what
+            // is still missing if not, and whether the one they have predates a
+            // profile change. Computed server-side; the device never decides it.
+            selfService: data.selfService || null,
             // The caller's OWN athlete data. For a player the whole payload is
             // already theirs; for staff the server sends it separately, because
             // `assignments` there holds the people they COACH.

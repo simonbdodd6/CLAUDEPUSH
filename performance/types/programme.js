@@ -90,6 +90,17 @@ export const BLOCK_TYPES = [
   { id: 'cooldown',      label: 'Cooldown' },
 ];
 
+/**
+ * Blocks that prescribe PREPARATION rather than working sets.
+ *
+ * The distinction is load-bearing in several places — progression skips them,
+ * fixture demand ignores them, the critique excludes them, and (SC9.10)
+ * selection admits preparation-category exercises only here. It was written
+ * out separately in four modules, which is exactly how a rule drifts.
+ */
+export const PREPARATION_BLOCK_TYPES = ['warmup', 'activation', 'mobility', 'cooldown'];
+export const isPreparationBlock = (blockType) => PREPARATION_BLOCK_TYPES.includes(blockType);
+
 // ── Substitution policy on a prescription ───────────────────────────────────
 // Controls what the FUTURE engine/coach tools may offer. Never medical.
 

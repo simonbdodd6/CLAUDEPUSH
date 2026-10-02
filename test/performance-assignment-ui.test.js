@@ -158,9 +158,46 @@ test('7. the athlete tab set gains My Programme and nothing coach-facing', () =>
 test('8. the player programme view renders only the athlete\'s own assignment', () => {
   const view = extractFn('perfProgrammeViewHtml');
   assert.match(view, /perfCurrentAssignment\(\)/);
-  assert.match(view, /No programme assigned/);
+  // SC9.37 — the empty state is no longer "No programme assigned", because an
+  // athlete no longer waits to be given one. It is an offer to build it.
+  assert.match(view, /perfSelfBuildHtml\(\)/, 'the empty state offers to build a programme');
+  assert.ok(!/No programme assigned/.test(view), 'the athlete is not told to go and wait');
   assert.ok(!/_perfAssign\.athletes/.test(view), 'a player view must never enumerate athletes');
   assert.ok(!/state\.players/.test(view));
+});
+
+test('8b. SC9.37 — the athlete can build their own, and the build carries no content', () => {
+  const build = extractFn('perfBuildOwnProgramme');
+  // Comments may NAME what this path refuses to do (they explain why); code may
+  // not. Strip line comments before checking, as the sibling guards here do.
+  const code = build.split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+  assert.match(code, /op: 'generate_own_programme'/, 'it asks the server to generate');
+  // The request is the ASK and nothing else: a device that posted programme
+  // content would be authoring, which a player may not do.
+  const body = code.match(/JSON\.stringify\(\{[^}]*\}\)/)?.[0] || '';
+  assert.equal(body, "JSON.stringify({ op: 'generate_own_programme' })",
+    `the request body must carry only the op, got: ${body}`);
+  for (const banned of ['programme:', 'profile:', 'requiresReview', 'athleteUserId']) {
+    assert.ok(!code.includes(banned), `the athlete's device must not send ${banned}`);
+  }
+  // And no generator of its own.
+  for (const banned of ['generateProgramme', 'generateBlueprint', 'programmeDraftFromBlueprint']) {
+    assert.ok(!code.includes(banned), `generation belongs to the server, not ${banned} here`);
+  }
+});
+
+test('8c. the player programme renders only the player-safe projection', () => {
+  const render = extractFn('perfPlayerProgrammeHtml')
+    .split('\n').map(l => l.replace(/^\s*(\/\/|\*).*$/, '')).join('\n');
+  // It is handed `view` and reads nothing else — no assignment internals, no
+  // snapshot, no catalogue, no engine state.
+  for (const banned of ['_perfAssign', '_perfWkMod', 'snapshot', 'provenance', 'blueprint',
+                        'requiresReview', 'reviewFlags', 'exerciseId', 'catalogue']) {
+    assert.ok(!render.includes(banned), `the player renderer must not touch ${banned}`);
+  }
+  for (const shown of ['ex.name', 'ex.dose', 'ex.effort', 'ex.rest', 'ex.cue']) {
+    assert.ok(render.includes(shown), `${shown} is what an athlete needs`);
+  }
 });
 
 test('9. paused / scheduled / completed all read honestly to the athlete', () => {
