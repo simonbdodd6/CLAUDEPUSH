@@ -386,8 +386,12 @@ const B_BLOCKS = [
   { id: 'b1', time: '19:00', activity: 'Warm-up', keyFocus: 'Ankles', coach: 'Ana', tag: 'Warm-up' },
   { id: 'b2', time: '19:20', activity: 'Scrum shape', keyFocus: 'Body height', coach: 'Ben', tag: 'Set piece' },
 ];
+// activeCoachSection, not `activeSection` (a key the app never reads): the
+// planner must be the screen ON SHOW. With the Overview active, Training was
+// only ever painted because render() repainted hidden sections, which it no
+// longer does (Build 116).
 const B_SEED = {
-  activeView: 'coach', activeSection: 'training', activeTrainingTab: 'planner',
+  activeView: 'coach', activeCoachSection: 'training', activeTrainingTab: 'planner',
   stateTeamId: TEAM, clubName: 'Stub RFC', currentUserId: 'u1', operationalGroupId: GRP,
   users: [{ id: 'u1', name: 'Coach Stub', email: 'c@s.test', role: 'coach' }],
   players: [], fixtures: [], messages: [], onboardingDismissed: true,
