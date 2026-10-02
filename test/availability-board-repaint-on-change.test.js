@@ -350,13 +350,21 @@ for (const view of ['desktop', 'phone']) {
       assert.equal(s.rows, 18, 'the hub is back after a render into the emptied host');
       assert.deepEqual(h.errors, [], 'no page errors'); assert.deepEqual(h.consoleErrors, [], 'no console errors');
       await h.ctx.close();
-      // ── H. A load that lands on the Overview, then enters Availability: the hidden hub was painted at boot; entry paints nothing new when nothing changed ──
+      // ── H. A load that lands on the Overview, then enters Availability ──
+      // Since Build 116 render() paints only the section on show, so the hidden
+      // hub is no longer kept current at boot (the board read's own settle may
+      // still paint it once). What must hold: the Overview's boot read happens,
+      // the hub is never rewritten with identical markup, and entering paints
+      // the real board. A loader landing AFTER entry (attendance: "Loading
+      // attendance…" → "No attendance recorded yet") is a real change and may
+      // add a paint; the shared read's unchanged repaint is still skipped.
       ctl.extra = 0; ctl.reads = 0;
       h = await open('overview');
-      assert.ok(await waitFor(() => h.page.evaluate(() => document.querySelectorAll('#coach-message .msg-kpi').length === 4), 15000), 'the hidden hub holds the real board after boot');
+      assert.ok(await waitFor(() => h.page.evaluate(() => typeof currentResolvedAvailability === 'function' && currentResolvedAvailability() !== null), 15000), 'the Overview\'s boot read landed');
       assert.ok(await settled(h.page));
       s = await h.page.evaluate(boardState);
       assert.equal(s.visible, false, 'Availability is not on screen yet');
+      assert.equal(ctl.reads, 1, 'one board read at boot');
       assert.equal(s.identical, 0, `no identical rewrite of the hidden hub at boot (${s.hub} paints)`);
       const bootPaints = s.hub, bootReads = ctl.reads;
       await h.page.evaluate(() => setSection('coach', 'message'));
@@ -365,8 +373,8 @@ for (const view of ['desktop', 'phone']) {
       s = await h.page.evaluate(boardState);
       assert.equal(s.visible, true, 'Availability is on screen');
       assert.deepEqual(s.kpi, ['AVAILABLE 5', 'MAYBE 1', 'UNAVAILABLE 1', 'NO REPLY 11']); assert.equal(s.rows, 18);
-      assert.equal(s.hub, bootPaints, 'entry painted nothing: the hub already held this board');
-      assert.equal(s.identical, 0);
+      assert.ok(s.hub - bootPaints >= 1, `entry painted the board (${s.hub - bootPaints})`);
+      assert.equal(s.identical, 0, 'every paint on entry was a change');
       assert.equal(s.overflow, false);
       assert.deepEqual(h.errors, []); assert.deepEqual(h.consoleErrors, []);
       await h.ctx.close();

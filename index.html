@@ -15709,12 +15709,16 @@
       // Last-resort fallback is account-appropriate: a coach never lands on a
       // player screen, and vice versa.
       const fallbackId = state.activeView === "coach" ? "coach-overview" : "player-home";
-      (document.getElementById(id) || document.getElementById(fallbackId))?.classList.add("active");
+      const shown = document.getElementById(id) || document.getElementById(fallbackId);
+      shown?.classList.add("active");
       document.getElementById("pageTitle").textContent  = pageTitle();
       renderOperationalGroupSwitcher();
       document.getElementById("eyebrow").textContent    = state.activeView === "coach"
         ? "Coach dashboard"
         : `Player portal — ${getPlayer()?.name || 'Player'}`;
+      // The id actually on screen, AFTER the coercions above — what render()
+      // paints (Build 116). null only when the page has no such section at all.
+      return shown ? shown.id : null;
     }
 
     // ─── HOME / DAILY BRIEFING ───────────────────────────────────────────────
@@ -42901,10 +42905,73 @@
         .finally(() => { _tacticsLoading = false; });
     }
 
+    /**
+     * DATA THAT HIDDEN RENDERERS USED TO FETCH AS A SIDE EFFECT OF PAINTING.
+     *
+     * Until Build 116 every section renderer ran on every render() pass, and a
+     * few of them started a load on the way: renderMatchday asked for the
+     * club's teams and the admin data, renderSettings for the admin data,
+     * renderTraining for the training schedule, and renderPlayerAvailabilityV2
+     * for the player's own answers, the schedule and the published state.
+     * Other screens consume what those loads bring (the Overview's and the
+     * Fixtures' team labels read _mcTeams; Player Home reads the self-read),
+     * so they must still start where they did — on the first pass that is
+     * entitled to them — whether or not their section is on screen. Each is
+     * latched or throttled by its own implementation, exactly as before; only
+     * the invocation moved here. The loads a renderer runs for ITS OWN screen
+     * (gated on coachSectionActive) stay in the renderer and run on entry.
+     *
+     * The nav's unread badge is the one piece of shared UI fed by a hidden
+     * screen: chatFetchConversations() stamps it, and the Messages shell used
+     * to ask on each of the first passes (three requests on a cold load) —
+     * measured, without it the badge appeared 25s late, on the background
+     * poll's first due tick. It is asked ONCE per transition into a signed-in
+     * session (cold load, re-login); the Messages screen, a club switch
+     * (hydrateClubFromServer) and the background poll keep it fresh after that.
+     */
+    let _hiddenDataChatAuthSeen = '';
+    function ensureHiddenSectionData() {
+      if (isCoach()) {
+        ensureMatchCentreTeams();                                            // was renderMatchday
+        if (typeof ensureAdminData === 'function') ensureAdminData();        // was renderMatchday, renderSettings
+        // was renderCoachOverview's default body (renderClubCommandDashboard),
+        // which the three feature dashboards return before: the group's board
+        // read, which the Availability hub shares (Build 111) and a dual-role
+        // member's player view depends on for the board's failure state.
+        const f = state.features || {};
+        if (!f.coachTimeline && !f.executiveDashboard && !f.matchReadiness
+            && typeof ensureRecentActivity === 'function') ensureRecentActivity();
+      }
+      ensureTrainingSchedule();                                              // was renderTraining
+      const player = getPlayer();
+      if (player && player.id) {                                             // was renderPlayerAvailabilityV2
+        fetchMyAvailabilityFromServer();
+        loadPublishedStateForPlayer().catch(() => {});
+      }
+      const auth = typeof _serverAuthState !== 'undefined' ? _serverAuthState : '';
+      if (auth !== _hiddenDataChatAuthSeen) {                                // was renderCoachMessages / renderPlayerMessages
+        _hiddenDataChatAuthSeen = auth;
+        if (auth === 'authed' && typeof chatFetchConversations === 'function') chatFetchConversations().catch(() => {});
+      }
+    }
+
     function render() {
+      // THE ACTIVE SECTION PAINTS; THE REST WAIT FOR THEIR TURN (Build 116).
+      // render() runs whenever any loader lands — six passes inside the first
+      // 300ms of a cold load, nine on an Overview landing — and every pass
+      // rebuilt every section, hidden ones included: measured, 75–85% of its
+      // 116–189ms went into markup behind display:none. A section is painted
+      // when it is the one on screen; entering a section runs render()
+      // (setSection / setView), so it paints on arrival with the data its
+      // loaders hold by then. showSection() resolves and coerces the active
+      // section FIRST and returns the id actually shown, so the gate never
+      // decides on a stale or invalid id. Navigation, the aside, the auth
+      // banner and the debug overlay (registered with no section) always run.
+      let activeId = null;
       // Wrap each section so one failing helper can't leave the page blank.
       // If a section element is empty after a throw, insert a minimal error card.
       function safeRender(sectionId, fn) {
+        if (sectionId && activeId && sectionId !== activeId) return;
         try { fn(); }
         catch(e) {
           console.error('[render] ' + (sectionId || 'global'), e);
@@ -42931,9 +42998,13 @@
         safeRender(null,              () => renderAuthBanner());
         return;
       }
-      safeRender(null,                () => showSection());
+      safeRender(null,                () => { activeId = showSection(); });
+      // Loads that hidden renderers used to start as a side effect (see above):
+      // before the gate, so they run on this pass whether or not their section
+      // is on screen. typeof-guarded for the suites that splice render() alone.
+      if (typeof ensureHiddenSectionData === 'function') safeRender(null, () => ensureHiddenSectionData());
       safeRender('coach-overview',    () => renderCoachOverview());
-      safeRender(null,                () => renderMessageCenter());
+      safeRender('coach-message',     () => renderMessageCenter());
       const inMessages = (state.activeView==='coach' && state.activeCoachSection==='messages') ||
                          (state.activeView==='player' && state.activePlayerSection==='messages');
       if (!inMessages) chatStopPolling();
