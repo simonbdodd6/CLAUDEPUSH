@@ -50,18 +50,18 @@ const stripComments = s => s.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(
 // ═══════════════════════════════════════════════════════════════════════════
 // SANDBOX — the real render(), showSection() and ensureHiddenSectionData()
 // ═══════════════════════════════════════════════════════════════════════════
-const COACH = ['overview', 'message', 'messages', 'training', 'performance', 'matchday', 'tactics', 'medical', 'players', 'admin', 'club', 'settings', 'fixtures', 'selection', 'reports', 'calendar', 'qa', 'beta', 'search'];
+// The coach sections and render()'s registrations are READ FROM THE APP, not
+// listed here. A literal list pinned the Tactics section, which exists on the
+// development branch and, by the tactics-mount exclusion, on no production
+// branch — so this suite could never pass on a release candidate. Same rule as
+// test/core-beta-nav (a1d7f003): Tactics is expected if and only if mounted.
+const COACH = [...src.slice(src.indexOf('const coachSections = ['), src.indexOf('];', src.indexOf('const coachSections = ['))).matchAll(/^\s*\[\s*"([a-z-]+)"\s*,/gm)].map(m => m[1]);
 const PLAYER = ['home', 'week', 'availability', 'fixtures', 'messages', 'medical', 'performance'];
-/** The renderer render() registers for each section id. */
-const RENDERER_OF = {
-  'coach-overview': 'renderCoachOverview', 'coach-message': 'renderMessageCenter', 'coach-messages': 'renderCoachMessages', 'coach-training': 'renderTraining',
-  'coach-performance': 'renderPerformance', 'coach-matchday': 'renderMatchday', 'coach-tactics': 'renderTactics', 'coach-medical': 'renderMedical',
-  'coach-players': 'renderPlayers', 'coach-admin': 'renderClubAdmin', 'coach-club': 'renderClubSection', 'coach-settings': 'renderSettings',
-  'coach-fixtures': 'renderCoachFixtures', 'coach-selection': 'renderCoachSelection', 'coach-reports': 'renderReports', 'coach-calendar': 'renderCalendar',
-  'coach-qa': 'renderBetaQA', 'coach-beta': 'renderBetaLaunch', 'coach-search': 'renderSearch',
-  'player-medical': 'renderMedical', 'player-home': 'renderPlayerHome', 'player-week': 'renderPlayerWeek', 'player-availability': 'renderPlayerAvailabilityV2',
-  'player-fixtures': 'renderPlayerFixtures', 'player-messages': 'renderPlayerMessages', 'player-performance': 'renderPerformance',
-};
+/** The renderer render() registers for each section id: the last render…() its safeRender('<id>', …) calls. */
+const RENDERER_OF = Object.fromEntries(fn('render').split('\n')
+  .map(l => l.match(/safeRender\('((?:coach|player)-[a-z-]+)',\s*\(\) =>(.*)$/)).filter(Boolean)
+  .map(m => [m[1], ([...m[2].matchAll(/\b(render[A-Z]\w*)\(/g)].pop() || [])[1]]));
+const TACTICS_MOUNTED = COACH.includes('tactics');
 const SECTION_RENDERERS = [...new Set(Object.values(RENDERER_OF))];
 const ALWAYS = ['renderNav', 'renderAuthBanner', 'renderDebugOverlay'];
 const ENSURE = ['ensureMatchCentreTeams', 'ensureAdminData', 'ensureTrainingSchedule', 'ensureRecentActivity', 'fetchMyAvailabilityFromServer', 'loadPublishedStateForPlayer', 'chatFetchConversations'];
@@ -123,6 +123,30 @@ test('A/B. a coach on Availability: the board renders, no hidden section rendere
   for (const n of ALWAYS) assert.equal(a.calls[n], 1, `${n} still runs`);
   assert.deepEqual(a.active(), ['coach-message']);
   assert.equal(a.calls.loadLiveMessaging, 1, 'the live cycle still starts on Availability');
+});
+
+test('the section lists are the app\'s own: every coach section is registered, Tactics if and only if mounted, each renderer as before', () => {
+  assert.ok(COACH.length >= 18, `coachSections parsed (${COACH.length})`);
+  for (const s of COACH) assert.ok(RENDERER_OF['coach-' + s], `coach-${s} has a render() registration`);
+  for (const s of PLAYER) assert.ok(RENDERER_OF['player-' + s], `player-${s} has a render() registration`);
+  for (const id of Object.keys(RENDERER_OF)) {
+    const [view, ...rest] = id.split('-'); const s = rest.join('-');
+    assert.ok((view === 'coach' ? COACH : PLAYER).includes(s), `${id} is registered and is a real ${view} section`);
+  }
+  assert.equal('coach-tactics' in RENDERER_OF, TACTICS_MOUNTED, 'Tactics is registered if and only if it is mounted');
+  assert.equal(/id="coach-tactics"/.test(src), TACTICS_MOUNTED, 'and has a section element if and only if it is mounted');
+  // The renderer each section has always had (Build 116); tactics only where it exists.
+  const EXPECTED = {
+    'coach-overview': 'renderCoachOverview', 'coach-message': 'renderMessageCenter', 'coach-messages': 'renderCoachMessages', 'coach-training': 'renderTraining',
+    'coach-performance': 'renderPerformance', 'coach-matchday': 'renderMatchday', 'coach-medical': 'renderMedical',
+    'coach-players': 'renderPlayers', 'coach-admin': 'renderClubAdmin', 'coach-club': 'renderClubSection', 'coach-settings': 'renderSettings',
+    'coach-fixtures': 'renderCoachFixtures', 'coach-selection': 'renderCoachSelection', 'coach-reports': 'renderReports', 'coach-calendar': 'renderCalendar',
+    'coach-qa': 'renderBetaQA', 'coach-beta': 'renderBetaLaunch', 'coach-search': 'renderSearch',
+    'player-medical': 'renderMedical', 'player-home': 'renderPlayerHome', 'player-week': 'renderPlayerWeek', 'player-availability': 'renderPlayerAvailabilityV2',
+    'player-fixtures': 'renderPlayerFixtures', 'player-messages': 'renderPlayerMessages', 'player-performance': 'renderPerformance',
+    ...(TACTICS_MOUNTED ? { 'coach-tactics': 'renderTactics' } : {}),
+  };
+  assert.deepEqual(RENDERER_OF, EXPECTED);
 });
 
 test('B. every section a coach or player can be on renders exactly its own renderer', () => {
