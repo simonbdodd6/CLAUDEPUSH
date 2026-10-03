@@ -183,10 +183,10 @@ test('exclusion integrity: missing commit, subject drift and patch drift all rep
   assert.match(problems[2], /patch-id drift/);
 });
 
-test('the committed config is valid and declares all three production exclusions', () => {
+test('the committed config is valid and declares all four production exclusions', () => {
   const cfg = loadConfig(CONFIG_PATH);
-  assert.equal(cfg.exclusions.length, 3);
-  assert.deepEqual(cfg.exclusions.map(e => e.id).sort(), ['club-export', 'stamp-cd84-superseded', 'tactics-mount']);
+  assert.equal(cfg.exclusions.length, 4);
+  assert.deepEqual(cfg.exclusions.map(e => e.id).sort(), ['b106-performance-test-resolution', 'club-export', 'stamp-cd84-superseded', 'tactics-mount']);
   assert.equal(cfg.policies.apiFunctionCap.max, 12);
   // One known failure remains: the unrelated travel-platform clock fixture.
   // The pre-v2 nav failure was FIXED (a1d7f003) and moved to `retired`, which
