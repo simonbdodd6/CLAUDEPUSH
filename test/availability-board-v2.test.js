@@ -155,9 +155,11 @@ test('a club with no players gets an explanatory empty state, not a dead end', (
   assert.ok(!/disabled[^>]*>\s*<span style="font-size:15px">Request Availability/.test(render),
     'no disabled Request Availability button remains');
 
-  // The empty state is keyed on the operating group's players being empty.
-  assert.ok(render.includes('${opPlayers.length === 0 ?'),
-    'the empty state is chosen by the zero-player case');
+  // The empty state is keyed on the operating group's players being empty —
+  // once that roster is KNOWN (Build 122): an empty list while the membership
+  // is still loading is not an empty club, and says nothing yet.
+  assert.ok(render.includes("${!rosterKnown ? '' : opPlayers.length === 0 ?"),
+    'the empty state is chosen by the zero-player case of a known roster');
   assert.ok(render.includes('No players yet'), 'states plainly what is missing');
   assert.ok(render.includes('Add your players to start managing availability.'),
     'says what to do about it');
@@ -187,8 +189,9 @@ test('a coach who cannot add players is not shown an action they cannot use', ()
   assert.ok(render.includes('Availability opens up once your club administrator has added players.'),
     'a read-only coach gets an honest explanation instead');
   // The button itself sits inside the permission branch.
-  const emptyState = render.slice(render.indexOf('${opPlayers.length === 0 ?'),
+  const emptyState = render.slice(render.indexOf("${!rosterKnown ? '' : opPlayers.length === 0 ?"),
                                   render.indexOf(': selected ? `'));
+  assert.ok(emptyState.length > 0, 'the empty-state branch was found');
   const btn = emptyState.indexOf('Invite players');
   const gate = emptyState.indexOf("canI('manage_players') ? `");
   assert.ok(gate !== -1 && gate < btn, 'the button is rendered only for a permitted coach');
