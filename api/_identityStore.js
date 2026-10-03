@@ -149,6 +149,31 @@ export function normalizeTeamCode(code = '') {
   return String(code || '').trim().toUpperCase();
 }
 
+/**
+ * A new club's join code — unique among `teams` (the stored tenant list).
+ *
+ * The code is the ONLY thing a joining player types, so it must name exactly
+ * one club. The shape is unchanged (up to six letters of the club name and a
+ * two-digit number from 10), but the number is picked among those no stored
+ * team uses: a random start, then every other two-digit number, and only when
+ * all ninety are taken for that prefix does it widen to three digits.
+ * `preferred` — a code reserved earlier for this signup — is kept while free.
+ */
+function uniqueTeamCode(club, teams = [], preferred = '') {
+  const taken = new Set((Array.isArray(teams) ? teams : [])
+    .map(team => normalizeTeamCode(team?.teamCode)).filter(Boolean));
+  if (normalizeTeamCode(preferred) && !taken.has(normalizeTeamCode(preferred))) return preferred;
+  const prefix = String(club || '').replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB';
+  for (let low = 10; ; low *= 10) {
+    const span = low * 9;
+    const start = Math.floor(Math.random() * span);
+    for (let i = 0; i < span; i++) {
+      const code = prefix + String(low + (start + i) % span);
+      if (!taken.has(code)) return code;
+    }
+  }
+}
+
 export function displayName(firstName = '', lastName = '') {
   return [firstName, lastName].map(value => String(value || '').trim()).filter(Boolean).join(' ').trim();
 }
@@ -492,8 +517,14 @@ export async function saveEmailVerifications(verifications) {
 }
 
 export async function findTeamByCode(teamCode) {
-  const teams = await loadTeams();
-  return teams.find(team => normalizeTeamCode(team.teamCode) === normalizeTeamCode(teamCode)) || null;
+  const code = normalizeTeamCode(teamCode);
+  const matches = (await loadTeams()).filter(team => normalizeTeamCode(team.teamCode) === code);
+  // A code held by two clubs (minted before codes were made unique) names NO
+  // club: taking the first match would file the person into a club they never
+  // asked to join. Refuse it exactly like an unknown code — saying nothing
+  // about either club — until one of the two codes is re-issued.
+  if (new Set(matches.map(team => team.id)).size !== 1) return null;
+  return matches[0];
 }
 
 export async function createJoinRequest(input = {}) {
@@ -2018,8 +2049,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
         teamId: newTeamId,
         userId: makeId('user'),
         memberId: makeId('tm'),
-        teamCode: (club.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB') +
-          String(Math.floor(Math.random() * 90) + 10),
+        teamCode: uniqueTeamCode(club, teamsNow),
         createdAt: nowIso(),
         status: 'pending',
       };
@@ -2044,8 +2074,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
     teamId: null, // resolved against the live team list below
     userId: makeId('user'),
     memberId: makeId('tm'),
-    teamCode: (club.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB') +
-      String(Math.floor(Math.random() * 90) + 10),
+    teamCode: null, // chosen against the live team list below
     createdAt: nowIso(),
   };
 
@@ -2114,7 +2143,8 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
       name: club,
       teamName: String(teamName || '').trim().slice(0, 80),
       sport: String(sport || 'Rugby').trim().slice(0, 40) || 'Rugby',
-      teamCode: ids.teamCode,
+      // The reserved code, unless another club took it since the reservation.
+      teamCode: uniqueTeamCode(club, teams, ids.teamCode),
       createdAt: ids.createdAt,
       // SERVER-AUTHORED marker: this tenant was born through the self-service
       // wizard, so the founder-verification policy applies to it. Never read
@@ -2562,8 +2592,7 @@ export async function provisionClub({ clubName, adminEmail, adminName = '', firs
   while (teams.some(t => t.id === teamId)) {
     teamId = `${teamSlug(club)}-${randomBytes(2).toString('hex')}`;
   }
-  const teamCode = (club.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB') +
-    String(Math.floor(Math.random() * 90) + 10);
+  const teamCode = uniqueTeamCode(club, teams);
   const createdAt = nowIso();
   const team = {
     id: teamId,
