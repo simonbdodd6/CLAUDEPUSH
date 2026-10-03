@@ -233,12 +233,17 @@ test('Settings requests admin data so a fresh owner sees Club structure first', 
 });
 
 test('loadAdminData re-renders the screen that is actually showing', () => {
+  // Since Build 122 through the ONE render path: render() paints the active
+  // section (Build 118's gate), so whichever screen is showing — Settings,
+  // Members, Club Admin, or the Overview and Availability that read the roster
+  // too — is refreshed when the admin data lands, and only that one.
   const load = fn('loadAdminData');
-  assert.match(load, /activeCoachSection === 'settings'[\s\S]*renderSettings\(\)/,
-    'Settings refreshed when it is active');
-  assert.match(load, /activeCoachSection === 'players'[\s\S]*renderPlayers\(\)/,
-    'Members refreshed when it is active');
-  assert.match(load, /renderClubAdmin\(\)/, 'Club Admin still refreshed');
+  assert.match(load, /if \(!_discarded && typeof render === 'function'\) render\(\);/, 'one render() when the read lands');
+  const r = fn('render');
+  assert.match(r, /if \(sectionId && activeId && sectionId !== activeId\) return;/, 'render() paints the section on show');
+  assert.match(r, /safeRender\('coach-settings',\s*\(\) => renderSettings\(\)\)/, 'Settings refreshed when it is active');
+  assert.match(r, /safeRender\('coach-players',\s*\(\) => renderPlayers\(\)\)/, 'Members refreshed when it is active');
+  assert.match(r, /safeRender\('coach-admin',\s*\(\) => renderClubAdmin\(\)\)/, 'Club Admin still refreshed');
 });
 
 test('Members exposes the access + eligibility editor via the SHARED block', () => {

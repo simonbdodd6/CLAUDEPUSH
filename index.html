@@ -9154,6 +9154,11 @@
       // The fixture list is a source too: until the server has confirmed it
       // for this club, the week's occurrences are not yet knowable (Build 107).
       if (typeof fixturesKnown === 'function' && !fixturesKnown()) return context('loading');
+      // And the roster is a source (Build 122): while the operating group's
+      // membership is still loading, operationalPlayers() fails closed to [],
+      // which read as a club with nobody in it — 'ready', an empty roster,
+      // and every screen saying so. Loading it is, until it lands.
+      if (typeof operationalRosterKnown === 'function' && !operationalRosterKnown()) return context('loading');
       const sessions = availabilityEventsForWeek(week, {
         fixtures: contextFixtures().map(normalizeFixture).filter(Boolean),
         slots: _trainingSchedule.slots || [],
@@ -17314,8 +17319,14 @@
         esc(ctx.label)} — none of the ${ctx.total} player${ctx.total === 1 ? ' has' : 's have'} replied.${
         canI('publish_training') ? ' Send an availability request to ask them.' : ''}</p>`;
       const availNoReplies = noReplies(av);
+      // A roster still LOADING is not an empty one (Build 122): until the
+      // operating group's membership has landed, roster is [] by fail-closed,
+      // and every reading below — "No players yet", "none of the 0 players",
+      // zero counts — would describe a club nobody has looked at yet.
+      const rosterKnown = typeof operationalRosterKnown === 'function' ? operationalRosterKnown() : true;
+      const rosterLoadingBody = `<p class="ovw-empty"><strong>Loading the squad…</strong>Availability appears once the squad has loaded.</p>`;
 
-      const availabilityBody = availUnknown ? availUnavailableBody : av.kind === 'none' ? availEmpty('a training session') : availNoReplies ? noRepliesBodyOf(av) : `
+      const availabilityBody = availUnknown ? availUnavailableBody : !rosterKnown ? rosterLoadingBody : av.kind === 'none' ? availEmpty('a training session') : availNoReplies ? noRepliesBodyOf(av) : `
         <div>
           <div class="ovw-meta" style="margin-bottom:12px">${esc(av.label)}</div>
           <div class="ovw-stat-row">
@@ -17335,7 +17346,7 @@
       // The match card names its fixture and carries that fixture's position
       // warnings — both used to live on the shared card above.
       const mWarn = warningsOf(avM);
-      const squadAvailBody = availUnknown ? availUnavailableBody : avM.kind === 'none' ? availEmpty('a fixture') : noReplies(avM) ? noRepliesBodyOf(avM) : `
+      const squadAvailBody = availUnknown ? availUnavailableBody : !rosterKnown ? rosterLoadingBody : avM.kind === 'none' ? availEmpty('a fixture') : noReplies(avM) ? noRepliesBodyOf(avM) : `
         <div class="ovw-meta" style="margin-bottom:10px">${esc(avM.label)}${mWarn.critical || mWarn.warning
           ? ` · <span style="color:${mWarn.critical ? 'var(--status-unavailable)' : 'var(--status-maybe)'};font-weight:700">${warningText(mWarn)}</span>` : ''}</div>
         <div class="ovw-donut-wrap">
@@ -18604,6 +18615,9 @@
       // group's players — the whole-club list would mix another group's
       // answers into this group's numbers and reminders.
       const opPlayers      = operationalPlayers();
+      // An empty list is "No players yet" only once the roster is KNOWN
+      // (Build 122); while it loads, the loading block below says so instead.
+      const rosterKnown    = typeof operationalRosterKnown === 'function' ? operationalRosterKnown() : true;
       const selectedPlayer = opPlayers.find(p => p.id === state.selectedMessagePlayerId) || rows[0]?.player || EMPTY_PLAYER;
       const selectedStatus = selectedPlayer[key] || "no-reply";
       const noReplyPlayers = opPlayers.filter(p =>
@@ -18821,7 +18835,7 @@
                   </div>
                   ${sessionCardsHTML || `<p class="muted">Nothing scheduled this week. Use Next › to look ahead.</p>`}
                 </div>
-                ${opPlayers.length === 0 ? `
+                ${!rosterKnown ? '' : opPlayers.length === 0 ? `
                 <div class="avail-request-cta" style="margin-top:14px;padding:22px 16px;text-align:center;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)">
                   <div style="font-size:28px;opacity:.5;margin-bottom:8px" aria-hidden="true">👥</div>
                   <h3 style="margin:0 0 6px;font-size:15px;color:var(--ink)">No players yet</h3>
@@ -27224,16 +27238,18 @@
           // (A reset already released it; a newer read owns it — leave that one.)
           _store.loading = false;
         }
-        renderClubAdmin();
-        // Re-render the screen that asked for this data so the newly available
-        // structure appears immediately, with no navigation dance.
-        if (state.activeView === 'coach') {
-          if (state.activeCoachSection === 'settings' && typeof renderSettings === 'function') renderSettings();
-          if (state.activeCoachSection === 'players' && typeof renderPlayers === 'function') renderPlayers();
-          // Match Centre needs the structure too: its Premier / Premier
-          // Development side selector only exists once the group's teams load.
-          if (state.activeCoachSection === 'matchday' && typeof renderMatchday === 'function') renderMatchday();
-        }
+        // ONE repaint of whatever is on show (Build 122). This used to be a
+        // hand-picked list — Club Admin always, then Settings, Members or Match
+        // Centre — and the screens that read the roster through
+        // operationalPlayers() were not on it: when the admin data was the last
+        // thing a cold load was waiting for, the Overview and the Availability
+        // board went on saying "No players yet" for a club of eighteen, with
+        // nothing left to repaint them. render() paints the active section and
+        // the shared UI only (Build 118), so every screen that needs this data
+        // gets it, at the cost of one pass. A real outcome — loaded or failed —
+        // is news to the screen on show; a stale reply discarded above is not
+        // (the club transition that made it stale renders on its own).
+        if (!_discarded && typeof render === 'function') render();
       }
     }
 
@@ -44756,6 +44772,25 @@
       // single-group coach, whose club may hold groups they never see.
       if (!clubUsesPlayerGroups()) return rows;
       return rows.filter(p => String(playerGroupIdOf(p)) === gid);
+    }
+
+    /**
+     * IS THE OPERATING GROUP'S ROSTER KNOWN? (Build 122)
+     *
+     * operationalPlayers() answers [] in two different situations: a group
+     * that genuinely has nobody in it, and a group whose membership has not
+     * loaded yet for someone entitled to it (it fails CLOSED, see above).
+     * The empty list cannot tell them apart; this can. It is that fail-closed
+     * condition, stated once: a group in force, an entitled coach, and admin
+     * data not landed. Until it is known, a screen must not say "No players
+     * yet", print zero counts or claim who has not replied — the roster is
+     * loading, not empty. A coach who is not entitled to the admin data, or
+     * no group in force, is answered from what is held, exactly as before.
+     */
+    function operationalRosterKnown() {
+      if (!state.operationalGroupId) return true;
+      if (_adminData.loaded) return true;
+      return !(canI('manage_players') || canI('manage_teams'));
     }
 
     /**
