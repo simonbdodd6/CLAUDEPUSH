@@ -59,6 +59,16 @@
       "accountsFor": [
         "config/production-exclusions.json: the lastVerifiedAgainst block moving from core-deploy-82 to core-deploy-84 (6 lines)"
       ]
+    },
+    {
+      "id": "b106-performance-test-resolution",
+      "commit": "21c0a0e96c78ff3a59c324400aed36aa7feb2624",
+      "subject": "fix(core): harden timezone-sensitive date handling",
+      "patchId": "74c74b6a8277d806699dddb462eed7fd2409d4df",
+      "purpose": "Already live, minus one deliberately resolved file. Build 106 shipped in core-deploy-96 as 9e972610 (cherry-pick -x of this commit) under Build 120's authorised conflict resolution, which kept production's own test/performance-assignment-ui.test.js. Every other change is in production line-for-line (this commit without that file has the same patch-id as 9e972610), but the classifier cannot prove an adapted pick that dropped a file, so without this entry it blocks every future release as AMBIGUOUS. The feature-side version of that test must never overwrite production's.",
+      "accountsFor": [
+        "test/performance-assignment-ui.test.js: the feature-side Build 106 hunk (frozen sandbox clock for test 21, ~27 lines), intentionally not delivered because production's version was retained during Build 120"
+      ]
     }
   ],
 
