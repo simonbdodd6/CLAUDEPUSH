@@ -17324,7 +17324,17 @@
       // and every reading below — "No players yet", "none of the 0 players",
       // zero counts — would describe a club nobody has looked at yet.
       const rosterKnown = typeof operationalRosterKnown === 'function' ? operationalRosterKnown() : true;
-      const rosterLoadingBody = `<p class="ovw-empty"><strong>Loading the squad…</strong>Availability appears once the squad has loaded.</p>`;
+      // ...and a roster whose read FAILED is not a loading one (Build 126). It
+      // is still unknown, so the cards still claim nothing — but they say what
+      // happened, that it is being retried, and offer the retry. While that
+      // retry is out, the button gives way to saying so. stopPropagation for
+      // the reason given above: these cards are links.
+      const rosterFailed = typeof operationalRosterFailed === 'function' && operationalRosterFailed();
+      const rosterLoadingBody = rosterFailed
+        ? `<p class="ovw-empty ovw-roster-failed"><strong>Squad could not be loaded</strong>This is not an empty squad — the squad list did not load. ${
+            _adminData.loading ? 'Trying again now…'
+              : `Trying again automatically. <button type="button" class="ovw-retry" onclick="event.stopPropagation();adminDataRetryNow()">Try again</button>`}</p>`
+        : `<p class="ovw-empty"><strong>Loading the squad…</strong>Availability appears once the squad has loaded.</p>`;
 
       const availabilityBody = availUnknown ? availUnavailableBody : !rosterKnown ? rosterLoadingBody : av.kind === 'none' ? availEmpty('a training session') : availNoReplies ? noRepliesBodyOf(av) : `
         <div>
@@ -18657,7 +18667,18 @@
       const availLoading   = !availUnknown && typeof availabilityChaseContext === 'function'
         && availabilityChaseContext(coachAvailWeek()).status === 'loading';
       const availPending   = availUnknown || availLoading;      // nothing below may state a count
-      const availLoadingHTML = `<p class="ovw-empty avail-loading" style="padding:14px 16px;margin:0" role="status">
+      // The squad's own read can FAIL (Build 126). The chase context stays
+      // 'loading' — nothing may be claimed — but "loading" is then not the
+      // true thing to say: the block in the loading branch says the squad
+      // could not be loaded, that it is being retried, and offers the retry
+      // (which gives way to "trying again now" while that retry is out).
+      const rosterFailed   = typeof operationalRosterFailed === 'function' && operationalRosterFailed();
+      const availLoadingHTML = rosterFailed
+        ? `<p class="ovw-empty avail-roster-failed" style="padding:14px 16px;margin:0" role="status">
+        <strong>The squad could not be loaded</strong>This is not an empty squad — the squad list did not load, so nobody has been marked as "no reply". ${
+          _adminData.loading ? 'Trying again now…'
+            : `Trying again automatically. <button type="button" class="ovw-retry" onclick="adminDataRetryNow()">Try again</button>`}</p>`
+        : `<p class="ovw-empty avail-loading" style="padding:14px 16px;margin:0" role="status">
         <strong>Loading availability…</strong>Reading this week's replies — nobody has been marked as "no reply" yet.</p>`;
 
       const playerRows = list => list.map(({player, status, reason, respondedAt}) => {
@@ -27040,6 +27061,8 @@
       _sharedMedical = { loaded: false, failed: false, cases: [], players: [] };
       _adminData = { invites: [], members: [], users: [], profiles: [], structure: null, counts: null,
                      clubWideStaff: [], loaded: false, loading: false, attempted: false, failed: false };
+      // A retry booked for the account signing out must not fire (Build 126).
+      if (typeof adminRetryCancel === 'function') adminRetryCancel();
       // The front door was dismissed earlier in this page session; sign-out must
       // bring it back, or the shell would be blanked with no way forward.
       _welcomeDismissed = false;
@@ -27128,14 +27151,70 @@
      * fetch (which leaves `loaded` false) would otherwise retry forever.
      */
     let _adminDataAttemptAt = 0;
-    function ensureAdminData() {
+    function ensureAdminData(retryDue = false) {
       if (!canI('manage_players') && !canI('manage_teams')) return;
       if (_adminData.loaded || _adminData.loading) return;
       // A failed load must not latch for the whole session (a phone's first
       // fetch after wake often aborts) — retry with a gentle backoff. Until
       // it succeeds, group surfaces stay fail-closed rather than whole-club.
-      if (_adminData.attempted && Date.now() - _adminDataAttemptAt < 15000) return;
+      // The scheduled retry (retryDue, below) IS that backoff having run out,
+      // measured by its own timer, so it does not ask the wall clock again.
+      if (!retryDue && _adminData.attempted && Date.now() - _adminDataAttemptAt < 15000) return;
       loadAdminData();
+    }
+
+    /**
+     * A FAILED ADMIN LOAD RETRIES ITSELF (Build 126).
+     *
+     * The backoff above only ever ran from inside a render: a failed read left
+     * {loaded:false, failed:true} and waited for some later pass to call
+     * ensureAdminData(). On a screen that had nothing else to repaint it — the
+     * Overview — no pass came, and one dropped request left "Loading the
+     * squad…" on show for as long as the coach looked at it, with the server
+     * healthy again seconds later (measured on the deployed code: still stuck
+     * at 70s).
+     *
+     * So a REAL failure now books its own retry: ONE timer, which asks through
+     * ensureAdminData() — the same entitlement check, the same one-read-at-a-
+     * time latch, the same loadAdminData. The first retry comes after the
+     * existing 15s; while the server keeps failing the wait doubles to a 60s
+     * ceiling, so an outage is asked about once a minute, not hammered. Every
+     * real outcome settles it (adminRetryAfterOutcome): a success clears it, a
+     * failure books the next. A stale reply discarded by loadAdminData is not
+     * an outcome and books nothing. A club switch and sign-out cancel it; a
+     * coach no longer entitled to the data is refused by ensureAdminData when
+     * it fires, and nothing is booked after that.
+     */
+    const ADMIN_RETRY_FIRST_MS = 15000, ADMIN_RETRY_MAX_MS = 60000;
+    let _adminRetryTimer = null;   // the ONE pending automatic retry
+    let _adminRetryFails = 0;      // consecutive real failures since the last success, switch or manual retry
+    function adminRetryCancel() {
+      if (_adminRetryTimer) clearTimeout(_adminRetryTimer);
+      _adminRetryTimer = null;
+      _adminRetryFails = 0;
+    }
+    function adminRetryAfterOutcome() {
+      if (_adminRetryTimer) clearTimeout(_adminRetryTimer);
+      _adminRetryTimer = null;
+      // Loaded — now, or earlier with this refresh failing over data still
+      // held — is a roster that is known: nothing to recover.
+      if (_adminData.loaded || !_adminData.failed) { _adminRetryFails = 0; return; }
+      _adminRetryFails++;
+      const wait = Math.min(ADMIN_RETRY_FIRST_MS * 2 ** (_adminRetryFails - 1), ADMIN_RETRY_MAX_MS);
+      _adminRetryTimer = setTimeout(() => { _adminRetryTimer = null; ensureAdminData(true); }, wait);
+    }
+    /**
+     * The Retry action of a failed squad load: ask NOW. A tap while a read is
+     * already out joins it rather than starting another; otherwise the pending
+     * automatic retry is dropped, the backoff starts over, and the screen is
+     * repainted so it says the retry is under way.
+     */
+    function adminDataRetryNow() {
+      if (!canI('manage_players') && !canI('manage_teams')) return;
+      if (_adminData.loading) return;
+      adminRetryCancel();
+      loadAdminData(true);
+      if (typeof render === 'function') render();
     }
     let _adminSearch = '';
 
@@ -27232,6 +27311,10 @@
           _adminData.loading = false;
           _adminData.attempted = true;
           _adminDataAttemptAt = Date.now();
+          // A real outcome settles the automatic retry (Build 126): a failure
+          // books ONE, a success clears it. The discarded reply below does
+          // neither — it is not this club's failure.
+          if (typeof adminRetryAfterOutcome === 'function') adminRetryAfterOutcome();
         } else if (_adminData === _store && _store.readToken === _readToken) {
           // Discarded, not failed: release the latch this read still holds and
           // record NO attempt, so the next ensureAdminData() asks again at once.
@@ -27262,7 +27345,11 @@
       if (!el) return;
       if (!isCoach()) { el.innerHTML = ''; return; }
       const active = state.activeView === 'coach' && state.activeCoachSection === 'admin';
-      if (active && !_adminData.loaded && !_adminData.loading) loadAdminData();
+      // Through the ONE gate (Build 126). This screen used to call
+      // loadAdminData() itself, with no backoff — and loadAdminData repaints
+      // on a failure, so a failing read asked again on every repaint: measured,
+      // 3,346 admin reads in 6s for as long as the server answered 500.
+      if (active && typeof ensureAdminData === 'function') ensureAdminData();
 
       const members  = _adminData.members || [];
       const invites  = _adminData.invites || [];
@@ -44794,6 +44881,20 @@
     }
 
     /**
+     * IS THE ROSTER UNKNOWN BECAUSE ITS READ FAILED? (Build 126)
+     *
+     * An unknown roster (above) is one of two things: its read is still out —
+     * loading — or the last read genuinely failed and a retry is booked or
+     * under way. Neither is an empty club, and neither may print a count; but
+     * only the first is "loading". `failed` is set by a real failure alone
+     * (never by a discarded stale reply), stays up while the retry is out, and
+     * is cleared by a success, a club switch or sign-out.
+     */
+    function operationalRosterFailed() {
+      return !operationalRosterKnown() && !!_adminData.failed;
+    }
+
+    /**
      * The group whose training the planner is CURRENTLY showing.
      *
      * The planner adopts a group's training state, stamped as
@@ -45969,6 +46070,9 @@
       if (typeof _adminData === 'object' && _adminData) Object.assign(_adminData, {
         invites: [], members: [], users: [], profiles: [], structure: null, structureAccess: null,
         counts: null, clubWideStaff: [], loaded: false, loading: false, attempted: false, failed: false });
+      // A retry booked for the club being left is not the next club's (Build 126);
+      // that club's own first read is asked by its first render, as before.
+      if (typeof adminRetryCancel === 'function') adminRetryCancel();
       if (typeof _staffDirLoadedAt !== 'undefined') _staffDirLoadedAt = 0;   // the new club's directory loads at once
       if (typeof _clubContextId !== 'undefined') _clubContextId = '';        // no club is in force until the server names the next
       if (typeof _staffDetailUserId !== 'undefined') _staffDetailUserId = null; // no editor open on another club's member
