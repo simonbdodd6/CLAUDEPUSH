@@ -3049,8 +3049,13 @@
     .att-btn.is-on.att-absent  { background: var(--status-unavailable, #dc2626); border-color: transparent; color: #fff; }
     .att-note { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
     @media (max-width: 480px) { .att-btn { min-height: 40px; padding: 0 10px; } }
-    .ovw-retry { appearance: none; background: none; border: 0; padding: 0; margin-left: 4px; cursor: pointer;
-      font: inherit; font-weight: 700; color: var(--accent); text-decoration: underline; }
+    /* The inline "Try again" of every failure block. It reads as a link in the
+       sentence, but it is tapped on a phone with a thumb: the TEXT stays the
+       size it is, the BOX is padded to a 44px-high target (Build 129), and the
+       negative margins hand that padding back so the line it sits in does not
+       move — measured 59×20 before, 75×44 after, same baseline. */
+    .ovw-retry { appearance: none; background: none; border: 0; padding: 12px 8px; margin: -12px -4px; cursor: pointer;
+      font: inherit; font-weight: 700; color: var(--accent); text-decoration: underline; min-height: 44px; min-width: 44px; vertical-align: baseline; }
 
     .ovw-actions-card {
       border: 1px solid var(--line); border-radius: var(--r); background: var(--panel);
@@ -8917,7 +8922,16 @@
       const next = Boolean(failed);
       if (_availReadFailed === next) return;
       _availReadFailed = next;
-      if (typeof renderMessageCenter === 'function') renderMessageCenter();
+      // The flag is recorded; the PAINTS below are for a device with a session
+      // (Build 129). A signed-out device shows its front door and nothing else
+      // — render() clears every section for it — and a transition here (a
+      // refused read, or the flag being cleared as the board is stopped)
+      // must not paint any of them back underneath.
+      if (typeof sessionSignedOut === 'function' && sessionSignedOut()) return;
+      // Only the board ON SHOW is repainted (Build 129): hidden, it is painted
+      // on entry from this flag anyway.
+      if (typeof renderMessageCenter === 'function'
+          && (typeof availabilityBoardOnShow !== 'function' || availabilityBoardOnShow())) renderMessageCenter();
       // The Overview reads the same answers and must not contradict the board,
       // so it repaints on the same transitions — only when it is the section on
       // screen, and only on a transition, so no render pass is added to a
@@ -22850,6 +22864,12 @@
         if (!res.ok) { _autopilotEnsured = false; return; }
         const schedules = (await res.json()).schedules || [];
         if (schedules.some(s => s.id === 'autopilot-availability')) return;
+        // The guard above held when the read LEFT; the session can have ended
+        // while it was out (isCoach() answers through currentUser(), which is
+        // null once the session is gone). Asked again before the write it
+        // leads to (Build 129) — measured: one schedule POST left a device
+        // whose session the server had just ended.
+        if (typeof sessionSignedOut === 'function' && sessionSignedOut()) { _autopilotEnsured = false; return; }
         const created = await fetch('/api/schedules', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -43551,6 +43571,69 @@
     // answered). Distinct from "never read": see availabilityReadUnknown().
     let _availReadFailed = false;
 
+    /**
+     * IS THE BOARD ON SHOW? (Build 129)
+     *
+     * The one answer for the three places that paint or poll the board from
+     * OUTSIDE render() — the 5 s tick, a read landing (_settle) and the failure
+     * transition (availabilitySetReadFailed). render() paints the section on
+     * screen and nothing else (Build 118) and paints nothing at all for a
+     * signed-out device; these three bypass it, and each had its own idea of
+     * when it may act. The tick checked the section but not the session, so
+     * it kept hitting /api/availability every 5 s after Sign out and, once the
+     * server had ended the session, repainted the whole board — eighteen
+     * names — from what the device still held, under the front door. The
+     * landing paint and the failure paint checked nothing, so a cold load on
+     * the Overview painted the hidden hub (13.8 KB) and then fetched its
+     * schedules panel for a section nobody was looking at.
+     */
+    function availabilityBoardOnShow() {
+      if (typeof sessionSignedOut === 'function' && sessionSignedOut()) return false;
+      return typeof state !== 'undefined' && !!state && state.activeView === 'coach' && state.activeCoachSection === 'message';
+    }
+
+    /**
+     * THE SESSION HAS ENDED: STOP THE LIVE BOARD (Build 129).
+     *
+     * Called from the existing session boundary — resetIdentityScopedState
+     * (Sign out and every identity change), the session check that learns the
+     * server has refused this device, and the other-tab sign-out — the same
+     * three places that already stop the chat poller. Nothing new decides
+     * when a session ends; this only makes the board obey the decision:
+     *
+     *   · the tick is cancelled, so no further read leaves;
+     *   · every read still out is marked stale through the ordering rule the
+     *     board already has (a reply older than the newest applied read is
+     *     ignored in full — no map, no stamp, no roster patch, no chip, no
+     *     paint), so a reply that lands after the session ended changes
+     *     nothing;
+     *   · the answers are forgotten: the resolved map, its group stamp, the
+     *     sync time and the failure flag were THIS identity's knowledge of
+     *     THIS club's squad, and they are what let the board be rebuilt, names
+     *     and all, for a device that no longer had a session;
+     *   · the live cycle is re-armed, so the next identity's first entry
+     *     loads fresh rather than waiting out the cycle window.
+     *
+     * The persisted club data is untouched — sign-out promises that — it just
+     * never paints: render() clears every section for a signed-out device, and
+     * availabilityBoardOnShow() keeps the three bypasses from painting it back.
+     */
+    function availabilityStopLive() {
+      if (_availPollTimer) { clearInterval(_availPollTimer); _availPollTimer = null; }
+      if (typeof _availabilityReadSeq !== 'undefined' && typeof _availabilityAppliedSeq !== 'undefined') _availabilityAppliedSeq = _availabilityReadSeq;
+      if (typeof _liveAvailabilityInFlight !== 'undefined') _liveAvailabilityInFlight = null;
+      if (typeof _liveMessagingLoadedAt !== 'undefined') _liveMessagingLoadedAt = 0;
+      if (typeof _liveMessagingInFlight !== 'undefined') _liveMessagingInFlight = false;
+      if (typeof _resolvedAvailability !== 'undefined') _resolvedAvailability = {};
+      if (typeof _resolvedAvailabilityGroup !== 'undefined') _resolvedAvailabilityGroup = null;
+      _availLastSync = null;
+      if (typeof _availRosterLinkedAt !== 'undefined') _availRosterLinkedAt = 0;
+      // Through the one setter the flag has (its transition paints are
+      // withheld for a signed-out device); last, so a paint on an identity
+      // change while signed in already sees the answers forgotten.
+      if (_availReadFailed && typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(false);
+    }
+
     // LIVE-DATA CYCLE GUARD (coach Availability/Messaging screen).
     // render() calls loadLiveMessaging() on EVERY render while this section is
     // open, and the cycle is all network: the schedules panel alone fetches
@@ -43609,11 +43692,15 @@
       // reloads), so the current session updates live without the coach switching
       // sessions, and idle ticks cause no re-render/network churn.
       clearInterval(_availPollTimer);
+      // The tick lives only while the board is on show AND a session is in
+      // force (availabilityBoardOnShow, Build 129): it used to ask the section
+      // alone, and went on asking the server every 5 s for a signed-out device.
       _availPollTimer = setInterval(() => {
-        if (state.activeView === 'coach' && state.activeCoachSection === 'message') {
+        if (availabilityBoardOnShow()) {
           refreshLiveAvailability({ boardOnly: true });
         } else {
           clearInterval(_availPollTimer);
+          _availPollTimer = null;
         }
       }, 5000);
     }
@@ -43724,7 +43811,17 @@
       // so a piece of work claimed here is never scheduled twice.
       const _settle = (o, out) => {
         const w = o.boardOnly ? 0 : (o.skipPanelReload ? 1 : 2);
-        if ((w >= 1 || out.changed) && !out.rendered) { out.rendered = true; renderMessageCenter(); }
+        // The PAINT is for the board on show (Build 129). The data work above
+        // this point — the map, its stamp, the roster patch — is done for every
+        // caller; a board-only read from the Overview's activity pull used to
+        // paint the hidden hub as well (13.8 KB, then its schedules fetches).
+        // The hub is painted on entry by render(); a board nobody is looking at
+        // is not repainted here — and `rendered` stays false, so a heavier
+        // caller that joins this read from the board itself still gets its
+        // paint. typeof-guarded for the sandboxes that splice this function
+        // alone, where every landing paints as before.
+        const _onShow = typeof availabilityBoardOnShow !== 'function' || availabilityBoardOnShow();
+        if (_onShow && (w >= 1 || out.changed) && !out.rendered) { out.rendered = true; renderMessageCenter(); }
         const wantPanels = w >= 1 && !out.panels, wantLoads = w >= 2 && !out.loads;
         if (wantPanels) out.panels = true;
         if (wantLoads) out.loads = true;
@@ -43760,6 +43857,12 @@
       // disable it could only ever return null.
       const ts  = document.getElementById('avail-refresh-ts');
       try {
+        // A signed-out device has no board to read (Build 129): no identity
+        // link, no request. The tick that would have asked is already stopped
+        // (availabilityStopLive); this covers every other caller — a render
+        // path, a return to the tab, a Live Sync tap on a stale screen.
+        const _signedOut = () => typeof sessionSignedOut === 'function' && sessionSignedOut();
+        if (_signedOut()) return;
         // Link saved roster rows to their server identity BEFORE matching, so a
         // pre-registration row (no userId/legacyPlayerId, divergent name) gains the
         // canonical ids and its reply attaches instead of showing "No Reply".
@@ -43801,6 +43904,10 @@
         const _appliedSeq = (typeof _availabilityAppliedSeq !== 'undefined') ? _availabilityAppliedSeq : 0;
         if (readSeq <= _appliedSeq) return;
         if (_ctxLeft()) return;
+        // A session that ended while this read was out is a context left too
+        // (Build 129): availabilityStopLive has already moved the applied mark
+        // past this read, and this says so in words.
+        if (_signedOut()) return;
         if (!reply) {
           // A FAILED READ IS A FAILED READ — never an empty board. Collapsing
           // a 500 / lapsed session / network drop into {} took the success
@@ -44450,6 +44557,26 @@
     // or the window inside a club transition). The push is deferred, never
     // dropped: adoptClubContext re-queues it once ownership is established.
     let _rosterSyncDeferred = false;
+    /**
+     * THE ROSTER HELD IS NOT YET THE SERVER'S ANSWER (Build 129).
+     *
+     * A club transition empties state.players (resetTeamScopedState) and the
+     * next club's roster arrives with its own read (loadRosterFromServer, via
+     * hydrateClubFromServer). In between, the admin data for the new club can
+     * land first — and "roster known" was answered from the admin data alone
+     * (Build 122), so the board read an emptied list as a KNOWN empty squad:
+     * "No players yet", an Invite button and NO REPLY 0 for the three seconds
+     * (a slow roster read) or the three hundred milliseconds (a quick one) the
+     * new club's players took to arrive. True from the wipe until the roster
+     * read answers; operationalRosterKnown() reads it, so every screen that
+     * already says "loading" for an unknown roster says it here too.
+     *
+     * Answered is answered: a read that fails or throws ends the wait as well,
+     * with whatever the device holds (nothing, after a transition) — the same
+     * as before this build on that path. Nothing re-reads the roster on its own
+     * after a failure; that is a known gap, not this flag's to close.
+     */
+    let _rosterAwaitingServer = false;
 
     function rosterFingerprint() {
       return JSON.stringify((state.players || []).map(({ photo, ...p }) => p));
@@ -44472,6 +44599,10 @@
         // Re-checked at send time: a club transition between queue and fire
         // clears the timer, but the request itself must never leave unproven.
         if (!clubStateOwned()) { _rosterSyncDeferred = true; return; }
+        // Nor from a device whose session ended while the push was queued
+        // (Build 129): the roster is the signed-out person's to keep on the
+        // device, not to send — measured, one roster POST left after Sign out.
+        if (typeof sessionSignedOut === 'function' && sessionSignedOut()) return;
         const sending = rosterFingerprint();
         try {
           const res = await fetch('/api/roster', {
@@ -44508,11 +44639,17 @@
 
     async function loadRosterFromServer() {
       if (typeof window !== "undefined" && window.__DEMO_SQUAD__) return;   // TEMPORARY DEMO SQUAD: don't let the server overwrite the demo
+      // Nobody reads the roster for a player: what the device holds is all it will have (Build 129).
+      if (!isCoach() && typeof _rosterAwaitingServer !== 'undefined') _rosterAwaitingServer = false;
       if (!isCoach()) return;
+      // The server has ANSWERED, whatever it said (Build 129): from here the
+      // roster this device holds is the club's, and the screens may count it.
+      const _answered = () => { if (typeof _rosterAwaitingServer !== 'undefined') _rosterAwaitingServer = false; };
       try {
         const res = await fetch('/api/roster');
-        if (!res.ok) return;
+        if (!res.ok) { _answered(); return; }
         const data = await res.json();
+        _answered();
         // Race guard: if a coach added/edited a player while this fetch was in
         // flight (a debounced roster sync is still pending), the LOCAL roster is
         // newer than the server. Adopting the stale copy here is exactly what made
@@ -44562,7 +44699,7 @@
         // added elsewhere, a removal, a renamed position, the dual-role own
         // record restored above) still paints immediately.
         if (_beforeRoster !== JSON.stringify([state.players || [], state.users || []])) render();
-      } catch(e) { console.warn('[loadRosterFromServer]', e); }
+      } catch(e) { _answered(); console.warn('[loadRosterFromServer]', e); }
     }
 
     // ─── DEVICE RESET + SERVER AUTH STATE ───────────────────────────────────
@@ -44678,6 +44815,10 @@
       _perfAssign = { loaded: false, loading: false, error: null, capacity: null,
                       athletes: [], programmes: [], assignments: [], entitlement: null };
       chatSetUnreadTotal(0);
+      // The live availability board — its tick, its reads still out and the
+      // answers it held — was this identity's too (Build 129). Stopped and
+      // forgotten here; the next identity's first entry reads afresh.
+      if (typeof availabilityStopLive === 'function') availabilityStopLive();
     }
 
     // Tracks whether the SERVER recognises this device. Local state alone must
@@ -44876,6 +45017,13 @@
      */
     function operationalRosterKnown() {
       if (!state.operationalGroupId) return true;
+      // The admin data is one half of "known"; the roster read is the other
+      // (Build 129). After a club transition the players held are nobody's
+      // until the new club's roster read answers — for someone entitled to
+      // the admin data, that gap is loading too, not an empty squad. Someone
+      // not entitled is answered from what is held, exactly as below.
+      if (typeof _rosterAwaitingServer !== 'undefined' && _rosterAwaitingServer
+          && (canI('manage_players') || canI('manage_teams'))) return false;
       if (_adminData.loaded) return true;
       return !(canI('manage_players') || canI('manage_teams'));
     }
@@ -46110,6 +46258,9 @@
       // being prepared for — so a save in between can never seed or push.
       state.stateTeamId = null;
       state.players = [];
+      // …and an emptied roster is not a KNOWN empty squad: the next club's
+      // players arrive with its roster read (Build 129, see _rosterAwaitingServer).
+      if (typeof _rosterAwaitingServer !== 'undefined') _rosterAwaitingServer = true;
       state.fixtures = [];
       state.fixturesSyncedAt = '';   // the next club's list is not known until its server answers (Build 107)
       state.clubName = ''; state.teamName = ''; state.seasonName = '';
@@ -46223,6 +46374,7 @@
           }
         } else {
           _serverAuthState = 'anon';
+          if (typeof availabilityStopLive === 'function') availabilityStopLive();   // Build 129
         }
       } catch { _serverAuthState = 'unknown'; } // offline — stay quiet
       if (wasSignedOut !== sessionSignedOut()) { render(); }
@@ -46763,6 +46915,7 @@
         _serverAuthState = 'anon';
         _welcomeDismissed = false;
         if (typeof chatStopPolling === 'function') { try { chatStopPolling(); } catch {} }
+        if (typeof availabilityStopLive === 'function') { try { availabilityStopLive(); } catch {} }   // Build 129
       }
       const el = document.getElementById("saveStatus");
       if (el) el.textContent = `Synced newer browser tab · rev ${incomingRev}`;
