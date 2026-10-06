@@ -464,7 +464,9 @@ test('chat API POST accepts a Vercel-style pre-parsed req.body with a consumed s
     method: 'POST',
     url: '/api/chat',
     headers: coachHeaders,
-    body: { action: 'create_conv', id: 'squad', name: 'Squad', type: 'GROUP', participants: ['coach-demo'] },
+    // Build 134: 'squad' is a reserved built-in id, refused to every client — the
+    // parse check uses an ordinary staff conversation, whose id the server mints.
+    body: { action: 'create_conv', name: 'Staff room', type: 'GROUP', participants: ['coach-demo'] },
     async *[Symbol.asyncIterator]() {}, // stream already consumed by the runtime
   };
   const response = res();

@@ -78,7 +78,7 @@ process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.APP_KEY_PREFIX           = 'app';
 process.env.PUBLIC_CLUB_SIGNUP       = 'true';
 process.env.CRON_SECRET              = 'cron-secret-105';
-process.env.LOCAL_TZ_OFFSET          = '0';
+process.env.LOCAL_TIMEZONE           = 'UTC';   // Build 134: the zone replaces the retired fixed LOCAL_TZ_OFFSET (was '0')
 delete process.env.VERCEL; delete process.env.NODE_ENV; delete process.env.DEV_LOGIN;
 
 const kv = new Map(), lists = new Map();

@@ -1072,6 +1072,30 @@ export async function ensureRosterProjection(teamId) {
   return { changed: true, created: created.length };
 }
 
+/**
+ * A join request is decided ONCE, while it is pending (Build 134).
+ *
+ * approve/reject used to act on ANY member of the club: an assistant coach
+ * could "reject" the club owner (status rejected — no session, and restore
+ * cannot undo it) or "approve" a removed, archived or deleted member back to
+ * active, bypassing the restore gate. Only a pending request is a request;
+ * the owner is never one. Checked in the store so every caller is bound.
+ */
+function assertPendingJoinRequest(member, verb) {
+  if (isClubOwner(member)) {
+    const error = new Error(`The club owner cannot be ${verb}`);
+    error.status = 403;
+    error.code = 'owner_protected';
+    throw error;
+  }
+  if (member.status !== 'pending') {
+    const error = new Error(`Only a pending join request can be ${verb} (this member is ${member.status || 'not pending'})`);
+    error.status = 409;
+    error.code = 'not_pending';
+    throw error;
+  }
+}
+
 export async function approveJoinRequest(memberId, approvedBy = 'coach-demo', expectedTeamId = null) {
   const [users, members, profiles] = await Promise.all([
     loadUsers(),
@@ -1089,6 +1113,7 @@ export async function approveJoinRequest(memberId, approvedBy = 'coach-demo', ex
     error.status = 403;
     throw error;
   }
+  assertPendingJoinRequest(member, 'approved');
   const user = users.find(item => item.id === member.userId);
   if (!user) {
     const error = new Error('User not found');
@@ -1736,8 +1761,18 @@ export async function resetPasswordWithToken({ token, password } = {}) {
   }
   ensurePassword(user, password);
   reset.usedAt = nowIso();
+  // A reset is a credential REPLACEMENT (Build 134): any other unused reset
+  // link for this account dies with it, and so does every session — the
+  // person resetting may be locking out whoever had their old password.
+  for (const other of resets) {
+    if (other !== reset && other.userId === user.id && !other.usedAt) {
+      other.usedAt = reset.usedAt;
+      other.supersededBy = reset.id;
+    }
+  }
   await Promise.all([saveUsers(users), savePasswordResets(resets)]);
-  return { user: publicUser(user), reset: { id: reset.id, usedAt: reset.usedAt } };
+  const { revoked } = await destroyAllSessionsForUser(user.id);
+  return { user: publicUser(user), reset: { id: reset.id, usedAt: reset.usedAt }, sessionsRevoked: revoked };
 }
 
 export async function createEmailVerificationToken(userId) {
@@ -3622,6 +3657,7 @@ export async function rejectJoinRequest(memberId, rejectedBy = 'coach-demo', exp
     error.status = 403;
     throw error;
   }
+  assertPendingJoinRequest(member, 'rejected');
   member.status = 'rejected';
   member.rejectedAt = nowIso();
   member.rejectedBy = rejectedBy || 'coach-demo';

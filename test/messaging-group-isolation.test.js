@@ -312,8 +312,11 @@ test('legacy club-wide channels keep their exact semantics — no group is guess
   assert.equal((await chat('u-w1', 'GET', '/api/chat?action=messages&convId=announce')).code, 200,
     'every player still reads club-wide announcements');
   // A legacy custom group without groupId keeps its old audience — all staff.
-  await chat('u-owner', 'POST', '/api/chat', { action: 'create_conv', id: 'match-day-crew', type: 'GROUP', name: 'Match day crew' });
-  assert.equal((await chat('u-u18-c', 'GET', '/api/chat?action=messages&convId=match-day-crew')).code, 200,
+  // (Build 134: the server mints the id of a new conversation — a client-chosen
+  // free id is refused — so the legacy-shaped group is created without one.)
+  const crew = (await chat('u-owner', 'POST', '/api/chat', { action: 'create_conv', type: 'GROUP', name: 'Match day crew' })).body.convId;
+  assert.ok(crew, 'a staff conversation is created with a server-minted id');
+  assert.equal((await chat('u-u18-c', 'GET', `/api/chat?action=messages&convId=${encodeURIComponent(crew)}`)).code, 200,
     'no group is inferred for legacy conversations');
 });
 

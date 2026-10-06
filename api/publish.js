@@ -2644,6 +2644,30 @@ function sanitiseWeeklyAvailability(raw) {
   };
 }
 
+/**
+ * CLUB-WIDE DESTRUCTION NEEDS CLUB-WIDE AUTHORITY (Build 134).
+ *
+ * The danger-zone actions here act on the WHOLE club — every group's roster,
+ * sessions, squads, availability and the club's name. They checked the
+ * permission alone, and a head coach invited for one group holds every
+ * permission by default (Full profile), so a U18 coach could wipe the
+ * Seniors. A group's authority never reaches the club: these require the
+ * club-wide scope requireClubManage uses everywhere else.
+ */
+async function coversWholeClub(session) {
+  if (effectiveAccessScope(session.teamMember).clubWide) return true;
+  // The canonical coverage rule (identity.js callerGroupAuthority, rosterScope):
+  // a member who operates EVERY active group covers the club — in a one-group
+  // club the group IS the club. One group of several never does.
+  const structure = await loadClubStructure(session.teamId);
+  const operable = new Set(operationalGroupsFor(session.teamMember, structure, { as: 'staff' }).map(g => g.id));
+  return activeGroups(structure).every(g => operable.has(g.id));
+}
+
+async function clubWideDangerAllowed(session) {
+  return can(session, PERM.DANGER_ZONE) && await coversWholeClub(session);
+}
+
 async function clubHandler(req, res) {
   if (req.method === 'GET') {
     let session;
@@ -2668,10 +2692,14 @@ async function clubHandler(req, res) {
     // typed back as confirmation. Identity accounts and chat history are NOT
     // deleted — players keep their logins; this resets the club setup.
     if (req.body?.action === 'delete_club_data') {
-      if (!can(session, PERM.DANGER_ZONE)) return res.status(403).json({ error: 'Not authorized' });
+      if (!(await clubWideDangerAllowed(session))) return res.status(403).json({ error: 'Only club-wide administrators can do this' });
       const existing = (await kvGet(clubKey(session.teamId))) || null;
-      const expected = String(existing?.clubName || '').trim();
-      if (expected && String(req.body?.confirmName || '').trim() !== expected) {
+      // The confirmation is never skipped (Build 134): a club with no saved
+      // config used to be wiped with no name typed at all. Its tenant record's
+      // name stands in, and with no name anywhere the word DELETE does.
+      const tenantName = String((await loadTeams()).find(t => t.id === session.teamId)?.name || '').trim();
+      const expected = String(existing?.clubName || '').trim() || tenantName || 'DELETE';
+      if (String(req.body?.confirmName || '').trim() !== expected) {
         return res.status(400).json({ error: 'Type the exact club name to confirm deletion' });
       }
       // Both generations of Match Centre storage are enumerated rather than
@@ -2708,7 +2736,7 @@ async function clubHandler(req, res) {
     }
 
     if (req.body?.action === 'delete_test_data') {
-      if (!can(session, PERM.DANGER_ZONE)) return res.status(403).json({ error: 'Not authorized' });
+      if (!(await clubWideDangerAllowed(session))) return res.status(403).json({ error: 'Only club-wide administrators can do this' });
       if (String(req.body?.confirmPhrase || '') !== 'DELETE TEST DATA') {
         return res.status(400).json({ error: 'Type DELETE TEST DATA to confirm' });
       }
@@ -2763,6 +2791,9 @@ async function clubHandler(req, res) {
       const convs = (await kvGet(key('chat:convs'))) || [];
       for (const conv of convs) {
         if (!conv?.id) continue;
+        // This club's conversations only (Build 134): the list is shared by
+        // every club, and the cleanup used to rewrite all of theirs too.
+        if (String(conv.teamId || DEFAULT_TEAM.id) !== String(session.teamId)) continue;
         const msgsKey = key(`chat:conv:${conv.id}:msgs`);
         const msgs = await kvLrange(msgsKey, 0, 499);
         const cleanMsgs = msgs.filter(m => !isTestChatMessage(m));
@@ -2794,6 +2825,13 @@ async function clubHandler(req, res) {
 
     const club = sanitiseClubConfig(req.body?.club);
     if (!club) return res.status(400).json({ error: 'club.clubName is required' });
+    // Renaming the club renames the tenant every group lives in (Build 134):
+    // club-wide authority only. Other settings keep their existing gate.
+    const storedClub = (await kvGet(clubKey(session.teamId))) || null;
+    const renaming = storedClub?.clubName && String(storedClub.clubName).trim() !== String(club.clubName).trim();
+    if (renaming && !(await coversWholeClub(session))) {
+      return res.status(403).json({ error: 'Only club-wide administrators can rename the club' });
+    }
     // THE CURRENT SEASON WINDOW governs every season-scoped read (attendance
     // held-count, appearances, minutes, season sheets), all of which filter
     // `date >= start && date <= end`. A start AFTER end makes that predicate

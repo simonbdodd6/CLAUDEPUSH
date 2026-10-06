@@ -8,7 +8,7 @@
 4. Browser Web Push is implemented but only becomes live after VAPID keys and Upstash settings are added on Vercel and each player enables notifications on their device.
 5. Conflict resolution is last-newer-revision-wins. In Firestore, this should become per-document saves with server timestamps to prevent one coach overwriting another coach's unrelated edits.
 6. Push sends are logged with sent/failed counts. Full read receipts remain prototype fields because standard Web Push does not prove that a player read a notification.
-7. `LOCAL_TZ_OFFSET` must be changed between Belgium summer (`2`) and winter (`1`) unless a future release adds automatic timezone handling.
+7. ~~`LOCAL_TZ_OFFSET` must be changed between Belgium summer and winter~~ — RESOLVED in Build 134: reminder times follow the IANA zone `LOCAL_TIMEZONE` (default `Europe/Brussels`), daylight saving included; `LOCAL_TZ_OFFSET` is ignored and can be removed from the environment. Per-club time zones are not modelled: every club is scheduled in that one zone.
 8. Long-term storage for videos, PDFs and media is outside this single-file MVP and should be handled by cloud object storage.
 9. The API routes follow the requested lightweight prototype model. Before accepting real club data, coach-only send/template endpoints should be protected by real authentication and club roles.
 

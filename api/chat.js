@@ -9,6 +9,7 @@
 // POST /api/chat  { action:'edit', msgId, convId, text }
 
 import webpush from 'web-push';
+import { randomBytes } from 'node:crypto';
 import { kvGet, kvSet, kvLpush, kvLrange, kvLtrim } from './_kv.js';
 import { key } from './_keys.js';
 import { unreadCountForUser } from '../src/chat-notifications.js';
@@ -957,6 +958,13 @@ async function handlePost(req, res) {
       return err(res, 400, 'Conversation name contains characters that are not allowed');
     }
     if (!isSafeIcon(icon)) return err(res, 400, 'Conversation icon must be an emoji or a short label');
+    // The built-in channels are the SERVER's (Build 134). A client could
+    // create { id: 'coaching', type: 'DIRECT', participants: [self] } — the
+    // record matched first for the caller's club, so a player took the staff
+    // channel over and locked staff out of it. No client may name one.
+    if (BUILTIN_CONV_IDS.has(String(id || '').trim().toLowerCase())) {
+      return err(res, 400, 'That conversation id is reserved');
+    }
 
     // GROUP-TARGETED conversations: an explicit groupId (or the reserved
     // 'group:<gid>' id form) binds the conversation to ONE player group of
@@ -1005,6 +1013,32 @@ async function handlePost(req, res) {
     if (!isStaffSession(sessionContext) && convType !== 'DIRECT') {
       return err(res, 403, 'Players can only create direct conversations');
     }
+    // THE SERVER MINTS DM IDS (Build 134): exactly two distinct participants,
+    // one of them the caller, and the id is dm:<sorted pair> — the form every
+    // client already sends. A client id that differs is refused, so no DM can
+    // be planted under a channel's, a group's or another pair's id. The other
+    // participant may not be ANOTHER club's account: an id that belongs to a
+    // real member elsewhere and to nobody here is refused. Legacy aliases
+    // (coach-demo, inv-… ids, roster ids) carry no membership and still work.
+    let mintedDmId = null;
+    if (convType === 'DIRECT' || String(id || '').startsWith('dm:')) {
+      const pair = [...new Set((Array.isArray(participants) ? participants : []).map(p => String(p || '').trim()).filter(Boolean))];
+      if (pair.length !== 2 || !pair.every(p => isSafeId(p))) {
+        return err(res, 400, 'A direct conversation has exactly two participants');
+      }
+      const actorIds = participantIdsForSession(sessionContext);
+      const other = pair.find(p => !actorIds.includes(p));
+      if (!other) return err(res, 400, 'A direct conversation needs another participant');
+      const teamId = tenantTeamId(sessionContext);
+      const otherMemberships = (await loadTeamMembers()).filter(m => String(m.userId || '') === other);
+      const foreignOnly = otherMemberships.length > 0 && !otherMemberships.some(m =>
+        String(m.teamId) === String(teamId) && ['active', 'pending'].includes(m.status));
+      if (foreignOnly) return err(res, 403, 'You can only message members of your club');
+      mintedDmId = `dm:${[...pair].sort().join(':')}`;
+      if (String(id || '') && String(id) !== mintedDmId) {
+        return err(res, 400, 'A direct conversation id is dm:<participant>:<participant>');
+      }
+    }
     // Custom groups are minted ONLY by create_group, which validates the name,
     // the members and the caller's permission. Without this, create_conv would
     // be a way to fabricate one with an arbitrary member list.
@@ -1013,7 +1047,14 @@ async function handlePost(req, res) {
     }
 
     const teamId = tenantTeamId(sessionContext);
-    const convId = id || `conv_${Date.now()}`;
+    // Every new id is the server's (Build 134): the minted DM id, the validated
+    // group:<gid> form, or a fresh conv_ id. A client-chosen free id is refused.
+    if (!mintedDmId && !requestedGroupId && String(id || '')) {
+      return err(res, 400, 'The server assigns conversation ids — omit id');
+    }
+    // group:<gid> only when that id was asked for (already validated above); a
+    // groupId alone (a group-bound announcement) gets its own minted id, as before.
+    const convId = mintedDmId || (requestedGroupId && String(id || '') ? `group:${requestedGroupId}` : `conv_${Date.now()}_${randomBytes(4).toString('hex')}`);
     const convs = await getConvs();
     // Dedupe per (id, club): two clubs may hold the same group:<gid> protocol
     // id; a second club's create must add ITS record, not adopt the first's.

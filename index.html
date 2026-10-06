@@ -27508,12 +27508,14 @@
                   <strong style="font-size:13px">${esc(inv.name || '(no name)')}</strong>
                   <div class="muted" style="font-size:11px">${esc(inv.email || 'no email — copy link')} · ${esc(inv.role)}${inv.staffLevel ? ' · ' + esc(STAFF_LEVEL_LABELS[inv.staffLevel] || inv.staffLevel) : ''}${inv.emailSentAt ? ' · sent ' + new Date(inv.emailSentAt).toLocaleDateString('en-GB') : ''}</div>
                 </div>
-                <div style="display:flex;gap:6px;flex-shrink:0">
+                <div style="display:flex;gap:6px;flex-shrink:0">${inv.token ? `
                   <button class="btn" style="${smallBtn}" type="button"
                     onclick="navigator.clipboard.writeText(window.location.origin+'/?inv=${esc(inv.token)}').then(()=>showToast('Link copied '))">Copy link</button>
                   ${inv.email ? `<button class="btn" style="${smallBtn}" type="button" onclick="adminResendInvite('${esc(inv.token)}')">Re-send</button>` : ''}
                   <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
-                    onclick="adminRevokeInvite('${esc(inv.token)}')">Revoke</button>
+                    onclick="adminRevokeInvite('${esc(inv.token)}')">Revoke</button>`
+                  /* Build 134: an invite the caller could not have minted arrives without its token */
+                  : `<span class="muted" style="font-size:11px">Managed by a club administrator</span>`}
                 </div>
               </div>`).join('') : `<p class="muted" style="font-size:12px;padding:4px 0">No pending invitations.</p>`}
 
@@ -47788,7 +47790,7 @@
               </div>
               <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
                 <span style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap">${inv.status}</span>
-                ${isPending ? `
+                ${isPending && inv.token ? `
                   <button class="btn" type="button" style="font-size:11px;padding:3px 9px;white-space:nowrap"
                     onclick="navigator.clipboard.writeText(window.location.origin+'/?inv=${esc(inv.token)}').then(()=>showToast('Copied '))">
                     

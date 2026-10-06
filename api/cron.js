@@ -27,9 +27,41 @@ async function readArray(name) {
   return Array.isArray(legacy) ? legacy : [];
 }
 
-export function localUTCOffset() {
-  const configured = Number.parseInt(process.env.LOCAL_TZ_OFFSET || '1', 10);
-  return Number.isFinite(configured) ? configured : 1;
+/**
+ * LOCAL TIME FOLLOWS THE ZONE, NOT A NUMBER (Build 134).
+ *
+ * Reminders fire at the club's LOCAL time ("Mon 09:00"). The local clock used
+ * to be UTC + LOCAL_TZ_OFFSET, one fixed number — Belgium is +2 in summer and
+ * +1 in winter, so every reminder moved by an hour twice a year until someone
+ * edited the environment (KNOWN_ISSUES #7; the next change fell on 25 Oct 2026).
+ * The offset is now READ from the time-zone database for the instant in
+ * question: LOCAL_TIMEZONE (an IANA name) when set, else Europe/Brussels —
+ * the one zone every club has been scheduled in so far. LOCAL_TZ_OFFSET is
+ * retired: it cannot express daylight saving, so honouring it would keep the
+ * bug wherever it is still set. An explicit offsetHours argument (tests,
+ * callers that already know the offset) still wins, unchanged.
+ */
+export const DEFAULT_LOCAL_TIMEZONE = 'Europe/Brussels';
+
+export function localTimeZone() {
+  const zone = String(process.env.LOCAL_TIMEZONE || '').trim() || DEFAULT_LOCAL_TIMEZONE;
+  try { new Intl.DateTimeFormat('en-GB', { timeZone: zone }); return zone; }
+  catch { return DEFAULT_LOCAL_TIMEZONE; }   // an unknown name never stops reminders
+}
+
+/** The zone's offset from UTC, in hours, AT this instant (daylight saving included). */
+export function zoneOffsetHours(instant = new Date(), timeZone = localTimeZone()) {
+  const at = new Date(Math.floor(instant.getTime() / 1000) * 1000);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(at).map(p => [p.type, p.value]));
+  const wallAsUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute, +parts.second);
+  return Math.round((wallAsUtc - at.getTime()) / 60000) / 60;
+}
+
+export function localUTCOffset(now = new Date()) {
+  return zoneOffsetHours(now);
 }
 
 function localDate(now, offsetHours) {
@@ -41,18 +73,24 @@ function scheduleDays(schedule) {
   return days.map(day => DAY_MAP[String(day || '').toLowerCase()]).filter(day => day !== undefined);
 }
 
-export function scheduledInstant(schedule, now = new Date(), offsetHours = localUTCOffset()) {
-  const localNow = localDate(now, offsetHours);
+export function scheduledInstant(schedule, now = new Date(), offsetHours) {
+  const off = offsetHours ?? localUTCOffset(now);
+  const localNow = localDate(now, off);
   const [hours, minutes] = String(schedule.time || '09:00').split(':').map(Number);
-  return new Date(Date.UTC(
-    localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate(),
-    (hours || 0) - offsetHours, minutes || 0,
-  ));
+  const wall = Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate(), hours || 0, minutes || 0);
+  let at = wall - off * 3600000;
+  // On a transition day the offset at the scheduled moment can differ from the
+  // offset now (e.g. 09:00 after a 03:00 change): use the scheduled moment's.
+  if (offsetHours === undefined || offsetHours === null) {
+    const offThen = localUTCOffset(new Date(at));
+    if (offThen !== off) at = wall - offThen * 3600000;
+  }
+  return new Date(at);
 }
 
-export function scheduleIsDue(schedule, now, fireWindowMinutes, offsetHours = localUTCOffset()) {
+export function scheduleIsDue(schedule, now, fireWindowMinutes, offsetHours) {
   if (!schedule.active) return false;
-  const localNow = localDate(now, offsetHours);
+  const localNow = localDate(now, offsetHours ?? localUTCOffset(now));
   if (!scheduleDays(schedule).includes(localNow.getUTCDay())) return false;
   if (schedule.lastSentAt && new Date(schedule.lastSentAt).toISOString().slice(0, 10) === now.toISOString().slice(0, 10)) {
     return false;
@@ -75,12 +113,13 @@ export function scheduleIsDue(schedule, now, fireWindowMinutes, offsetHours = lo
 // lastSentAt — so a manual "Send now" can NEVER block a scheduled send, and
 // Training 1 / Training 2 / Match each dedup independently. Returns a reason so
 // the Beta diagnostics can show exactly why a session did / didn't fire.
-export function weeklyAvailabilityDecision(slot, now, lastSentAt, offsetHours = localUTCOffset()) {
+export function weeklyAvailabilityDecision(slot, now, lastSentAt, offsetHours) {
   if (!slot || !slot.day || !slot.time) return { due: false, reason: 'no schedule set' };
-  const localNow = localDate(now, offsetHours);
+  const localNow = localDate(now, offsetHours ?? localUTCOffset(now));
   const localToday = localNow.toISOString().slice(0, 10);
   if (lastSentAt) {
-    const localLast = localDate(new Date(lastSentAt), offsetHours).toISOString().slice(0, 10);
+    const last = new Date(lastSentAt);
+    const localLast = localDate(last, offsetHours ?? localUTCOffset(last)).toISOString().slice(0, 10);
     if (localLast === localToday) return { due: false, reason: 'already sent today' };
   }
   if (localNow.getUTCDay() !== DAY_MAP[String(slot.day).toLowerCase()]) {
@@ -94,7 +133,7 @@ export function weeklyAvailabilityDecision(slot, now, lastSentAt, offsetHours = 
   return { due: true, reason: `due (now ${hhmm} local ≥ ${slot.time})` };
 }
 
-export function weeklyAvailabilityDue(slot, now, lastSentAt, offsetHours = localUTCOffset()) {
+export function weeklyAvailabilityDue(slot, now, lastSentAt, offsetHours) {
   return weeklyAvailabilityDecision(slot, now, lastSentAt, offsetHours).due;
 }
 
@@ -215,7 +254,7 @@ function nextCronWindow(now) {
 // + automationMembers and prunes any returned expired endpoints.
 export async function runWeeklyAvailabilityCheck({
   now = new Date(), source = 'cron', onlyTeamId = null,
-  subscribers = [], automationMembers = [], offsetHours = localUTCOffset(),
+  subscribers = [], automationMembers = [], offsetHours,
 } = {}) {
   // Self-sufficient: the coach "Run check now" path reaches here without the
   // handler's setVapidDetails, so configure web-push here too (idempotent).
@@ -224,7 +263,7 @@ export async function runWeeklyAvailabilityCheck({
   }
   const teams = await loadTeams();
   const firedMap = (await kvGet(key('weekly_avail_fired'))) || {};
-  const today = localDate(now, offsetHours).toISOString().slice(0, 10);
+  const today = localDate(now, offsetHours ?? localUTCOffset(now)).toISOString().slice(0, 10);
   const nextWindow = nextCronWindow(now);
   let firedChanged = false;
   const expired = new Set();
@@ -244,7 +283,7 @@ export async function runWeeklyAvailabilityCheck({
     // Best-effort: a manual Send Now writes wa.lastSentAt only; the scheduler
     // writes both lastSentAt and lastAutoSentAt — so a same-day lastSentAt that
     // differs from lastAutoSentAt indicates a manual send happened today.
-    const sentDay = wa.lastSentAt ? localDate(new Date(wa.lastSentAt), offsetHours).toISOString().slice(0, 10) : null;
+    const sentDay = wa.lastSentAt ? localDate(new Date(wa.lastSentAt), offsetHours ?? localUTCOffset(new Date(wa.lastSentAt))).toISOString().slice(0, 10) : null;
     debug.manualSentToday = sentDay === today && wa.lastSentAt !== wa.lastAutoSentAt;
 
     const teamReport = { teamId: team.id, enabled: true, sessions: {} };

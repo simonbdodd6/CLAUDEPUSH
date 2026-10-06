@@ -9,7 +9,7 @@ import { setCors } from './_http.js';
 import { kvConfigured, kvGet } from './_kv.js';
 import { key } from './_keys.js';
 import { DEFAULT_TEAM, resolveSessionFromRequest, requireSession, listIdentityState, loadTeamMembers } from './_identityStore.js';
-import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
+import { requireClubManage, requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
 import { gatherClubExport } from './_clubExportSource.js';
 
 function sendAuthError(res, error) {
@@ -176,7 +176,9 @@ export default async function handler(req, res) {
       // a player (or anonymous caller) could otherwise clear their club's board on
       // any environment where DEV_LOGIN was left enabled.
       let devTenant;
-      try { devTenant = await requireTenantPermission(req, PERM.DANGER_ZONE); }
+      // …and club-wide scope (Build 134): a group-scoped head coach holds the
+      // permission by default, and these act on the whole club's board.
+      try { devTenant = await requireClubManage(req, PERM.DANGER_ZONE); }
       catch (error) { return sendAuthError(res, error); }
       const devTeamId = devTenant.teamId || DEFAULT_TEAM.id;
 
