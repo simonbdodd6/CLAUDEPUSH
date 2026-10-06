@@ -176,6 +176,50 @@ async function resolveInviteScope(session, body = {}, role = 'player') {
   throw scopeError('Choose which group or team this invite is for');
 }
 
+/**
+ * MAY THIS CALLER HOLD THIS INVITE'S TOKEN? (Build 134)
+ *
+ * A token is the invitation itself: whoever holds it can claim the role and
+ * scope it grants. The list used to hand EVERY token in the club to any
+ * manage-players holder, so a manager could copy an admin invite and claim
+ * club-wide full access. A token is now returned — and the invite re-sent or
+ * revoked — only when the caller could have MINTED that exact invite, by the
+ * same rules as POST below:
+ *   staff role       → manage-coaches;
+ *   whole-club caller → every invite of their club (club-wide scope, or
+ *                      management of every active group, as callerGroupAuthority);
+ *   group-scoped     → only invites scoped to groups/teams they manage (all of
+ *                      them), never an unscoped or whole-club invite.
+ */
+/** Club-wide scope, or management rights over EVERY active group of the club. */
+function coversWholeClub(session, structure, perm) {
+  if (effectiveAccessScope(session.teamMember).clubWide) return true;
+  const groups = (structure?.groups || []).filter(g => g.status !== 'archived');
+  return groups.length > 0 && groups.every(g => canManageGroup(session, structure, g.id, perm));
+}
+
+function canAdministerInvite(session, invite, structure) {
+  const role = String(invite?.role || 'player').toLowerCase();
+  const staff = isStaffRole(role);
+  if (staff && !can(session, PERM.MANAGE_COACHES)) return false;
+  if (!can(session, PERM.MANAGE_PLAYERS)) return false;
+  const perm = staff ? PERM.MANAGE_COACHES : PERM.MANAGE_PLAYERS;
+  if (coversWholeClub(session, structure, perm)) return true;
+  if (role === 'admin') return false;                       // a whole-club role
+  const scope = invite?.scope && typeof invite.scope === 'object' ? invite.scope : null;
+  if (scope?.clubWide) return false;
+  if (!structure) return false;
+  if (scope?.teamId) return canManageTeam(session, structure, scope.teamId, perm);
+  const groupIds = Array.isArray(scope?.groupIds) ? scope.groupIds : (scope?.groupId ? [scope.groupId] : []);
+  if (groupIds.length) {
+    if (!groupIds.every(gid => canManageGroup(session, structure, gid, perm))) return false;
+    return !invite.playerGroupId || canManageGroup(session, structure, invite.playerGroupId, PERM.MANAGE_PLAYERS);
+  }
+  // No scope: a player invite placed into one group is that group's staff's.
+  if (!staff && invite?.playerGroupId) return canManageGroup(session, structure, invite.playerGroupId, PERM.MANAGE_PLAYERS);
+  return false;                                             // unscoped → club-wide administrators only
+}
+
 /** Display names for an invite's scope — used by list + claim surfaces. */
 async function inviteScopeNames(invite, structureCache = null) {
   if (!invite?.scope || typeof invite.scope !== 'object') return null;
@@ -246,10 +290,15 @@ export default async function handler(req, res) {
     }
     const invites = await listClubInvites(session.teamId);
     const mine = invites.filter(invite => inviteTeamId(invite) === session.teamId);
-    const structure = mine.some(i => i.scope) ? await loadClubStructure(session.teamId) : null;
+    const structure = mine.length ? await loadClubStructure(session.teamId) : null;
     const withLabels = [];
     for (const invite of mine) {
-      withLabels.push({ ...invite, scopeLabel: (await inviteScopeNames(invite, structure))?.label || null });
+      const manageable = canAdministerInvite(session, invite, structure);
+      // An invite the caller could not have minted is listed WITHOUT its token
+      // (Build 134): the row stays visible, the link and its actions do not.
+      const { token, ...rest } = invite;
+      withLabels.push({ ...(manageable ? invite : rest), manageable,
+        scopeLabel: (await inviteScopeNames(invite, structure))?.label || null });
     }
     return res.status(200).json({ invites: withLabels });
   }
@@ -453,6 +502,9 @@ export default async function handler(req, res) {
     } catch (error) {
       return sendAuthError(res, error);
     }
+    if (!canAdministerInvite(session, found.invite, await loadClubStructure(session.teamId))) {
+      return res.status(403).json({ error: 'You are not allowed to manage this invite' });
+    }
 
     if (action === 'resend') {
       const invite = found.invite;
@@ -510,6 +562,9 @@ export default async function handler(req, res) {
       assertSameTenant(session, inviteTeamId(found.invite));
     } catch (error) {
       return sendAuthError(res, error);
+    }
+    if (!canAdministerInvite(session, found.invite, await loadClubStructure(session.teamId))) {
+      return res.status(403).json({ error: 'You are not allowed to revoke this invite' });
     }
 
     // Soft-revoke (keep record for audit, just change status)

@@ -4,7 +4,7 @@ import { setCors, vapidKeyStatus } from './_http.js';
 import { kvConfigured, kvHealthCheck, kvLrange, kvLpush, kvLtrim } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
-import { DEFAULT_TEAM } from './_identityStore.js';
+import { DEFAULT_TEAM, resolveSessionFromRequest, isPlatformAdmin } from './_identityStore.js';
 import { enforceRateLimit, requestIp } from './_security.js';
 import { normalizeErrorReport, MAX_ENTRIES } from './_errorLog.js';
 
@@ -44,6 +44,14 @@ export default async function handler(req, res) {
     }
     try {
       const entry = normalizeErrorReport(req.body, { version: deploymentVersion() });
+      // Tagged with the club of the REPORTER'S session, when there is one
+      // (Build 134) — derived here, never from the body, so a report cannot be
+      // filed under another club. Anonymous reports stay untagged.
+      if (entry) {
+        const reporter = await resolveSessionFromRequest(req).catch(() => null);
+        const reporterTeam = reporter?.user?.id ? tenantTeamId(reporter) : '';
+        if (reporterTeam) entry.teamId = String(reporterTeam);
+      }
       if (entry) {
         await kvLpush(ERROR_LOG_KEY(), entry);
         await kvLtrim(ERROR_LOG_KEY(), MAX_ENTRIES);
@@ -59,15 +67,24 @@ export default async function handler(req, res) {
   // routes and code paths, so they are staff-only.
   if (req.query?.errors === '1') {
     if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet', errors: [] });
+    let session;
     try {
-      await requireTenantPermission(req, PERM.REPORTS);
+      session = await requireTenantPermission(req, PERM.REPORTS);
     } catch (error) {
       return sendAuthError(res, error);
     }
     const asked = Number.parseInt(req.query?.limit || '25', 10);
     const limit = Number.isFinite(asked) ? Math.max(1, Math.min(asked, MAX_ENTRIES)) : 25;
-    const errors = await kvLrange(ERROR_LOG_KEY(), 0, limit - 1);
-    return res.status(200).json({ errors, version: deploymentVersion() });
+    // TENANT-SCOPED (Build 134). The log is one platform-wide list; it used to
+    // be returned whole to any club's reports holder. A club sees only the
+    // entries filed from its own sessions; untagged entries (anonymous or
+    // older) and other clubs' are the platform operator's alone. The filter
+    // is the session's club — any club named in the query is ignored.
+    const all = await kvLrange(ERROR_LOG_KEY(), 0, MAX_ENTRIES - 1);
+    const platform = isPlatformAdmin(session.user);
+    const club = String(tenantTeamId(session) || '');
+    const errors = (platform ? all : all.filter(e => club && String(e?.teamId || '') === club)).slice(0, limit);
+    return res.status(200).json({ errors, version: deploymentVersion(), scope: platform ? 'platform' : 'club' });
   }
 
   // Activity log sub-route — requires coach auth.

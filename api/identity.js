@@ -316,6 +316,38 @@ async function assertStaffTargetOperable(session, target) {
  * as if active, then apply the identical group-coverage gate. An active target
  * is unaffected (its scope already reads the same way).
  */
+/**
+ * approve / reject decide a join request with remove_member's authority
+ * (Build 134): the target must be a member of the CALLER's club (403 for
+ * another club's, 404 for no such member), a staff target needs manage-coaches AND
+ * group coverage, and a player target is group-gated. The store then refuses
+ * anything that is not a pending request, and the owner always.
+ */
+async function assertJoinDecisionAuthority(session, memberId) {
+  const target = (await loadTeamMembers()).find(m => m.id === String(memberId || ''));
+  if (!target) {
+    const error = new Error('Join request not found');
+    error.status = 404;
+    throw error;
+  }
+  if (target.teamId !== session.teamId) {          // the existing contract, as remove_member
+    const error = new Error('Not authorized for this team');
+    error.status = 403;
+    throw error;
+  }
+  const targetIsStaff = !['player', 'parent', 'guest'].includes(String(target.role || '').toLowerCase());
+  if (targetIsStaff) {
+    if (!can(session, PERM.MANAGE_COACHES)) {
+      const error = new Error('You are not allowed to decide on staff');
+      error.status = 403;
+      throw error;
+    }
+    await assertStaffAdminTargetOperable(session, target);
+  }
+  await assertPlayerTargetOperable(session, target);
+  return target;
+}
+
 async function assertStaffAdminTargetOperable(session, target) {
   await assertStaffTargetOperable(session, target && { ...target, status: 'active' });
 }
@@ -718,16 +750,14 @@ export default async function handler(req, res) {
         // one for a group they operate (a groupless request is club-admin only).
         // Mirrors remove_member — approve/reject were the one player action the
         // group gate was never applied to. Club-wide callers are unaffected.
-        const target = (await loadTeamMembers()).find(m => m.id === req.body?.memberId);
-        await assertPlayerTargetOperable(session, target);
+        await assertJoinDecisionAuthority(session, req.body?.memberId);
         const result = await approveJoinRequest(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'reject') {
         const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
-        const target = (await loadTeamMembers()).find(m => m.id === req.body?.memberId);
-        await assertPlayerTargetOperable(session, target);
+        await assertJoinDecisionAuthority(session, req.body?.memberId);
         const result = await rejectJoinRequest(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
@@ -1050,16 +1080,23 @@ export default async function handler(req, res) {
         const result = await changePassword(session.user.id, {
           currentPassword: req.body?.currentPassword, newPassword: req.body?.newPassword,
         });
-        await auditLog('password_changed', { userId: session.user.id, ip: requestIp(req) });
-        return res.status(200).json({ ok: true, ...result });
+        // Every OTHER session ends with the old password (Build 134); this one —
+        // which just proved the current password — stays, as with logout_all.
+        const { revoked } = await destroyAllSessionsForUser(session.user.id,
+          { exceptTokenHash: tokenHashFor(sessionTokenFromRequest(req)) });
+        await auditLog('password_changed', { userId: session.user.id, sessionsRevoked: revoked, ip: requestIp(req) });
+        return res.status(200).json({ ok: true, ...result, sessionsRevoked: revoked });
       }
       if (action === 'change_email') {
         const session = await requireSession(req);
         const result = await changeEmail(session.user.id, {
           currentPassword: req.body?.currentPassword, newEmail: req.body?.newEmail,
         });
-        await auditLog('email_changed', { userId: session.user.id, newEmail: result.user?.email, ip: requestIp(req) });
-        return res.status(200).json({ ok: true, ...result });
+        // The sign-in identity changed: other sessions end, this one stays (Build 134).
+        const { revoked } = await destroyAllSessionsForUser(session.user.id,
+          { exceptTokenHash: tokenHashFor(sessionTokenFromRequest(req)) });
+        await auditLog('email_changed', { userId: session.user.id, newEmail: result.user?.email, sessionsRevoked: revoked, ip: requestIp(req) });
+        return res.status(200).json({ ok: true, ...result, sessionsRevoked: revoked });
       }
       if (action === 'update_profile') {
         const session = await requireSession(req);

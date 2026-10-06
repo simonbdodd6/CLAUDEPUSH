@@ -140,7 +140,8 @@ test('SERVER chat: a conversation id, name or icon that could be markup is refus
     const r = await chatCall('POST', '/api/chat', { action: 'create_conv', ...b }, ck(A.session));
     assert.equal(r.status, 400, `${JSON.stringify(b)} → ${r.status} ${JSON.stringify(r.data)}`);
   }
-  const good = await chatCall('POST', '/api/chat', { action: 'create_conv', id: `dm:${me}:user_other`, name: "Zoë O'Brien", type: 'DIRECT', participants: [me] }, ck(A.session));
+  // (Build 134: a DM has exactly two participants and the server-minted dm:<sorted pair> id.)
+  const good = await chatCall('POST', '/api/chat', { action: 'create_conv', id: `dm:${[me, 'user_other'].sort().join(':')}`, name: "Zoë O'Brien", type: 'DIRECT', participants: [me, 'user_other'] }, ck(A.session));
   assert.notEqual(good.status, 400, `a real DM is not refused (${good.status} ${JSON.stringify(good.data)})`);
   const grp = await chatCall('POST', '/api/chat', { action: 'create_group', name: HOSTILE.html, memberIds: [] }, ck(A.session));
   assert.equal(grp.status, 400, JSON.stringify(grp.data));

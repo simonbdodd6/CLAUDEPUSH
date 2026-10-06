@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.APP_KEY_PREFIX = 'app';
-process.env.LOCAL_TZ_OFFSET = '2';
+process.env.LOCAL_TIMEZONE = 'Etc/GMT-2';   // Build 134: fixed UTC+2 zone, replaces the retired LOCAL_TZ_OFFSET='2'
 
 const store = new Map();
 globalThis.fetch = async (_url, options = {}) => {
