@@ -30,7 +30,8 @@ import {
 } from './_structureStore.js';
 import { effectiveAccessScope, resolveEligibility, resolvePlayerGroup, isPlayingMember,
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
-import { protectCanonicalRows, reconcileMissingRows } from './_rosterProjection.js';
+import { protectCanonicalRows, reconcileMissingRows, preserveStoredFields } from './_rosterProjection.js';
+import { isSafeName, isSafeEmailText } from './_safeText.js';
 import {
   loadMedicalRecord, activeCases, upsertCase, resolveCase, projectPlayer,
 } from './_medicalStore.js';
@@ -573,6 +574,27 @@ function sanitiseSquad(raw) {
 // carries phone + medical data, so players never read it. Photos (base64
 // data-URLs) are stripped and stay device-local.
 
+/**
+ * A roster row's name, position and email are shown on every coach screen
+ * (Build 133): a row that carries markup in any of them is refused — the save
+ * is rejected with the row named, never silently cleaned. Returns the problem
+ * text, or null when every row is fine.
+ */
+function rosterRowProblem(rows) {
+  for (const p of rows) {
+    const label = `Roster row "${String(p.id).slice(0, 40)}"`;
+    if (!isSafeName(String(p.name || ''), { max: 120 })) return `${label}: name contains characters that are not allowed`;
+    const position = p.position === undefined || p.position === null ? '' : String(p.position).trim();
+    // A coach-typed position may be free text ("Prop?", "Utility: back"); only
+    // what markup needs is refused here. Player-entered positions are held to
+    // the stricter position charset where they enter (identity store).
+    if (position && !isSafeName(position, { max: 60 })) return `${label}: position contains characters that are not allowed`;
+    const email = p.email === undefined || p.email === null ? '' : String(p.email).trim();
+    if (email && !isSafeEmailText(email)) return `${label}: email contains characters that are not allowed`;
+  }
+  return null;
+}
+
 function sanitiseRosterPlayers(raw) {
   if (!Array.isArray(raw)) return null;
   return raw.slice(0, MAX_PLAYERS).map(p => {
@@ -658,8 +680,10 @@ async function rosterHandler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const submitted = sanitiseRosterPlayers(req.body?.players);
-    if (!submitted) return res.status(400).json({ error: 'players array required' });
+    const sanitised = sanitiseRosterPlayers(req.body?.players);
+    if (!sanitised) return res.status(400).json({ error: 'players array required' });
+    const rowProblem = rosterRowProblem(sanitised);
+    if (rowProblem) return res.status(400).json({ error: rowProblem });
 
     // A caller who covers the club replaces the record — the existing Club
     // Administration workflow. A group-scoped caller's save is MERGED: rows
@@ -682,6 +706,10 @@ async function rosterHandler(req, res) {
     const { coversClub, inScope, structure, members } = await rosterScope(session);
     const stored = (await readScoped(rosterKey(session.teamId), 'roster', session.teamId)) || null;
     const storedRows = stored?.players || [];
+    // A blank never erases what the club holds (Build 133, see
+    // preserveStoredFields): applied before either branch, so a club-wide
+    // replace and a group-scoped merge both keep stored detail.
+    const submitted = preserveStoredFields({ storedRows, nextRows: sanitised }).rows;
     let players = submitted;
     if (!coversClub) {
       const submittedById = new Map(submitted.filter(inScope).map(p => [String(p.id), p]));

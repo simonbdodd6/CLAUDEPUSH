@@ -140,6 +140,64 @@ export function rosterProjectionRow(member, user = null, profile = null) {
  * and unlinked rows are not protected: today's replace semantics keep
  * working for them. Protection is never sacrificed to the size cap.
  */
+/**
+ * A BLANK NEVER ERASES WHAT THE CLUB HOLDS (Build 133).
+ *
+ * Build 132 reproduced a club switch in which a device that had not yet read
+ * the new club's roster pushed a minimal copy of it (name, userId, position
+ * "TBC") and this record — replaced wholesale by a club-wide save — lost every
+ * player's date of birth, notes, guardian and emergency contact. The client no
+ * longer pushes before it has read; this is the server's own rule, so no
+ * device, stale or new, can do it again:
+ *
+ *   for every submitted row that is a STORED row (same id, or the same
+ *   account's row under another id), a field the submission leaves blank —
+ *   absent, null, empty or whitespace — keeps its stored value, and a
+ *   placeholder position (TBC/TBA/unknown) never replaces a real one.
+ *
+ * A same-account row submitted under a different id keeps the STORED id
+ * (medical cases, appearances and availability are keyed by it), unless the
+ * submission also carries a row with that id. A stored row claimed by a
+ * DIFFERENT account never lends its fields (two John Smiths stay two people).
+ * Pure; returns the merged rows and how many fields were preserved.
+ *
+ * Known consequence, by design: a roster save cannot CLEAR a field by sending
+ * it empty. Clearing is not something the roster form offers today.
+ */
+const PLACEHOLDER_POSITIONS = new Set(['', 'tbc', 'tba', 'unknown', '—', '-']);
+const isBlankValue = v => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+const isPlaceholderPosition = v => PLACEHOLDER_POSITIONS.has(s(v).toLowerCase());
+
+export function preserveStoredFields({ storedRows, nextRows }) {
+  const stored = Array.isArray(storedRows) ? storedRows : [];
+  const next = Array.isArray(nextRows) ? nextRows : [];
+  const byId = new Map(stored.map(r => [s(r.id), r]));
+  const byUser = new Map();
+  for (const r of stored) { const u = s(r.userId); if (u && !byUser.has(u)) byUser.set(u, r); }
+  const submittedIds = new Set(next.map(r => s(r.id)));
+  const used = new Set();
+  let preserved = 0;
+  const rows = next.map(row => {
+    if (!row || typeof row !== 'object') return row;
+    let base = byId.get(s(row.id)) || null;
+    let viaAccount = false;
+    if (!base && s(row.userId)) { base = byUser.get(s(row.userId)) || null; viaAccount = !!base; }
+    if (!base || used.has(base)) return row;
+    if (s(base.userId) && s(row.userId) && s(base.userId) !== s(row.userId)) return row;
+    used.add(base);
+    const merged = { ...row };
+    for (const [k, v] of Object.entries(base)) {
+      if (k === 'id' || k === 'photo') continue;
+      const incoming = row[k];
+      if (isBlankValue(incoming) && !isBlankValue(v)) { merged[k] = v; preserved++; continue; }
+      if (k === 'position' && isPlaceholderPosition(incoming) && !isPlaceholderPosition(v)) { merged[k] = v; preserved++; }
+    }
+    if (viaAccount && !submittedIds.has(s(base.id))) merged.id = base.id;
+    return merged;
+  });
+  return { rows, preserved };
+}
+
 export function protectCanonicalRows({ storedRows, nextRows, members, profiles, teamId }) {
   const stored = Array.isArray(storedRows) ? storedRows : [];
   const next = Array.isArray(nextRows) ? nextRows : [];

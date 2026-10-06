@@ -10,6 +10,7 @@ import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effec
          isPlayingMember, operationalGroupsFor, defaultOperationalGroup } from './_accessScope.js';
 import { loadClubStructure, groupById, teamById, activeTeams, activeGroups } from './_structureStore.js';
 import { reconcileMissingRows } from './_rosterProjection.js';
+import { isSafeName, isSafePosition } from './_safeText.js';
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
@@ -91,7 +92,10 @@ export function legacySeedEnabled() {
   return !isProductionRuntime();
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// The shape of an address, refusing every character that could make it
+// markup or break out of an attribute (Build 133). An apostrophe stays legal
+// in the local part (o'brien@…): every client sink escapes it.
+const EMAIL_RE = /^[^\s@<>"`(),;:\\[\]]+@[^\s@<>"`'(),;:\\[\]]+\.[^\s@<>"`'(),;:\\[\]]+$/;
 
 const LEGACY_STAFF_ACCOUNTS = process.env.COACH_DEMO_EMAIL && process.env.COACH_DEMO_PASSWORD
   ? [
@@ -182,8 +186,23 @@ export function assertJoinInput({ teamCode, firstName, lastName, email, password
   if (!normalizeTeamCode(teamCode)) throw new Error('Team code is required');
   if (!String(firstName || '').trim()) throw new Error('First name is required');
   if (!String(lastName || '').trim()) throw new Error('Last name is required');
+  assertSafePersonName(firstName, 'First name', 40);
+  assertSafePersonName(lastName, 'Last name', 40);
   if (!EMAIL_RE.test(normalizeEmail(email))) throw new Error('Valid email is required');
   if (String(password || '').length < 8) throw new Error('Password must be at least 8 characters');
+}
+
+/**
+ * A name a person typed is refused — not cleaned — when it holds characters
+ * that only markup needs (Build 133, see _safeText.js). 400, author-written.
+ */
+export function assertSafePersonName(value, label = 'Name', max = 80) {
+  if (!isSafeName(String(value ?? ''), { max })) {
+    const error = new Error(`${label} can only contain letters, numbers, spaces and ordinary punctuation (no < > " or \`), up to ${max} characters.`);
+    error.status = 400;
+    error.code = 'unsafe_name';
+    throw error;
+  }
 }
 
 export function assertLoginInput({ email, password } = {}) {
@@ -540,7 +559,27 @@ export async function createJoinRequest(input = {}) {
   const name = displayName(input.firstName, input.lastName);
   const createdAt = nowIso();
   const users = await loadUsers();
-  let user = users.find(item => normalizeEmail(item.email) === email);
+  // AN EXISTING ACCOUNT IS ATTACHED ONLY BY ITS OWNER (Build 133).
+  //
+  // A public join used to find the account by email alone and attach it to the
+  // code's club as a pending member — no password asked. Staff of that club
+  // could then act on a person who never asked to join (a permanent delete
+  // anonymised their profile in every club), and an account with no password
+  // yet had one SET by whoever typed its email here. The join is
+  // unauthenticated, so the password it carries is the only proof available:
+  // it must verify against the existing account, or nothing is written. A new
+  // email still creates its account exactly as before.
+  const sameEmail = users.filter(item => normalizeEmail(item.email) === email);
+  let user = null;
+  if (sameEmail.length) {
+    user = sameEmail.find(item => verifyPassword(input.password, item).ok) || null;
+    if (!user) {
+      const error = new Error('This email and password cannot be used to join. If you already have an account, use the password you sign in with — or reset it first.');
+      error.status = 401;
+      error.code = 'join_existing_account_unverified';
+      throw error;
+    }
+  }
   if (!user) {
     const passwordRecord = hashPassword(input.password);
     user = {
@@ -558,10 +597,10 @@ export async function createJoinRequest(input = {}) {
     };
     users.push(user);
     await saveUsers(users);
-  } else if (!user.passwordHash && input.password) {
-    Object.assign(user, hashPassword(input.password), { passwordSet: true });
-    await saveUsers(users);
   }
+  // (An existing account without a password can no longer be given one here:
+  // it fails the verification above. Setting a first password is the invite
+  // claim's or the password reset's job, both of which prove control.)
 
   const members = await loadTeamMembers();
   let member = members.find(item => item.teamId === team.id && item.userId === user.id);
@@ -1235,6 +1274,9 @@ export async function loginUser(input = {}) {
 export function isRecognisedRugbyPosition(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw || raw.length > 40) return false;
+  // The value is shown on every coach screen: it must first BE a position's
+  // text (Build 133). "1<img src=x onerror=…>" used to pass on its "1".
+  if (!isSafePosition(raw)) return false;
   if (/\b(1[0-5]|[1-9])\b/.test(raw)) return true;
   return /(prop|hooker|lock|flanker|number 8|no\.?\s*8|back row|front row|second row|scrum|fly[- ]?half|centre|center|wing|fullback|back three|outside back)/.test(raw);
 }
@@ -1326,6 +1368,7 @@ export async function claimInvite(input = {}) {
   }
   const name = String(input.name || invite.name || '').trim();
   if (isGroup && !name) throw new Error('Your name is required');
+  if (name) assertSafePersonName(name, 'Your name');
   const parts = splitDisplayName(name);
   const user = await upsertUserAccount({
     email,
@@ -2019,6 +2062,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
   if (!club) throw new Error('Club name is required');
   const coachName = String(name || '').trim().slice(0, 80);
   if (!coachName) throw new Error('Your name is required');
+  assertSafePersonName(coachName, 'Your name');
   const normalized = normalizeEmail(email);
   if (!EMAIL_RE.test(normalized)) throw new Error('Valid email is required');
   assertPassword(password);
@@ -2556,6 +2600,7 @@ export async function repairFounderOwnership({ teamId, actorUserId } = {}) {
  * other surface begins empty.
  */
 export async function provisionClub({ clubName, adminEmail, adminName = '', firstTeamName = '', plan } = {}) {
+  if (String(adminName || '').trim()) assertSafePersonName(String(adminName).trim().slice(0, 80), 'Administrator name');
   const club = String(clubName || '').trim().slice(0, 80);
   if (!club) { const e = new Error('Club name is required'); e.status = 400; throw e; }
   const normalized = normalizeEmail(adminEmail);
@@ -2680,6 +2725,17 @@ export async function updateProfile(userId, { displayName, firstName, lastName, 
   const user = users.find(item => item.id === userId);
   if (!user) { const e = new Error('Account not found'); e.status = 404; throw e; }
   const name = String(displayName || '').trim().slice(0, 80);
+  // Validated before anything is written (Build 133): a refused field refuses the save.
+  if (name) assertSafePersonName(name, 'Name');
+  if (String(firstName || '').trim()) assertSafePersonName(String(firstName).trim().slice(0, 40), 'First name', 40);
+  if (String(lastName || '').trim()) assertSafePersonName(String(lastName).trim().slice(0, 40), 'Last name', 40);
+  if (playerDetails && typeof playerDetails === 'object' && String(playerDetails.position ?? '').trim()
+      && !isSafePosition(String(playerDetails.position).trim().slice(0, 40))) {
+    const error = new Error('Position can only contain letters, numbers, spaces and . , \' & ( ) / + # -');
+    error.status = 400;
+    error.code = 'unsafe_position';
+    throw error;
+  }
   if (name) user.displayName = name;
   if (String(firstName || '').trim()) user.firstName = String(firstName).trim().slice(0, 40);
   if (String(lastName || '').trim()) user.lastName = String(lastName).trim().slice(0, 40);
@@ -3269,11 +3325,18 @@ export async function permanentlyDeleteTeamMember(memberId, deletedBy, expectedT
   delete member.staffLevel;
   await saveTeamMembers(members);
 
-  // 2. Player profile → anonymised in place (keeps historical joins intact).
+  // 2. Player profile → anonymised in place (keeps historical joins intact) —
+  //    THIS club's profile only (Build 133). A person's profile in another
+  //    club is that club's record of them: a club-scoped staff action never
+  //    touches it. A profile is this club's when it names this membership or
+  //    this club; one that names neither is left alone (fail closed).
   const profiles = await loadPlayerProfiles();
   let profileAnonymised = false;
   profiles.forEach(profile => {
     if (profile.userId !== userId) return;
+    const thisClubs = String(profile.teamMemberId || '') === String(member.id)
+      || String(profile.teamId || '') === String(teamId);
+    if (!thisClubs) return;
     profile.displayName = 'Removed member';
     profile.email = '';
     profile.phone = '';
@@ -3282,34 +3345,25 @@ export async function permanentlyDeleteTeamMember(memberId, deletedBy, expectedT
   });
   if (profileAnonymised) await savePlayerProfiles(profiles);
 
-  // 3. Login account → deleted outright unless the user still belongs to
-  //    another club, in which case that membership must keep working.
-  const stillElsewhere = members.some(m =>
-    m.userId === userId && m.teamId !== teamId && m.status === 'active');
-  const users = await loadUsers();
-  let accountDeleted = false;
-  if (!stillElsewhere) {
-    const remainingUsers = users.filter(u => u.id !== userId);
-    if (remainingUsers.length !== users.length) { await saveUsers(remainingUsers); accountDeleted = true; }
-  }
+  // 3. The login account is NEVER deleted from a club path (Build 133). It is
+  //    the person's, not the club's: it may hold memberships elsewhere (even a
+  //    pending one the "still elsewhere" test used to ignore), and deleting it
+  //    removed their sign-in everywhere on the word of one club's staff.
+  //    Erasing an account is the account holder's own action (delete_account).
+  //    What this club ends is its membership (step 1), its profile (step 2)
+  //    and its sessions (step 4).
+  const accountDeleted = false;
 
-  // 4. Every live session for this membership is revoked immediately (all of
-  //    the user's sessions when the account itself is gone).
+  // 4. Every live session for THIS club's membership is revoked immediately.
+  //    Sessions the person holds in other clubs are theirs and keep working.
   const sessions = await loadSessions();
   const keptSessions = sessions.filter(s =>
-    !(s.userId === userId && (accountDeleted || s.teamId === teamId)));
+    !(s.userId === userId && s.teamId === teamId));
   const sessionsRevoked = sessions.length - keptSessions.length;
   if (sessionsRevoked) await saveSessions(keptSessions);
 
-  // 5. Outstanding password-reset / verification tokens are useless now — drop them.
-  if (accountDeleted) {
-    const resets = await loadPasswordResets();
-    const keptResets = resets.filter(r => r.userId !== userId);
-    if (keptResets.length !== resets.length) await savePasswordResets(keptResets);
-    const verifications = await loadEmailVerifications();
-    const keptVer = verifications.filter(v => v.userId !== userId);
-    if (keptVer.length !== verifications.length) await saveEmailVerifications(keptVer);
-  }
+  // 5. Password-reset and verification tokens belong to the account, which
+  //    remains — nothing to drop.
 
   return {
     memberId, userId, teamId,

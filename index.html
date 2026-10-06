@@ -14455,7 +14455,7 @@
                   const contact = [p.email, p.phone].filter(Boolean).join(' · ') || '—';
                   const pos = (p.position || '').replace(/^\d+\s*[–—\-]\s*/, '') || '—';
                   return `<tr style="border-bottom:1px solid rgba(30,45,61,0.5)">
-                    <td style="padding:9px 16px 9px 0;font-size:13px;font-weight:600;color:#e2e8f0;word-break:break-word">${p.name}</td>
+                    <td style="padding:9px 16px 9px 0;font-size:13px;font-weight:600;color:#e2e8f0;word-break:break-word">${esc(p.name)}</td>
                     <td style="padding:9px 16px;font-size:11px;color:#64748b;word-break:break-all">${contact}</td>
                     <td style="padding:9px 0;font-size:12px;color:#94a3b8">${pos}</td>
                   </tr>`;
@@ -15017,7 +15017,7 @@
           `<button class="btn" type="button" onclick="switchToUser('${u.id}')"
             style="width:100%;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:8px 10px">
             <span style="font-size:16px">${{coach:'',admin:'',medical:'',player:''}[u.role]||''}</span>
-            <span><strong style="display:block;font-size:13px">${u.name}</strong><span style="font-size:11px;color:var(--muted)">${u.role}</span></span>
+            <span><strong style="display:block;font-size:13px">${esc(u.name)}</strong><span style="font-size:11px;color:var(--muted)">${esc(u.role)}</span></span>
           </button>`
         ).join('') || '<p class="muted" style="font-size:12px">No other accounts on this device.</p>'}
         <button class="btn" type="button" onclick="clearDeviceState()"
@@ -15071,7 +15071,7 @@
       ` : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div>
-            <strong>${user?.name || ''}</strong>
+            <strong>${esc(user?.name || '')}</strong>
             <small>${rlbl}</small>
           </div>
           <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
@@ -15484,6 +15484,11 @@
     }
 
     function syncIdentityStateToLocalRoster(identity = {}) {
+      // Identity data may only be merged into a roster the device has READ for
+      // the club in force (Build 133). Before that the list is a wipe or a
+      // stale copy, and rows built here from identity alone would be pushed
+      // over the club's real roster. Every caller treats false as "no change".
+      if (typeof rosterIsRead === 'function' && !rosterIsRead()) return false;
       // TEMPORARY DEMO SQUAD FOR LOCAL V18 TESTING ONLY:
       // the demo roster is local-only — its players have no server profile, so the
       // server-driven prune below would delete them and empty Available Players.
@@ -16711,8 +16716,8 @@
               <div class="tl-line"></div>
             </div>
             <div class="tl-body">
-              <div class="tl-title">${e.title}${autoTag}</div>
-              ${e.detail ? `<div class="tl-detail">${e.detail}</div>` : ''}
+              <div class="tl-title">${esc(e.title)}${autoTag}</div>
+              ${e.detail ? `<div class="tl-detail">${esc(e.detail)}</div>` : ''}
               ${confTag}
             </div>
             <div class="tl-arrow">→</div>
@@ -19027,7 +19032,7 @@
       if (audience === 'individual') {
         slot.innerHTML = `<label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:4px;width:100%">Player
           <select id="messagePlayer" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
-            ${state.players.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
+            ${state.players.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}
           </select></label>`;
       } else if (audience === 'no-reply') {
         const noReply = state.players.filter(p => {
@@ -19038,7 +19043,7 @@
         slot.innerHTML = noReply.length
           ? `<label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:4px;width:100%">Target
               <div style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:rgba(245,158,11,0.06);font-size:12px">
-                ${noReply.map(p=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;background:rgba(245,158,11,0.12);border-radius:999px">${p.name}</span>`).join("")}
+                ${noReply.map(p=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;background:rgba(245,158,11,0.12);border-radius:999px">${esc(p.name)}</span>`).join("")}
               </div></label>`
           : `<div style="padding:8px 10px;font-size:12px;color:var(--muted)">Everyone has responded ✓</div>`;
       } else {
@@ -19055,7 +19060,7 @@
         <article class="msg-card">
           <div class="msg-card-head">
             <div style="display:flex;align-items:center;gap:13px">
-              <div class="msg-avatar">${(player.name || '?')[0].toUpperCase()}</div>
+              <div class="msg-avatar">${esc((player.name || '?')[0].toUpperCase())}</div>
               <div>
                 <strong style="font-size:16px">${esc(player.name || '')}</strong>
                 <p style="margin:3px 0 0;color:var(--muted);font-size:12px">${esc(player.position || 'Player')}</p>
@@ -20203,7 +20208,7 @@
           </table></div>` : `<p class="muted" style="padding:14px 16px">Add time blocks above to build your coach sheet.</p>`}
           <div style="padding:10px 16px;border-top:1px solid var(--line)">
             <strong style="font-size:12px">Available (${available.length}/${state.players.length}):</strong>
-            <span style="font-size:11px;color:var(--muted);margin-left:6px">${available.slice(0,10).map(p=>p.name.split(" ")[0]).join(", ")}${available.length>10?" …":""}</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:6px">${esc(available.slice(0,10).map(p=>p.name.split(" ")[0]).join(", "))}${available.length>10?" …":""}</span>
           </div>
         </div>` : ''}
 
@@ -20241,7 +20246,7 @@
               ${(state.clubVideos||[]).map(v=>`
                 <div class="video-card">
                   <div class="video-thumb"><div class="play-btn">▶</div><span class="video-dur">${v.duration}</span></div>
-                  <div class="video-card-body"><strong>${v.title}</strong><small>${v.date}</small></div>
+                  <div class="video-card-body"><strong>${esc(v.title)}</strong><small>${esc(v.date)}</small></div>
                 </div>`).join("")}
               ${(state.clubVideos||[]).length < (canUseFeature('unlimited_videos') ? 100 : 10) ? `
               <div class="video-card" style="cursor:pointer;border:2px dashed var(--line)" onclick="document.getElementById('addVideoForm').classList.toggle('hidden')">
@@ -20263,7 +20268,7 @@
             <div style="display:grid;gap:8px">
               ${(state.coachingLinks||[]).length ? (state.coachingLinks||[]).map(l=>`
                 <div class="link-row">
-                  <div><a href="${l.url}" target="_blank" rel="noopener">${l.title}</a><small>${l.url}</small></div>
+                  <div><a href="${safeHref(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a><small>${esc(l.url)}</small></div>
                   <span class="link-cat">${l.category}</span>
                   <button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeCoachingLink('${l.id}')">✕</button>
                 </div>`).join("") : `<p class="muted" style="font-size:12px;padding:4px 0">Save YouTube clips, World Rugby guides, tactical videos and references for your coaching staff.</p>`}
@@ -20919,7 +20924,7 @@
                   <td><span class="sub-tag">${s.minute}'</span></td>
                   <td><strong style="font-size:13px">${s.on}</strong></td>
                   <td style="color:var(--muted)">${s.off}</td>
-                  <td style="color:var(--muted);font-size:12px">${s.reason}</td>
+                  <td style="color:var(--muted);font-size:12px">${esc(s.reason)}</td>
                   <td><button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeSubPlan('${s.id}')">✕</button></td>
                 </tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:12px">No subs planned.</td></tr>`}
               </tbody>
@@ -21599,20 +21604,20 @@
                 </tr>
               </thead>
               <tbody>
-                ${members.map((p, i) => { const att = playerAttendancePct(p); return `<tr class="member-row" data-name="${(p.name||'').toLowerCase().replace(/"/g,'&quot;')}" data-pos="${(p.position||'').toLowerCase().replace(/"/g,'&quot;')}" data-order="${i}" onclick="playerOpenDetail('${p.id}')" style="cursor:pointer">
+                ${members.map((p, i) => { const att = playerAttendancePct(p); return `<tr class="member-row" data-name="${esc((p.name||'').toLowerCase())}" data-pos="${esc((p.position||'').toLowerCase())}" data-order="${i}" onclick="playerOpenDetail('${p.id}')" style="cursor:pointer">
                   <td style="padding-left:18px">
                     <div style="display:flex;align-items:center;gap:9px">
                       <div class="player-photo-wrap">
-                        ${p.photo ? `<img src="${p.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover">` : `<div style="width:36px;height:36px;border-radius:50%;background:${playerAvatarColor(p.id||p.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800">${p.name.split(" ").map(w=>w[0]).slice(0,2).join("")}</div>`}
+                        ${p.photo ? `<img src="${esc(p.photo)}" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover">` : `<div style="width:36px;height:36px;border-radius:50%;background:${playerAvatarColor(p.id||p.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800">${esc(p.name.split(" ").map(w=>w[0]).slice(0,2).join(""))}</div>`}
                         <label class="photo-badge" title="Upload photo" onclick="event.stopPropagation()">
                           
                           <input type="file" accept="image/*" style="display:none" onclick="event.stopPropagation()" onchange="savePlayerPhoto('${p.id}',this)">
                         </label>
                       </div>
-                      <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:12px;color:var(--muted)">${p.email||""}</div><div class="mrow-mmeta" title="${att === null ? esc(attendanceUnknownReason()) : 'Recorded training attendance'}">${p.position ? p.position : '—'} · ${attendanceLabel(att)}</div></div>
+                      <div><strong style="font-size:13px">${esc(p.name)}</strong><div style="font-size:12px;color:var(--muted)">${esc(p.email||"")}</div><div class="mrow-mmeta" title="${att === null ? esc(attendanceUnknownReason()) : 'Recorded training attendance'}">${p.position ? esc(p.position) : '—'} · ${attendanceLabel(att)}</div></div>
                     </div>
                   </td>
-                  <td data-label="Position"><span class="pill" style="font-size:11px">${p.position}</span></td>
+                  <td data-label="Position"><span class="pill" style="font-size:11px">${esc(p.position)}</span></td>
                   <td data-label="Availability">
                     ${(() => {
                       // CANONICAL availability — the same sessionRows() answers
@@ -21725,7 +21730,7 @@
     // ─── PLAYER WEEK ─────────────────────────────────────────────────────────
     function playerSelector() {
       const player = getPlayer();
-      if (!isCoach()) return `<label>Player profile<input value="${player.name}" disabled></label>`;
+      if (!isCoach()) return `<label>Player profile<input value="${esc(player.name)}" disabled></label>`;
       const players = canonicalVisiblePlayers();
       // No silent default: until the coach explicitly chooses, the selector
       // honestly shows that no player is being previewed.
@@ -21733,11 +21738,11 @@
       if (!effectiveId) {
         return `<label>Player profile<select onchange="state.selectedPlayerId=this.value;state.selectedPlayerOwnerId=state.currentUserId||'';saveState('Player profile saved');render();">
           <option value="" selected>— Select a player to preview —</option>
-          ${players.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
+          ${players.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}
         </select></label>`;
       }
       return `<label>Player profile<select onchange="state.selectedPlayerId=this.value;state.selectedPlayerOwnerId=state.currentUserId||'';saveState('Player profile saved');render();">
-        ${players.map(p => `<option value="${p.id}" ${p.id===effectiveId?"selected":""}>${p.name}</option>`).join("")}
+        ${players.map(p => `<option value="${esc(p.id)}" ${p.id===effectiveId?"selected":""}>${esc(p.name)}</option>`).join("")}
       </select></label>`;
     }
 
@@ -23317,7 +23322,7 @@
           <div style="display:flex;align-items:center;gap:10px">
             ${p.photo
               ? `<img src="${p.photo}" style="width:44px;height:44px;border-radius:50%;object-fit:cover">`
-              : `<div style="width:44px;height:44px;border-radius:50%;background:${playerAvatarColor(p.id||p.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800">${p.name.split(" ").map(w=>w[0]).slice(0,2).join("")}</div>`}
+              : `<div style="width:44px;height:44px;border-radius:50%;background:${playerAvatarColor(p.id||p.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800">${esc(p.name.split(" ").map(w=>w[0]).slice(0,2).join(""))}</div>`}
             <div>
               <div style="font-size:17px;font-weight:900">${esc(p.preferredName || p.name)}</div>
               <div style="display:flex;gap:6px;align-items:center;margin-top:3px">
@@ -37537,8 +37542,8 @@
     function chatAvatarEl(name, photo, icon, size = 46, online = false) {
       const initials = icon || chatInitials(name || '?');
       const inner = photo
-        ? `<div class="av-inner"><img src="${photo}" alt=""></div>`
-        : `<div class="av-inner" style="font-size:${size*0.3}px;font-weight:900;color:#ecf5ef">${initials}</div>`;
+        ? `<div class="av-inner"><img src="${esc(photo)}" alt=""></div>`
+        : `<div class="av-inner" style="font-size:${size*0.3}px;font-weight:900;color:#ecf5ef">${esc(initials)}</div>`;
       const dot = online ? `<span class="online-dot"></span>` : '';
       return `<span class="chat-avatar" style="width:${size}px;height:${size}px">${inner}${dot}</span>`;
     }
@@ -38567,7 +38572,7 @@
       picker.style.left = (rect.left || e.clientX) + 'px';
       picker.style.top  = ((rect.top || e.clientY) - 56) + 'px';
       const emojis = ['👍','❤️','😂','😮','😢','🙏','🔥',''];
-      picker.innerHTML = emojis.map(em => `<button type="button" onclick="chatReact('${msgId}','${em}');this.closest('.emoji-quick-picker').remove()">${em}</button>`).join('');
+      picker.innerHTML = emojis.map(em => `<button type="button" onclick="chatReact(${jsAttr(msgId)},${jsAttr(em)});this.closest('.emoji-quick-picker').remove()">${esc(em)}</button>`).join('');
       document.body.appendChild(picker);
       setTimeout(() => document.addEventListener('click', () => picker.remove(), { once: true }), 10);
     }
@@ -38780,7 +38785,7 @@
         const lastText = c.lastMsg ? (c.lastMsg.isDeleted ? 'Deleted' : (c.lastMsg.senderName === chatMe().name ? 'You: ' : '') + c.lastMsg.text) : c.sub || '';
         const time = c.lastMsg ? chatFormatTime(c.lastMsg.ts) : '';
         const online = _chatOnline[c.playerId] || _chatOnline[c.id];
-        return `<button class="chat-contact${state.selectedChatId === c.id ? ' active' : ''}${c.unread ? ' unread' : ''}" type="button" onclick="selectChat('${c.id}')">
+        return `<button class="chat-contact${state.selectedChatId === c.id ? ' active' : ''}${c.unread ? ' unread' : ''}" type="button" onclick="selectChat(${jsAttr(c.id)})">
           ${chatAvatarEl(c.name, c.photo, c.icon, 46, online)}
           <div class="chat-contact-meta">
             <div class="name-row">
@@ -38854,7 +38859,7 @@
         !m.convId?.startsWith('dm:');
       const automated = m.isAutomated || m.type === 'AUTOMATED';
       const replyHtml = m.replyTo ? `
-        <div class="reply-quote" onclick="chatScrollToMsg('${m.replyTo.id}')">
+        <div class="reply-quote" onclick="chatScrollToMsg(${jsAttr(m.replyTo.id)})">
           <div class="rq-name">${esc(m.replyTo.senderName)}</div>
           <div class="rq-text">${esc(m.replyTo.text)}</div>
         </div>` : '';
@@ -38863,8 +38868,8 @@
         <div class="chat-reactions">
           ${Object.entries(reactions).map(([em, users]) => {
             const myReact = users.some(u => u.userId === chatMe().id);
-            return `<button class="chat-reaction${myReact?' mine':''}" type="button" onclick="chatReact('${m.id}','${em}')">
-              ${em} <span class="count">${users.length}</span>
+            return `<button class="chat-reaction${myReact?' mine':''}" type="button" onclick="chatReact(${jsAttr(m.id)},${jsAttr(em)})">
+              ${esc(em)} <span class="count">${users.length}</span>
             </button>`;
           }).join('')}
         </div>` : '';
@@ -43733,7 +43738,7 @@
     // it here, throttled so the 30s poll never refetches identity every tick.
     let _availRosterLinkedAt = 0;
     async function ensureCoachRosterIdentityLinked() {
-      if (!isCoach()) return;
+      if (!isCoach() || (typeof rosterIsRead === 'function' && !rosterIsRead())) return;   // B133
       const now = Date.now();
       if (now - _availRosterLinkedAt < 60000) return;
       _availRosterLinkedAt = now;
@@ -44577,6 +44582,33 @@
      * after a failure; that is a known gap, not this flag's to close.
      */
     let _rosterAwaitingServer = false;
+    /**
+     * THE DEVICE HAS READ THIS ROSTER (Build 133).
+     *
+     * Build 132 reproduced a club switch that overwrote the new club's roster
+     * on the server: the identity link (run inside a board read) found the
+     * club's players in the identity data before the roster read had answered,
+     * added a minimal row for each (name, userId, position "TBC"), and the
+     * save queued a push; the roster reply then lost to the pending-push guard
+     * and the minimal rows replaced every player's stored detail. It happened
+     * with a HEALTHY roster read — only the order was wrong.
+     *
+     * The order is now an invariant:
+     *   authoritative roster read succeeds → identity link may add/link rows
+     *   → a roster push may leave.
+     * _rosterEpoch counts roster wipes (resetTeamScopedState); a read records
+     * the epoch it started in and, if the device has not wiped since, marks
+     * that epoch READ. Until then nothing may add rows from identity data and
+     * nothing may push — a push is deferred, never sent. A reply from an epoch
+     * since wiped (a club switch while it was in flight) is discarded whole:
+     * its players are another club's and its answer is not this club's.
+     */
+    let _rosterEpoch = 0;
+    let _rosterReadEpoch = -1;
+    let _rosterReadOut = false;   // a roster read is in flight (so a second trigger joins nothing new)
+    // (Checked by ensureCoachRosterIdentityLinked BEFORE its minute-long
+    // throttle is spent, so the link runs as soon as the read lands.)
+    function rosterIsRead() { return _rosterReadEpoch === _rosterEpoch; }
 
     function rosterFingerprint() {
       return JSON.stringify((state.players || []).map(({ photo, ...p }) => p));
@@ -44592,6 +44624,10 @@
       // is held: the session cookie may already name a different club, and a
       // push now would seed that club with this one's players.
       if (!clubStateOwned()) { _rosterSyncDeferred = true; return; }
+      // Nor before the device has READ this club's roster (Build 133): what it
+      // holds may be a wiped list or rows built from identity data alone.
+      if (typeof rosterIsRead === 'function' && !rosterIsRead()) { _rosterSyncDeferred = true; return; }
+      const queuedEpoch = typeof _rosterEpoch !== 'undefined' ? _rosterEpoch : 0;
       _rosterSyncPending = true;
       clearTimeout(_rosterSyncTimer);
       _rosterSyncTimer = setTimeout(async () => {
@@ -44599,10 +44635,12 @@
         // Re-checked at send time: a club transition between queue and fire
         // clears the timer, but the request itself must never leave unproven.
         if (!clubStateOwned()) { _rosterSyncDeferred = true; return; }
-        // Nor from a device whose session ended while the push was queued
-        // (Build 129): the roster is the signed-out person's to keep on the
-        // device, not to send — measured, one roster POST left after Sign out.
         if (typeof sessionSignedOut === 'function' && sessionSignedOut()) return;
+        // (Build 129: a session that ended while the push was queued sends
+        // nothing.) Build 133: nor a push queued for a roster since wiped, or
+        // one this device has not read.
+        if (typeof _rosterEpoch !== 'undefined' && queuedEpoch !== _rosterEpoch) { _rosterSyncDeferred = true; return; }
+        if (typeof rosterIsRead === 'function' && !rosterIsRead()) { _rosterSyncDeferred = true; return; }
         const sending = rosterFingerprint();
         try {
           const res = await fetch('/api/roster', {
@@ -44626,6 +44664,7 @@
       if (sending === _rosterLastSyncedFp) return;
       // Same ownership gate as the debounced push (see queueRosterSync).
       if (!clubStateOwned()) { _rosterSyncDeferred = true; return; }
+      if (typeof rosterIsRead === 'function' && !rosterIsRead()) { _rosterSyncDeferred = true; return; }
       try {
         const res = await fetch('/api/roster', {
           method: 'POST',
@@ -44642,14 +44681,26 @@
       // Nobody reads the roster for a player: what the device holds is all it will have (Build 129).
       if (!isCoach() && typeof _rosterAwaitingServer !== 'undefined') _rosterAwaitingServer = false;
       if (!isCoach()) return;
+      // The roster this read is FOR (Build 133): if the device wipes its roster
+      // while the read is out (a club switch), the reply is another club's —
+      // it neither fills the list nor ends the new club's wait.
+      const epoch = typeof _rosterEpoch !== 'undefined' ? _rosterEpoch : 0;
+      const _current = () => typeof _rosterEpoch === 'undefined' || epoch === _rosterEpoch;
       // The server has ANSWERED, whatever it said (Build 129): from here the
       // roster this device holds is the club's, and the screens may count it.
-      const _answered = () => { if (typeof _rosterAwaitingServer !== 'undefined') _rosterAwaitingServer = false; };
+      const _answered = () => { if (_current() && typeof _rosterAwaitingServer !== 'undefined') _rosterAwaitingServer = false; };
+      if (typeof _rosterReadOut !== 'undefined') _rosterReadOut = true;
       try {
         const res = await fetch('/api/roster');
         if (!res.ok) { _answered(); return; }
         const data = await res.json();
         _answered();
+        // _answered() ends the wait only for the roster in force; a reply for a
+        // roster since wiped stops here, unread and unapplied (Build 133).
+        if (!_current()) return;
+        // The authoritative roster for the roster in force has been read: the
+        // identity link may now add rows, and pushes may leave (Build 133).
+        if (typeof _rosterReadEpoch !== 'undefined') _rosterReadEpoch = epoch;
         // Race guard: if a coach added/edited a player while this fetch was in
         // flight (a debounced roster sync is still pending), the LOCAL roster is
         // newer than the server. Adopting the stale copy here is exactly what made
@@ -44700,6 +44751,7 @@
         // record restored above) still paints immediately.
         if (_beforeRoster !== JSON.stringify([state.players || [], state.users || []])) render();
       } catch(e) { _answered(); console.warn('[loadRosterFromServer]', e); }
+      finally { if (typeof _rosterReadOut !== 'undefined') _rosterReadOut = false; }
     }
 
     // ─── DEVICE RESET + SERVER AUTH STATE ───────────────────────────────────
@@ -46222,6 +46274,9 @@
       // that club's own first read is asked by its first render, as before.
       if (typeof adminRetryCancel === 'function') adminRetryCancel();
       if (typeof _staffDirLoadedAt !== 'undefined') _staffDirLoadedAt = 0;   // the new club's directory loads at once
+      // The identity link's minute-long throttle was set for the club being
+      // left (Build 133): the next club links as soon as its roster is read.
+      if (typeof _availRosterLinkedAt !== 'undefined') _availRosterLinkedAt = 0;
       if (typeof _clubContextId !== 'undefined') _clubContextId = '';        // no club is in force until the server names the next
       if (typeof _staffDetailUserId !== 'undefined') _staffDetailUserId = null; // no editor open on another club's member
       // The shared medical caseload and any open Medical view belong to the club
@@ -46261,6 +46316,9 @@
       // …and an emptied roster is not a KNOWN empty squad: the next club's
       // players arrive with its roster read (Build 129, see _rosterAwaitingServer).
       if (typeof _rosterAwaitingServer !== 'undefined') _rosterAwaitingServer = true;
+      // …and it is not a READ roster either (Build 133): nothing may be added
+      // from identity data, nor pushed, until this club's roster read answers.
+      if (typeof _rosterEpoch !== 'undefined') _rosterEpoch++;
       state.fixtures = [];
       state.fixturesSyncedAt = '';   // the next club's list is not known until its server answers (Build 107)
       state.clubName = ''; state.teamName = ''; state.seasonName = '';
@@ -46378,6 +46436,11 @@
         }
       } catch { _serverAuthState = 'unknown'; } // offline — stay quiet
       if (wasSignedOut !== sessionSignedOut()) { render(); }
+      // A coach this device has not read the roster for (Build 133): the boot
+      // read skipped itself before the role was known, and the identity link
+      // now waits for a read instead of building rows without one.
+      if (_serverAuthState === 'authed' && isCoach() && typeof rosterIsRead === 'function'
+          && !rosterIsRead() && !_rosterReadOut) loadRosterFromServer().catch(() => {});
       renderAuthBanner();
       renderNav();
       // The operational context may have just arrived (adoptIdentityPayload
@@ -46865,6 +46928,22 @@
     function esc(str) {
       return String(str || '').replace(/[&<>"']/g, c =>
         ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    /**
+     * A value used as an ARGUMENT inside an inline handler (Build 133):
+     * onclick="fn(${jsAttr(id)})". esc() alone is not enough there — the
+     * browser decodes &#39; back to ' before the JavaScript runs, so a value
+     * with a quote could close the string. This writes a JSON string literal
+     * (its own quotes, its own escapes) and then escapes THAT for the
+     * attribute: the decoded handler always reads a single string argument.
+     */
+    function jsAttr(value) {
+      return esc(JSON.stringify(String(value ?? '')));
+    }
+    /** An href that can only navigate (http/https/mailto) — never run script. */
+    function safeHref(url) {
+      const u = String(url || '').trim();
+      return /^(https?:|mailto:)/i.test(u) ? esc(u) : '#';
     }
 
     // ─── EVENT LISTENERS ──────────────────────────────────────────────────────

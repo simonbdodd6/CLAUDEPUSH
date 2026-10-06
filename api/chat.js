@@ -20,6 +20,7 @@ import { isStaffRole } from './_permissions.js';
 import { tenantTeamId } from './_tenant.js';
 import { load as loadSubs, save as saveSubs } from './_lib.js';
 import { setCors, vapidContact, notificationUrl } from './_http.js';
+import { isSafeId, isSafeName, isSafeReaction, isSafeIcon } from './_safeText.js';
 
 function configurePush() {
   const publicKey  = process.env.VAPID_PUBLIC_KEY;
@@ -783,6 +784,22 @@ async function handlePost(req, res) {
       senderRole = sessionUser.role || senderRole;
     }
     if (!convId || !senderId || !text?.trim()) return err(res, 400, 'convId, senderId, text required');
+    // A reply names the message it answers (Build 133). The reference is
+    // shown to every reader and its id is used to find that message, so it is
+    // refused unless it is exactly { id, senderName?, text? } with a plain-token
+    // id — and only those three fields are stored. It used to be stored as sent.
+    if (replyTo !== null && replyTo !== undefined) {
+      const r = replyTo;
+      const shapeOk = typeof r === 'object' && !Array.isArray(r)
+        && Object.keys(r).every(k => ['id', 'senderName', 'text'].includes(k))
+        && isSafeId(r.id, { max: 80 })
+        && (r.senderName === undefined || r.senderName === null || (typeof r.senderName === 'string' && r.senderName.length <= 120))
+        && (r.text === undefined || r.text === null || (typeof r.text === 'string' && r.text.length <= 4000));
+      if (!shapeOk) return err(res, 400, 'replyTo must be { id, senderName, text } naming a message');
+      replyTo = { id: r.id, senderName: r.senderName || '', text: r.text || '' };
+    } else {
+      replyTo = null;
+    }
     if (!(await requireConversationAccess(res, sessionContext, convId, 'write'))) return;
     const msg = {
       id:          `msg_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
@@ -837,6 +854,10 @@ async function handlePost(req, res) {
     }
     userId = userId || 'anon';
     if (!msgId || !convId || !userId || !emoji) return err(res, 400, 'msgId, convId, userId, emoji required');
+    // A reaction is an emoji and nothing else (Build 133): the key is shown to
+    // every reader and placed in a handler. It used to be stored as sent.
+    if (!isSafeReaction(emoji)) return err(res, 400, 'emoji must be a single emoji');
+    if (!isSafeId(String(msgId), { max: 80 })) return err(res, 400, 'msgId is not a message id');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
     const reactSid = storageConvId(sessionContext, convId);
     const msgs = await kvLrange(MSGS_KEY(reactSid), 0, 499);
@@ -927,6 +948,15 @@ async function handlePost(req, res) {
     // '@' is reserved for the per-club storage scoping of built-in channels —
     // a forged id like 'squad@<otherTeamId>' must never become a conversation.
     if (String(id || '').includes('@')) return err(res, 400, "Conversation id cannot contain '@'");
+    // The id, name and icon are shown to the other participants and the id is
+    // placed in a handler (Build 133): plain-token id, inert name and icon.
+    if (id !== undefined && id !== null && id !== '' && !isSafeId(String(id))) {
+      return err(res, 400, 'Conversation id may only contain letters, numbers and _ . : -');
+    }
+    if (name !== undefined && name !== null && String(name).trim() !== '' && !isSafeName(String(name), { max: 80 })) {
+      return err(res, 400, 'Conversation name contains characters that are not allowed');
+    }
+    if (!isSafeIcon(icon)) return err(res, 400, 'Conversation icon must be an emoji or a short label');
 
     // GROUP-TARGETED conversations: an explicit groupId (or the reserved
     // 'group:<gid>' id form) binds the conversation to ONE player group of
@@ -1034,6 +1064,7 @@ async function handlePost(req, res) {
     const convs = await getConvs();
     if (action === 'create_group') {
       if (!rawName) return err(res, 400, 'A group name is required');
+      if (!isSafeName(rawName, { max: 60 })) return err(res, 400, 'Group name contains characters that are not allowed');
       const conv = {
         id: `${CUSTOM_GROUP_ID_PREFIX}${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         teamId, type: 'CUSTOM', name: rawName, icon: '', description: '',
@@ -1053,6 +1084,7 @@ async function handlePost(req, res) {
     const conv = convs[idx];
     if (!isCustomGroupConversation(conv)) return err(res, 400, 'That conversation is not a messaging group');
     if (!conversationParticipants(conv).includes(me)) return err(res, 403, 'You are not a member of that group');
+    if (rawName && !isSafeName(rawName, { max: 60 })) return err(res, 400, 'Group name contains characters that are not allowed');
     if (rawName) conv.name = rawName;
     if (members) conv.participants = members;
     conv.updatedAt = Date.now();

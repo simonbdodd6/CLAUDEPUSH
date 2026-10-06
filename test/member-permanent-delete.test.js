@@ -77,10 +77,16 @@ test('owner/admin can permanently remove a player', async () => {
   const memberId = memberIdFor(player.user.id);
   const r = await idCall({ action: 'delete_member_permanently', memberId, confirm: 'DELETE' }, ck(A.session));
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
-  assert.equal(r.body.accountDeleted, true, 'login account removed');
   assert.equal(memberFor(player.user.id).status, 'deleted');
+  // Build 133: a club path ends the club's membership, profile and sessions —
+  // it NEVER deletes the person's login account (it may belong to other clubs,
+  // and erasing an account is the account holder's own action). Build 132
+  // showed the old global deletion let one club's staff remove someone's
+  // sign-in everywhere. The "loses access" test below still proves this club
+  // is closed to them.
+  assert.equal(r.body.accountDeleted, false, 'the login account is never deleted from a club path');
   const users = JSON.parse(kv.get('app:identity:users') || '[]');
-  assert.equal(users.some(u => u.id === player.user.id), false, 'user record gone');
+  assert.equal(users.some(u => u.id === player.user.id), true, 'user record kept');
 });
 
 test('typed confirmation is enforced server-side', async () => {

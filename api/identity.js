@@ -422,8 +422,24 @@ export default async function handler(req, res) {
     const action = req.body?.action || 'join';
     try {
       if (action === 'join') {
-        const result = await createJoinRequest(req.body || {});
-        return res.status(201).json({ ok: true, ...result });
+        // The public join is unauthenticated (Build 133): it is rate-limited
+        // per network address (team codes are short and guessable; a club
+        // signing its squad up together shares one address, hence the higher
+        // ceiling) and per address+email (password guessing against an
+        // existing account, which the join now verifies).
+        const body = req.body || {};
+        await enforceRateLimit('join', requestIp(req), { limit: 30, windowMs: 15 * 60 * 1000 });
+        await enforceRateLimit('join_email', rateIdentity(req, body.email), { limit: 5, windowMs: 15 * 60 * 1000 });
+        const result = await createJoinRequest(body);
+        // The answer names what was created and nothing more: no account
+        // record (it may be someone's existing account), no team record
+        // (billing identifiers, plan).
+        return res.status(201).json({
+          ok: true,
+          user: { id: result.user?.id, email: result.user?.email, displayName: result.user?.displayName || '' },
+          team: { id: result.team?.id, name: result.team?.name || '' },
+          teamMember: { id: result.teamMember?.id, teamId: result.teamMember?.teamId, role: result.teamMember?.role, status: result.teamMember?.status },
+        });
       }
       if (action === 'login') {
         const email = req.body?.email || '';
@@ -776,7 +792,9 @@ export default async function handler(req, res) {
         }
         const profiles = await loadPlayerProfiles();
         const targetUser = (await loadUsers()).find(u => u.id === target.userId) || {};
-        const targetName = profiles.find(p => p.userId === target.userId)?.displayName
+        // The name typed to confirm is THIS club's record of the person — never
+        // their profile in another club (Build 133).
+        const targetName = profiles.find(p => p.userId === target.userId && p.teamId === session.teamId)?.displayName
           || targetUser.displayName || '';
         const targetEmail = targetUser.email || '';
         const confirm = String(req.body?.confirm || '').trim();
