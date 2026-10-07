@@ -11,6 +11,10 @@ import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effec
 import { loadClubStructure, groupById, teamById, activeTeams, activeGroups } from './_structureStore.js';
 import { reconcileMissingRows } from './_rosterProjection.js';
 import { isSafeName, isSafePosition } from './_safeText.js';
+import { withIdentityLock, assertStoreLockHeld, storeLockHeld, IDENTITY_LOCK } from './_lock.js';
+// Re-exported so callers that write identity data directly (tests arranging
+// fixtures, scripts) can take the same lock the store's own writers hold.
+export { withIdentityLock };
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
@@ -319,6 +323,7 @@ export async function loadUsers() {
 }
 
 export async function saveUsers(users) {
+  await assertStoreLockHeld(IDENTITY_LOCK);   // Build 135: only under the identity lock
   await kvSet(USERS_KEY, Array.isArray(users) ? users : []);
 }
 
@@ -370,6 +375,7 @@ export async function loadStoredTeams() {
 }
 
 export async function saveTeams(teams) {
+  await assertStoreLockHeld(IDENTITY_LOCK);   // Build 135: only under the identity lock
   const next = Array.isArray(teams) ? teams : [];
   const introducesPlaceholder = next.some(team => team?.id === DEFAULT_TEAM.id);
   if (introducesPlaceholder) {
@@ -411,6 +417,7 @@ export async function loadTeamMembers() {
 }
 
 export async function saveTeamMembers(members) {
+  await assertStoreLockHeld(IDENTITY_LOCK);   // Build 135: only under the identity lock
   await kvSet(TEAM_MEMBERS_KEY, Array.isArray(members) ? members : []);
 }
 
@@ -419,6 +426,7 @@ export async function loadPlayerProfiles() {
 }
 
 export async function savePlayerProfiles(profiles) {
+  await assertStoreLockHeld(IDENTITY_LOCK);   // Build 135: only under the identity lock
   await kvSet(PLAYER_PROFILES_KEY, Array.isArray(profiles) ? profiles : []);
 }
 
@@ -495,7 +503,9 @@ export function healSharedLegacyPlayerIds(profiles = []) {
 export async function loadHealedPlayerProfiles() {
   const raw = await loadPlayerProfiles();
   const { profiles, changed } = healSharedLegacyPlayerIds(raw);
-  if (changed) await savePlayerProfiles(profiles);
+  // Build 135: healed in memory for every reader; persisted only by a writer
+  // that holds the identity lock (a read must never rewrite the shared array).
+  if (changed && storeLockHeld(IDENTITY_LOCK)) await savePlayerProfiles(profiles);
   return profiles;
 }
 
@@ -503,11 +513,15 @@ export async function loadSessions() {
   const now = Date.now();
   const sessions = (await kvGet(SESSIONS_KEY)) || [];
   const active = sessions.filter(session => Number(new Date(session.expiresAt).getTime()) > now);
-  if (active.length !== sessions.length) await kvSet(SESSIONS_KEY, active);
+  // Build 135: a READ never writes the shared array (a prune here could erase
+  // a session another request just created). The pruned list is persisted by
+  // the next writer, which saves what it read — under the identity lock.
+  if (active.length !== sessions.length && storeLockHeld(IDENTITY_LOCK)) await saveSessions(active);
   return active;
 }
 
 export async function saveSessions(sessions) {
+  await assertStoreLockHeld(IDENTITY_LOCK);   // Build 135: only under the identity lock
   await kvSet(SESSIONS_KEY, Array.isArray(sessions) ? sessions : []);
 }
 
@@ -515,11 +529,12 @@ export async function loadPasswordResets() {
   const now = Date.now();
   const resets = (await kvGet(PASSWORD_RESETS_KEY)) || [];
   const active = resets.filter(reset => !reset.usedAt && Number(new Date(reset.expiresAt).getTime()) > now);
-  if (active.length !== resets.length) await kvSet(PASSWORD_RESETS_KEY, active);
+  if (active.length !== resets.length && storeLockHeld(IDENTITY_LOCK)) await savePasswordResets(active);   // Build 135: see loadSessions
   return active;
 }
 
 export async function savePasswordResets(resets) {
+  await assertStoreLockHeld(IDENTITY_LOCK);   // Build 135: only under the identity lock
   await kvSet(PASSWORD_RESETS_KEY, Array.isArray(resets) ? resets : []);
 }
 
@@ -527,11 +542,12 @@ export async function loadEmailVerifications() {
   const now = Date.now();
   const verifications = (await kvGet(EMAIL_VERIFICATIONS_KEY)) || [];
   const active = verifications.filter(v => !v.usedAt && Number(new Date(v.expiresAt).getTime()) > now);
-  if (active.length !== verifications.length) await kvSet(EMAIL_VERIFICATIONS_KEY, active);
+  if (active.length !== verifications.length && storeLockHeld(IDENTITY_LOCK)) await saveEmailVerifications(active);   // Build 135: see loadSessions
   return active;
 }
 
 export async function saveEmailVerifications(verifications) {
+  await assertStoreLockHeld(IDENTITY_LOCK);   // Build 135: only under the identity lock
   await kvSet(EMAIL_VERIFICATIONS_KEY, Array.isArray(verifications) ? verifications : []);
 }
 
@@ -1918,12 +1934,17 @@ export async function resolveSession(token = '') {
       // WRITE against the STORED list. Persisting `teams` would commit the
       // read-time placeholder alongside the downgrade; a team that exists only
       // as a dev convenience has nothing real to downgrade, so it is skipped.
-      const stored = await loadStoredTeams();
-      const idx = stored.findIndex(t => t.id === session.teamId);
-      if (idx >= 0) {
-        stored[idx] = { ...stored[idx], plan: 'core', planStatus: 'active' };
-        await saveTeams(stored);
-      }
+      // Build 135: the one write on this read path takes the identity lock
+      // itself and re-reads inside it, so it can never overwrite a team change
+      // saved meanwhile (and every other request stays lock-free).
+      await withIdentityLock(async () => {
+        const stored = await loadStoredTeams();
+        const idx = stored.findIndex(t => t.id === session.teamId);
+        if (idx >= 0 && stored[idx].plan === 'trial') {
+          stored[idx] = { ...stored[idx], plan: 'core', planStatus: 'active' };
+          await saveTeams(stored);
+        }
+      });
     }
   }
 
@@ -3700,5 +3721,79 @@ export async function listIdentityState(teamId = DEFAULT_TEAM.id) {
     team_members: teamMembers,
     player_profiles: teamProfiles,
     pending: await listPendingJoinRequests(teamId),
+  };
+}
+
+// ─── IDENTITY WRITERS RUN UNDER THE IDENTITY LOCK (Build 135) ───────────────
+// Every exported function that writes the identity arrays (directly or via a
+// helper) is rebound here to run inside withIdentityLock — read, change and
+// save in one serialised critical section, across server instances. The
+// bindings are live, so callers in other modules and in this file get the
+// locked version; nested calls are re-entrant. The saves themselves refuse to
+// run outside the lock (assertStoreLockHeld), so a writer missing from this
+// list fails loudly instead of racing quietly. Request READ paths
+// (resolveSession, requireSession, listIdentityState…) are deliberately NOT
+// here: they never write, except the trial downgrade, which locks itself.
+const lockedIdentityWriter = fn => function lockedIdentityWrite(...args) {
+  return withIdentityLock(() => fn.apply(this, args));
+};
+adminResetStaffPassword = lockedIdentityWriter(adminResetStaffPassword);
+approveJoinRequest = lockedIdentityWriter(approveJoinRequest);
+approvePlayerDetails = lockedIdentityWriter(approvePlayerDetails);
+backfillPlayerGroups = lockedIdentityWriter(backfillPlayerGroups);
+changeClubPlan = lockedIdentityWriter(changeClubPlan);
+changeEmail = lockedIdentityWriter(changeEmail);
+changePassword = lockedIdentityWriter(changePassword);
+claimInvite = lockedIdentityWriter(claimInvite);
+createClub = lockedIdentityWriter(createClub);
+createEmailVerificationToken = lockedIdentityWriter(createEmailVerificationToken);
+createJoinRequest = lockedIdentityWriter(createJoinRequest);
+createPasswordResetRequest = lockedIdentityWriter(createPasswordResetRequest);
+createSession = lockedIdentityWriter(createSession);
+deleteOwnAccount = lockedIdentityWriter(deleteOwnAccount);
+destroyAllSessionsForUser = lockedIdentityWriter(destroyAllSessionsForUser);
+destroySession = lockedIdentityWriter(destroySession);
+devLoginUser = lockedIdentityWriter(devLoginUser);
+grantPlatformAdmin = lockedIdentityWriter(grantPlatformAdmin);
+loginUser = lockedIdentityWriter(loginUser);
+permanentlyDeleteTeamMember = lockedIdentityWriter(permanentlyDeleteTeamMember);
+provisionClub = lockedIdentityWriter(provisionClub);
+rejectJoinRequest = lockedIdentityWriter(rejectJoinRequest);
+removeScopedGrant = lockedIdentityWriter(removeScopedGrant);
+removeTeamMember = lockedIdentityWriter(removeTeamMember);
+repairFounderOwnership = lockedIdentityWriter(repairFounderOwnership);
+resetPasswordWithToken = lockedIdentityWriter(resetPasswordWithToken);
+restoreTeamMember = lockedIdentityWriter(restoreTeamMember);
+revokePlatformAdmin = lockedIdentityWriter(revokePlatformAdmin);
+setAccessProfile = lockedIdentityWriter(setAccessProfile);
+setMedicalAccess = lockedIdentityWriter(setMedicalAccess);
+setMemberAccessScope = lockedIdentityWriter(setMemberAccessScope);
+setMemberRole = lockedIdentityWriter(setMemberRole);
+setPlayerEligibility = lockedIdentityWriter(setPlayerEligibility);
+setPlayerGroup = lockedIdentityWriter(setPlayerGroup);
+setStaffLevel = lockedIdentityWriter(setStaffLevel);
+setTenantClubName = lockedIdentityWriter(setTenantClubName);
+switchTeam = lockedIdentityWriter(switchTeam);
+updateNotificationPreferences = lockedIdentityWriter(updateNotificationPreferences);
+updateProfile = lockedIdentityWriter(updateProfile);
+updateTeamBilling = lockedIdentityWriter(updateTeamBilling);
+verifyEmailToken = lockedIdentityWriter(verifyEmailToken);
+
+// The development-only legacy scaffolding writes too; it takes the lock only
+// when it would actually seed (production returns before touching storage).
+// It runs unlocked first: with nothing to seed it only reads, so request read
+// paths never touch the lock. When it does need to write, its first save is
+// refused by the fence BEFORE anything is written, and it re-runs — re-reading
+// — under the lock.
+{
+  const ensureLegacy = ensureLegacyCompatibilityTeamRecords;
+  ensureLegacyCompatibilityTeamRecords = async (teamId = DEFAULT_TEAM.id) => {
+    if (!legacySeedEnabled() || teamId !== DEFAULT_TEAM.id) return;
+    if (storeLockHeld(IDENTITY_LOCK)) return ensureLegacy(teamId);
+    try { return await ensureLegacy(teamId); }
+    catch (error) {
+      if (error?.code !== 'write_outside_lock') throw error;
+      return withIdentityLock(() => ensureLegacy(teamId));
+    }
   };
 }

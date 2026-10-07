@@ -110,7 +110,7 @@ async function u18Club(label) {
   }
   const members = await S.loadTeamMembers();
   for (const m of members) if (m.teamId === club.team.id && players.some(p => p.user.id === m.userId)) m.playerGroupId = U18.id;
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
   const sessions = [];
   for (const p of players) sessions.push(await S.createSession({ userId: p.user.id, teamId: club.team.id, role: 'player' }));   // one at a time (createSession is itself a load→save)
   const coach = await S.createSession({ userId: club.user.id, teamId: club.team.id, role: 'coach' });

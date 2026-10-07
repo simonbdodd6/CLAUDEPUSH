@@ -218,10 +218,10 @@ for (const view of ['desktop', 'phone']) {
     const members = await S.loadTeamMembers();
     members.push({ id: 'tm_sw_' + view, teamId: other.team.id, userId: home.user.id, role: 'coach',
       staffLevel: 'head', status: 'active', joinedAt: '2026-01-01T00:00:00.000Z' });
-    await S.saveTeamMembers(members);
+    await S.withIdentityLock(() => S.saveTeamMembers(members));
     const users = await S.loadUsers();
     users.find(u => u.id === home.user.id).platformRole = 'platform_admin';
-    await S.saveUsers(users);
+    await S.withIdentityLock(() => S.saveUsers(users));
     try {
       const ctx = await browser.newContext({ ...(view === 'phone' ? devices['Pixel 5'] : { viewport: { width: 1440, height: 900 } }), serviceWorkers: 'block' });
       const page = await ctx.newPage();

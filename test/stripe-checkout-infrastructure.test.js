@@ -40,7 +40,7 @@ globalThis.fetch = async (_url, options = {}) => {
 };
 
 const { default: identityHandler } = await import('../api/identity.js');
-const {
+const { withIdentityLock,
   createClub,
   createSession,
   loadTeams,
@@ -89,7 +89,7 @@ async function makeAdminSession(suffix = '') {
   // Upgrade the head coach member to admin role to get MANAGE_SUBSCRIPTIONS.
   const members = await loadTeamMembers();
   const member = members.find(m => m.userId === created.user.id && m.teamId === created.team.id);
-  if (member) { member.role = 'admin'; await saveTeamMembers(members); }
+  if (member) { member.role = 'admin'; await withIdentityLock(() => saveTeamMembers(members)); }
   // Create a fresh session so the token reflects the updated role.
   const session = await createSession({ userId: created.user.id, teamId: created.team.id, role: 'admin' });
   return { session, team: created.team, user: created.user };
@@ -117,7 +117,7 @@ async function makePlayerSession(teamId, suffix = '') {
     rejectedAt: null,
     rejectedBy: null,
   });
-  await saveTeamMembers(members);
+  await withIdentityLock(() => saveTeamMembers(members));
   const session = await createSession({ userId: created.user.id, teamId, role: 'player' });
   return { session, userId: created.user.id };
 }
@@ -191,7 +191,7 @@ test('create_checkout: core team → 503 when STRIPE_SECRET_KEY not set', async 
   const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'core'; stored.planStatus = 'active';
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
   const res = await callIdentity('create_checkout', session.token);
   assert.equal(res.statusCode, 503);
   assert.equal(res.body.ok, false);
@@ -206,7 +206,7 @@ test('create_checkout: active Pro team → 409 (already subscribed)', async () =
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'pro'; stored.planStatus = 'active';
   stored.stripeCustomerId = 'cus_test'; stored.stripeSubscriptionId = 'sub_test';
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
   const res = await callIdentity('create_checkout', session.token);
   assert.equal(res.statusCode, 409);
   assert.equal(res.body.ok, false);
@@ -223,7 +223,7 @@ test('create_checkout: legacy team without plan fields → 503 (not blocked, Str
   delete stored.plan; delete stored.planStatus;
   delete stored.trialEndsAt; delete stored.stripeCustomerId;
   delete stored.stripeSubscriptionId;
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
   const res = await callIdentity('create_checkout', session.token);
   // 503 means the Pro-team guard did not block it; Stripe is just unconfigured.
   assert.equal(res.statusCode, 503, `Expected 503, got ${res.statusCode}: ${JSON.stringify(res.body)}`);

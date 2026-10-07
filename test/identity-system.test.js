@@ -32,7 +32,7 @@ globalThis.fetch = async (url, options = {}) => {
   return { ok: true, json: async () => ({ result }) };
 };
 
-const {
+const { withIdentityLock,
   approveJoinRequest,
   claimInvite,
   clearSessionCookie,
@@ -922,9 +922,9 @@ test('listIdentityState adopts a same-email coach account instead of seeding a d
   store.clear();
   const { scryptSync, randomBytes } = await import('node:crypto');
   const salt = randomBytes(16).toString('hex');
-  await saveUsers([{ id: 'usr_real_coach', email: 'simonbdodd@gmail.com', firstName: 'Real', lastName: 'Coach',
+  await withIdentityLock(() => saveUsers([{ id: 'usr_real_coach', email: 'simonbdodd@gmail.com', firstName: 'Real', lastName: 'Coach',
     displayName: 'Real Coach', authProvider: 'password', passwordSet: true,
-    passwordAlgo: 'scrypt', passwordSalt: salt, passwordHash: scryptSync('RealOld123', salt, 64).toString('hex') }]);
+    passwordAlgo: 'scrypt', passwordSalt: salt, passwordHash: scryptSync('RealOld123', salt, 64).toString('hex') }]));
   // The Members/identity load that previously created a SECOND coach-demo record
   await listIdentityState('boitsfort-rfc');
   const sameEmail = (await loadUsers()).filter(u => u.email === 'simonbdodd@gmail.com');
@@ -942,10 +942,10 @@ test('login picks the password-matching record when a stale duplicate already ex
   const mk = pw => { const s = randomBytes(16).toString('hex'); return { passwordAlgo: 'scrypt', passwordSalt: s, passwordHash: scryptSync(pw, s, 64).toString('hex') }; };
   // Already-corrupted data: a stale coach-demo shadow (env hash, no active member)
   // sitting alongside the real, password-changed account.
-  await saveUsers([
+  await withIdentityLock(() => saveUsers([
     { id: 'coach-demo', email: 'simonbdodd@gmail.com', displayName: 'Simon Coach', authProvider: 'legacy-password', passwordSet: true, ...mk('1111') },
     { id: 'usr_real_coach', email: 'simonbdodd@gmail.com', displayName: 'Real Coach', authProvider: 'password', passwordSet: true, passwordChangedAt: new Date(0).toISOString(), ...mk('RealNew456') },
-  ]);
+  ]));
   store.set('app:identity:team_members', JSON.stringify([{ id: 'tm_real', teamId: 'boitsfort-rfc', userId: 'usr_real_coach', role: 'coach', status: 'active' }]));
   const login = await loginUser({ email: 'simonbdodd@gmail.com', password: 'RealNew456' });
   assert.equal(login.user.id, 'usr_real_coach', 'login resolves the record whose password verifies');

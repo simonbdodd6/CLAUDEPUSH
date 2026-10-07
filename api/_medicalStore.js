@@ -22,6 +22,7 @@
 // empty caseload, and nothing is persisted until an explicit mutation.
 
 import { kvGet, kvSet } from './_kv.js';
+import { withStoreLock, assertStoreLockHeld } from './_lock.js';
 import { key } from './_keys.js';
 import { randomBytes } from 'node:crypto';
 
@@ -108,7 +109,21 @@ export async function loadMedicalRecord(clubId) {
   return normalizeMedicalRecord(clubId, await kvGet(medicalKey(clubId)));
 }
 
+// One club's caseload is ONE value, read and rewritten whole (Build 135): two
+// medical updates in the same window used to erase one another. Each club has
+// its own lock — clubs never wait on each other — and the save is refused
+// outside it.
+export function medicalLockName(clubId) {
+  return `medical:${String(clubId || '')}`;
+}
+
+/** Run fn under the club's medical lock (for direct writers: tests, scripts). */
+export function withMedicalLock(clubId, fn) {
+  return withStoreLock(medicalLockName(clubId), fn, { ttlSeconds: 10, waitMs: 4000 });
+}
+
 export async function saveMedicalRecord(clubId, record) {
+  await assertStoreLockHeld(medicalLockName(clubId));
   const normalized = normalizeMedicalRecord(clubId, record);
   normalized.updatedAt = nowIso();
   await kvSet(medicalKey(clubId), normalized);
@@ -221,3 +236,12 @@ export function projectPlayer(player = {}, member = null, groupName = '') {
 }
 
 export { medicalKey };
+
+// ─── MEDICAL WRITES RUN UNDER THE CLUB'S MEDICAL LOCK (Build 135) ──────────
+// read → change → save as one serialised section per club, across instances.
+{
+  const upsert = upsertCase, resolve = resolveCase;
+  const opts = { ttlSeconds: 10, waitMs: 4000, busyMessage: 'Medical records are busy — please try again in a moment' };
+  upsertCase = (clubId, ...a) => withStoreLock(medicalLockName(clubId), () => upsert(clubId, ...a), opts);
+  resolveCase = (clubId, ...a) => withStoreLock(medicalLockName(clubId), () => resolve(clubId, ...a), opts);
+}

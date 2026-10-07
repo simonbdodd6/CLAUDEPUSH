@@ -170,7 +170,7 @@ test('5. a club with no team record is left alone — the save still lands, noth
   // Legacy shape: a club that exists only as memberships and configuration.
   const club = await found('Recordless RC', 'recordless@x.test');
   const s = await login('recordless@x.test');
-  await S.saveTeams((await S.loadStoredTeams()).filter(t => t.id !== club.team.id));
+  await S.withIdentityLock(async () => S.saveTeams((await S.loadStoredTeams()).filter(t => t.id !== club.team.id)));
   assert.equal(await teamNamed(club.team.id), undefined, 'precondition: no team record');
   const r = await api(s.session.token, 'POST', { resource: 'club' },
     { club: { clubName: 'Recordless Renamed RC', teamName: 'First XV' } });
@@ -248,7 +248,7 @@ test('3 + 11. platform authority is not club authority here either', async () =>
   const theirs = await found('Platform Other RC', 'plat-other@x.test');
   const users = await S.loadUsers();
   users.find(u => u.id === mine.user.id).platformRole = 'platform_admin';
-  await S.saveUsers(users);
+  await S.withIdentityLock(() => S.saveUsers(users));
   const s = await login('plat-own@x.test');
   // The session is scoped to the club it belongs to; platform status adds nothing.
   const session = await S.resolveSession(s.session.token);
@@ -265,7 +265,7 @@ test('12. renaming a club keeps the multi-club context intact', async () => {
   const members = await S.loadTeamMembers();
   members.push({ id: 'tm_ctx', teamId: other.team.id, userId: home.user.id, role: 'coach',
     staffLevel: 'head', status: 'active', joinedAt: '2026-01-01T00:00:00.000Z' });
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
 
   const s = await login('ctx@x.test');
   await api(s.session.token, 'POST', { resource: 'club' },
@@ -406,7 +406,7 @@ test('browser: renaming the club in Settings moves every surface together', asyn
     const members = await S.loadTeamMembers();
     members.push({ id: 'tm_rn', teamId: other.team.id, userId: home.user.id, role: 'coach',
       staffLevel: 'head', status: 'active', joinedAt: '2026-01-01T00:00:00.000Z' });
-    await S.saveTeamMembers(members);
+    await S.withIdentityLock(() => S.saveTeamMembers(members));
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));

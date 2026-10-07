@@ -19,8 +19,8 @@ globalThis.fetch = async (_url, options = {}) => {
   const [command, ...args] = JSON.parse(options.body || '[]');
   let result = null;
   if (command === 'GET')  result = kv.has(args[0]) ? kv.get(args[0]) : null;
-  if (command === 'SET') { writes.push(args[0]); kv.set(args[0], args[1]); result = 'OK'; }
-  if (command === 'DEL') { writes.push(args[0]); kv.delete(args[0]); result = 1; }
+  if (command === 'SET') { if (!String(args[0]).includes(':lock:')) writes.push(args[0]); kv.set(args[0], args[1]); result = 'OK'; }   // Build 135: lock keys are coordination, not data — not counted
+  if (command === 'DEL') { if (!String(args[0]).includes(':lock:')) writes.push(args[0]); kv.delete(args[0]); result = 1; }
   if (command === 'SCAN') result = ['0', [...kv.keys()]];
   if (command === 'LRANGE') result = [];
   if (command === 'LPUSH' || command === 'LTRIM') result = 1;

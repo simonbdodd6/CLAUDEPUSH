@@ -396,8 +396,8 @@ for (const view of ['desktop', 'phone']) {
       members.forEach(m => { if (m.userId === alice.user.id && m.teamId === A.team.id) { m.role = 'medical'; m.status = 'active';
         m.accessScope = { clubWide: false, groups: [{ groupId: 'grp_initial', status: 'active' }], teams: [] }; } });
       members.push({ id: 'tm_nick_a_' + view, teamId: A.team.id, userId: B.user.id, role: 'coach', staffLevel: 'head', status: 'active', accessProfile: 'full', joinedAt: '2026-01-01T00:00:00.000Z' });
-      await S.saveTeamMembers(members);
-      const users = await S.loadUsers(); users.find(u => u.id === B.user.id).lastTeamId = A.team.id; await S.saveUsers(users);  // Nick's history: a long time in club A
+      await S.withIdentityLock(() => S.saveTeamMembers(members));
+      const users = await S.loadUsers(); users.find(u => u.id === B.user.id).lastTeamId = A.team.id; await S.withIdentityLock(() => S.saveUsers(users));  // Nick's history: a long time in club A
 
       const ctx = await browser.newContext({ ...(view === 'phone' ? devices['Pixel 5'] : { viewport: { width: 1440, height: 900 } }), serviceWorkers: 'block' });
       const page = await ctx.newPage();

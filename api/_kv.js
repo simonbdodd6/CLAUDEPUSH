@@ -9,11 +9,6 @@
 // response body or URL may ever appear in a thrown message. Sanitised detail
 // goes to the server log only.
 
-// Read at call time, not module load, so tests can vary configuration and a
-// misconfigured value is re-checked on every request.
-function redisUrl()   { return String(process.env.UPSTASH_REDIS_REST_URL || '').trim(); }
-function redisToken() { return String(process.env.UPSTASH_REDIS_REST_TOKEN || '').trim(); }
-
 function urlValid(value) {
   try {
     const u = new URL(value);
@@ -21,10 +16,74 @@ function urlValid(value) {
   } catch { return false; }
 }
 
-/** True only when the URL parses as a real http(s) URL AND a token is present.
+// ─── WHICH STORAGE THIS DEPLOYMENT MAY TOUCH (Build 135) ───────────────────
+//
+// Preview deployments used to read the same UPSTASH_REDIS_REST_* variables as
+// production — and the project's Preview environment carries production's
+// values — so unreleased branch code read and wrote live clubs' data. The
+// environment now decides the storage target, here, at the one place every
+// command passes through, and an unsafe combination FAILS CLOSED:
+//
+//   production  (VERCEL_ENV=production)  → UPSTASH_REDIS_REST_*, keys unchanged
+//   preview     (VERCEL_ENV=preview)     → PREVIEW_UPSTASH_REDIS_REST_* ONLY,
+//                                           every key under "preview:"
+//   development (VERCEL_ENV=development) → UPSTASH_REDIS_REST_* (vercel dev)
+//   local       (not on Vercel)          → UPSTASH_REDIS_REST_* (tests, dev)
+//
+// A Preview deployment is REFUSED storage — nothing is read or written — when
+// its PREVIEW_* variables are missing, or name the same database (URL or
+// token) as UPSTASH_REDIS_REST_*, which is production's. Running on Vercel
+// with no recognisable VERCEL_ENV is ambiguous and refused too. The "preview:"
+// key namespace is a second, independent wall: even a Preview pointed at a
+// shared database by mistake could never address a production key.
+// Read at call time, not module load, so a misconfiguration is re-checked on
+// every request and tests can vary it.
+export const PREVIEW_NAMESPACE = 'preview:';
+
+export function storageEnvironment() {
+  const env = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+  if (env === 'production' || env === 'preview' || env === 'development') return env;
+  if (env) return 'ambiguous';                                   // an unknown value is not production
+  if (String(process.env.VERCEL || '').trim()) return 'ambiguous'; // on Vercel, VERCEL_ENV is always set
+  return 'local';
+}
+
+/** Comparable identity of a storage URL: scheme + host + port + path, case-folded. */
+function storageIdentity(url) {
+  try {
+    const u = new URL(String(url || '').trim());
+    return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`.toLowerCase();
+  } catch { return ''; }
+}
+
+/**
+ * The storage this process may use, or a refusal. Never throws; callers that
+ * need storage turn a refusal into the fixed 503. `reason` is a fixed enum —
+ * safe to log; no variable's VALUE ever appears in it.
+ */
+export function storageTarget() {
+  const environment = storageEnvironment();
+  const prodUrl = String(process.env.UPSTASH_REDIS_REST_URL || '').trim();
+  const prodToken = String(process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
+  if (environment === 'ambiguous') return { ok: false, environment, reason: 'environment_ambiguous' };
+  if (environment !== 'preview') {
+    if (!prodToken) return { ok: false, environment, reason: 'token_missing' };
+    if (!urlValid(prodUrl)) return { ok: false, environment, reason: 'url_invalid' };
+    return { ok: true, environment, url: prodUrl, token: prodToken, namespace: '', reason: null };
+  }
+  const url = String(process.env.PREVIEW_UPSTASH_REDIS_REST_URL || '').trim();
+  const token = String(process.env.PREVIEW_UPSTASH_REDIS_REST_TOKEN || '').trim();
+  if (!url || !token) return { ok: false, environment, reason: 'preview_storage_unconfigured' };
+  if (!urlValid(url)) return { ok: false, environment, reason: 'url_invalid' };
+  const sameDatabase = (prodUrl && storageIdentity(url) === storageIdentity(prodUrl)) || (prodToken && token === prodToken);
+  if (sameDatabase) return { ok: false, environment, reason: 'preview_targets_production' };
+  return { ok: true, environment, url, token, namespace: PREVIEW_NAMESPACE, reason: null };
+}
+
+/** True only when this environment has storage it may safely use.
  *  A pasted token line in the URL field must read as NOT configured. */
 export function kvConfigured() {
-  return Boolean(redisToken()) && urlValid(redisUrl());
+  return storageTarget().ok;
 }
 
 /** The one storage error clients may ever see. */
@@ -40,11 +99,34 @@ function storageError(logDetail) {
  * Execute a single Redis command via Upstash REST.
  * Uses POST / with JSON body — handles complex values safely.
  */
-async function redis(command, ...args) {
-  const url = redisUrl();
-  const token = redisToken();
-  if (!token) throw storageError('UPSTASH_REDIS_REST_TOKEN is not set');
-  if (!urlValid(url)) throw storageError('UPSTASH_REDIS_REST_URL is not a valid http(s) URL');
+// Which arguments of each command are KEYS (namespaced in Preview). A command
+// not listed here is refused in a namespaced environment rather than sent with
+// an un-namespaced key.
+const KEY_ARGS = {
+  GET: [0], SET: [0], DEL: 'all', LPUSH: [0], LRANGE: [0], LTRIM: [0], EXPIRE: [0], RENAME: [0, 1],
+};
+
+function namespaced(target, command, args) {
+  if (!target.namespace) return args;
+  const cmd = command.toUpperCase();
+  const ns = target.namespace;
+  if (cmd === 'SCAN') {
+    const out = [...args];
+    const i = out.findIndex(a => String(a).toUpperCase() === 'MATCH');
+    if (i < 0 || i + 1 >= out.length) throw storageError('SCAN without MATCH refused in a namespaced environment');
+    out[i + 1] = ns + out[i + 1];
+    return out;
+  }
+  const spec = KEY_ARGS[cmd];
+  if (!spec) throw storageError(`${cmd} is not namespaced — refused`);
+  return args.map((a, idx) => (spec === 'all' || spec.includes(idx)) ? ns + a : a);
+}
+
+async function redis(command, ...rawArgs) {
+  const target = storageTarget();
+  if (!target.ok) throw storageError(`storage refused (${target.environment}: ${target.reason})`);
+  const { url, token } = target;
+  const args = namespaced(target, command, rawArgs);
   let res;
   try {
     res = await fetch(url, {
@@ -66,6 +148,10 @@ async function redis(command, ...args) {
   }
   const { result, error } = await res.json();
   if (error) throw storageError(`Redis command error (${String(command).toUpperCase()})`);
+  // A namespaced SCAN answers with physical keys; callers only ever see logical ones.
+  if (target.namespace && command.toUpperCase() === 'SCAN' && Array.isArray(result?.[1])) {
+    return [result[0], result[1].filter(k => String(k).startsWith(target.namespace)).map(k => String(k).slice(target.namespace.length))];
+  }
   return result;
 }
 
@@ -74,14 +160,16 @@ async function redis(command, ...args) {
  * token are both good. `code` is a fixed enum — safe for client display.
  */
 export async function kvHealthCheck() {
-  if (!redisToken() || !urlValid(redisUrl())) {
-    return { ok: false, code: !redisToken() ? 'unconfigured' : 'bad-url' };
+  const target = storageTarget();
+  if (!target.ok) {
+    if (target.reason === 'preview_targets_production' || target.reason === 'environment_ambiguous') return { ok: false, code: 'refused' };
+    return { ok: false, code: target.reason === 'url_invalid' ? 'bad-url' : 'unconfigured' };
   }
   try {
-    const res = await fetch(redisUrl(), {
+    const res = await fetch(target.url, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${redisToken()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(['GET', '__healthcheck__']),
+      headers: { 'Authorization': `Bearer ${target.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['GET', `${target.namespace}__healthcheck__`]),
     });
     if (res.status === 401 || res.status === 403) return { ok: false, code: 'unauthorized' };
     if (!res.ok) return { ok: false, code: 'error' };
@@ -118,6 +206,17 @@ export async function kvSetNX(key, value, ttlSeconds) {
 /** Delete a key */
 export async function kvDel(key) {
   return redis('DEL', key);
+}
+
+/** Rename a key (atomic swap onto the destination). Build 135: routed here so
+ *  the environment guard and namespace apply — it used to be a raw request. */
+export async function kvRename(from, to) {
+  return redis('RENAME', from, to);
+}
+
+/** Set a key's TTL in seconds. */
+export async function kvExpire(key, seconds) {
+  return redis('EXPIRE', key, String(seconds));
 }
 
 /** Prepend an item to a Redis list (newest first) */

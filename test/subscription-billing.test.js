@@ -33,7 +33,7 @@ globalThis.fetch = async (_url, options = {}) => {
   return { ok: true, json: async () => ({ result }) };
 };
 
-const {
+const { withIdentityLock,
   createClub,
   resolveSession,
   loadTeams,
@@ -100,7 +100,7 @@ test('expired trial auto-downgrades to plan: core on session resolve', async () 
   const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.trialEndsAt = new Date(Date.now() - 1000).toISOString(); // 1 second ago
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
 
   const ctx = await resolveSession(session.token);
   assert.equal(ctx.teamPlan, 'core', 'expired trial must downgrade to core');
@@ -116,7 +116,7 @@ test('trial downgrade is written back to Redis (persisted)', async () => {
   const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.trialEndsAt = new Date(Date.now() - 1000).toISOString();
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
 
   // First resolve — triggers the downgrade write
   await resolveSession(session.token);
@@ -141,7 +141,7 @@ test('pro club with past trialEndsAt is not downgraded', async () => {
   stored.stripeCustomerId = 'cus_test123';
   stored.stripeSubscriptionId = 'sub_test123';
   stored.trialEndsAt = new Date(Date.now() - 1000).toISOString();
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
 
   const ctx = await resolveSession(session.token);
   assert.equal(ctx.teamPlan, 'pro', 'pro club must not be downgraded');
@@ -162,7 +162,7 @@ test('legacy team without plan fields defaults to trial in session response', as
   delete stored.trialEndsAt;
   delete stored.stripeCustomerId;
   delete stored.stripeSubscriptionId;
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
 
   const ctx = await resolveSession(session.token);
   assert.ok(ctx, 'session must still resolve for legacy team');

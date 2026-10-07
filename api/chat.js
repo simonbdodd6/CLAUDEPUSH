@@ -10,7 +10,7 @@
 
 import webpush from 'web-push';
 import { randomBytes } from 'node:crypto';
-import { kvGet, kvSet, kvLpush, kvLrange, kvLtrim } from './_kv.js';
+import { kvGet, kvSet, kvDel, kvRename, kvConfigured, kvLpush, kvLrange, kvLtrim } from './_kv.js';
 import { key } from './_keys.js';
 import { unreadCountForUser } from '../src/chat-notifications.js';
 import { DEFAULT_TEAM, resolveSessionFromRequest, loadHealedPlayerProfiles,
@@ -22,6 +22,7 @@ import { tenantTeamId } from './_tenant.js';
 import { load as loadSubs, save as saveSubs } from './_lib.js';
 import { setCors, vapidContact, notificationUrl } from './_http.js';
 import { isSafeId, isSafeName, isSafeReaction, isSafeIcon } from './_safeText.js';
+import { withStoreLock, assertStoreLockHeld } from './_lock.js';
 
 function configurePush() {
   const publicKey  = process.env.VAPID_PUBLIC_KEY;
@@ -323,7 +324,19 @@ export function filterObsoleteDmConversations(convs = []) {
 async function getConvs() {
   return (await kvGet(CONVS_KEY())) || [];
 }
+// Build 135: the conversation index is ONE array for every club, rewritten on
+// each create, group change and every send's lastActivity bump — two writers
+// in the same window used to drop a conversation. Writers hold this lock
+// (read → change → save); the save refuses to run outside it. Each message
+// list has its own lock, held by appends AND the whole-list rewrites (react /
+// edit / delete), so a rewrite can never drop a message sent meanwhile.
+const CONVS_LOCK = 'chat:convs';
+const LOCK_OPTS = { ttlSeconds: 10, waitMs: 4000, busyMessage: 'Messages are busy — please try again in a moment' };
+const withConvsLock = fn => withStoreLock(CONVS_LOCK, fn, LOCK_OPTS);
+export const msgsLockName = sid => `chat:msgs:${sid}`;
+const withMsgsLock = (sid, fn) => withStoreLock(msgsLockName(sid), fn, LOCK_OPTS);
 async function saveConvs(list) {
+  await assertStoreLockHeld(CONVS_LOCK);
   return kvSet(CONVS_KEY(), list);
 }
 
@@ -546,8 +559,14 @@ async function requireConversationAccess(res, sessionContext, convId, mode = 're
 async function ensureDefaults() {
   // Always filter obsolete DMs — idempotent, no migration flag needed.
   const raw = await getConvs();
-  const convs = filterObsoleteDmConversations(raw);
-  if (convs.length !== raw.length) await saveConvs(convs);
+  const filtered = filterObsoleteDmConversations(raw);
+  // Build 135: the common case is a pure read. Only when something must be
+  // written does it take the lock — and decide again on a fresh read inside.
+  if (filtered.length === raw.length && filtered.some(c => c.id === 'squad')) return filtered;
+  return withConvsLock(async () => {
+  const fresh = await getConvs();
+  const convs = filterObsoleteDmConversations(fresh);
+  if (convs.length !== fresh.length) await saveConvs(convs);
   if (convs.some(c => c.id === 'squad')) return convs;
   const defaults = [
     { id: 'squad',    name: 'Squad',           type: 'GROUP',        icon: '🏉', description: 'All squad members & coaches', pinned: true, createdAt: Date.now() },
@@ -557,6 +576,7 @@ async function ensureDefaults() {
   const merged = [...defaults, ...convs.filter(c => !defaults.some(d => d.id === c.id))];
   await saveConvs(merged);
   return merged;
+  });
 }
 
 // ─── GET handler ────────────────────────────────────────────────────
@@ -817,15 +837,19 @@ async function handlePost(req, res) {
       ts:          Date.now(),
     };
     const sendSid = storageConvId(sessionContext, convId);
-    await kvLpush(MSGS_KEY(sendSid), msg);
-    await kvLtrim(MSGS_KEY(sendSid), 500); // keep last 500 messages
+    await withMsgsLock(sendSid, async () => {
+      await kvLpush(MSGS_KEY(sendSid), msg);
+      await kvLtrim(MSGS_KEY(sendSid), 500); // keep last 500 messages
+    });
     // Update conv last activity — team-aware, so a same-id conversation in
     // another club (group:<gid> collisions) is never the one bumped.
-    const convs = await getConvs();
-    const senderTeam = String(tenantTeamId(sessionContext) || '');
-    const idx = convs.findIndex(c => c.id === convId &&
-      (!c.teamId || String(c.teamId) === senderTeam));
-    if (idx >= 0) { convs[idx].lastActivity = msg.ts; await saveConvs(convs); }
+    await withConvsLock(async () => {
+      const convs = await getConvs();
+      const senderTeam = String(tenantTeamId(sessionContext) || '');
+      const idx = convs.findIndex(c => c.id === convId &&
+        (!c.teamId || String(c.teamId) === senderTeam));
+      if (idx >= 0) { convs[idx].lastActivity = msg.ts; await saveConvs(convs); }
+    });
     // Mark sender as read
     await kvSet(key(`chat:read:${sendSid}:${senderId}`), msg.ts);
     // Await push before responding — serverless functions terminate after res.end()
@@ -861,6 +885,7 @@ async function handlePost(req, res) {
     if (!isSafeId(String(msgId), { max: 80 })) return err(res, 400, 'msgId is not a message id');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
     const reactSid = storageConvId(sessionContext, convId);
+    return await withMsgsLock(reactSid, async () => {   // Build 135: read → change → rewrite under the list lock
     const msgs = await kvLrange(MSGS_KEY(reactSid), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx < 0) return err(res, 404, 'Message not found');
@@ -881,6 +906,7 @@ async function handlePost(req, res) {
     // Also update in the list
     await rebuildConvMsgs(reactSid, msgs);
     return ok(res, { message: msg });
+    });
   }
 
   if (action === 'read') {
@@ -917,6 +943,7 @@ async function handlePost(req, res) {
     if (!msgId || !convId || !text?.trim()) return err(res, 400, 'msgId, convId, text required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'write'))) return;
     const editSid = storageConvId(sessionContext, convId);
+    return await withMsgsLock(editSid, async () => {   // Build 135: read → change → rewrite under the list lock
     const msgs = await kvLrange(MSGS_KEY(editSid), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx < 0) return err(res, 404, 'Message not found');
@@ -924,6 +951,7 @@ async function handlePost(req, res) {
     msgs[idx] = { ...msgs[idx], text: text.trim(), isEdited: true, editedAt: Date.now() };
     await rebuildConvMsgs(editSid, msgs);
     return ok(res, { message: msgs[idx] });
+    });
   }
 
   if (action === 'delete') {
@@ -933,6 +961,7 @@ async function handlePost(req, res) {
     if (!msgId || !convId) return err(res, 400, 'msgId, convId required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'write'))) return;
     const delSid = storageConvId(sessionContext, convId);
+    return await withMsgsLock(delSid, async () => {   // Build 135: read → change → rewrite under the list lock
     const msgs = await kvLrange(MSGS_KEY(delSid), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx < 0) return err(res, 404, 'Message not found');
@@ -940,6 +969,7 @@ async function handlePost(req, res) {
     msgs[idx] = { ...msgs[idx], isDeleted: true, deletedAt: Date.now(), text: '' };
     await rebuildConvMsgs(delSid, msgs);
     return ok(res, {});
+    });
   }
 
   if (action === 'create_conv') {
@@ -1055,15 +1085,17 @@ async function handlePost(req, res) {
     // group:<gid> only when that id was asked for (already validated above); a
     // groupId alone (a group-bound announcement) gets its own minted id, as before.
     const convId = mintedDmId || (requestedGroupId && String(id || '') ? `group:${requestedGroupId}` : `conv_${Date.now()}_${randomBytes(4).toString('hex')}`);
-    const convs = await getConvs();
-    // Dedupe per (id, club): two clubs may hold the same group:<gid> protocol
-    // id; a second club's create must add ITS record, not adopt the first's.
-    if (!convs.some(c => c.id === convId && String(c.teamId || '') === String(teamId || ''))) {
-      convs.push({ id: convId, teamId, name, type: convType, icon, description, participants,
-        ...(requestedGroupId ? { groupId: requestedGroupId } : {}),
-        pinned: false, createdAt: Date.now(), lastActivity: Date.now() });
-      await saveConvs(convs);
-    }
+    await withConvsLock(async () => {
+      const convs = await getConvs();
+      // Dedupe per (id, club): two clubs may hold the same group:<gid> protocol
+      // id; a second club's create must add ITS record, not adopt the first's.
+      if (!convs.some(c => c.id === convId && String(c.teamId || '') === String(teamId || ''))) {
+        convs.push({ id: convId, teamId, name, type: convType, icon, description, participants,
+          ...(requestedGroupId ? { groupId: requestedGroupId } : {}),
+          pinned: false, createdAt: Date.now(), lastActivity: Date.now() });
+        await saveConvs(convs);
+      }
+    });
     return ok(res, { convId });
   }
 
@@ -1102,6 +1134,7 @@ async function handlePost(req, res) {
       members = [...new Set([me, ...asked])];
     }
 
+    return await withConvsLock(async () => {   // Build 135: read → change → save under the index lock
     const convs = await getConvs();
     if (action === 'create_group') {
       if (!rawName) return err(res, 400, 'A group name is required');
@@ -1132,6 +1165,7 @@ async function handlePost(req, res) {
     convs[idx] = conv;
     await saveConvs(convs);
     return ok(res, { conversation: conv });
+    });
   }
 
   return err(res, 400, 'Unknown action');
@@ -1153,25 +1187,22 @@ async function handlePost(req, res) {
 // exposes no MULTI here, so temp-key + RENAME is the smallest safe primitive.)
 async function rebuildConvMsgs(convId, msgs) {
   const k = MSGS_KEY(convId);
-  const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
-  const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!REDIS_URL || !REDIS_TOKEN) return;
+  // Through the storage client (Build 135): the environment guard and the
+  // Preview namespace apply here like everywhere else — this used to send
+  // raw requests to the production URL directly.
+  if (!kvConfigured()) return;
+  await assertStoreLockHeld(msgsLockName(convId));   // a whole-list rewrite only under the list lock
   // Unique per call so two concurrent rebuilds can't clobber each other's temp list.
   const tmp = `${k}:rebuild:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-  const rawCmd = (cmd) => fetch(REDIS_URL, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(cmd),
-  }).then(r => { if (!r.ok) throw new Error(`redis ${cmd[0]} → ${r.status}`); return r; });
   try {
-    if (!msgs.length) { await rawCmd(['DEL', k]); return; }  // nothing left → clear the live list
+    if (!msgs.length) { await kvDel(k); return; }  // nothing left → clear the live list
     // kvLpush serialises with JSON.stringify, matching kvLrange's parse on read.
     for (const m of [...msgs].reverse()) await kvLpush(tmp, m);
-    await rawCmd(['RENAME', tmp, k]);  // atomic swap onto the live key
+    await kvRename(tmp, k);  // atomic swap onto the live key
   } catch(e) {
     console.error('[rebuildConvMsgs] failed for', convId, ':', e?.message);
     // Best-effort cleanup of the orphaned temp key; never mask the original error.
-    await rawCmd(['DEL', tmp]).catch(() => {});
+    await kvDel(tmp).catch(() => {});
     throw e;
   }
 }

@@ -39,7 +39,7 @@ globalThis.fetch = async (_url, options = {}) => {
 
 const { PERM, ROLE_PERMISSIONS, canonicalRole, permissionsFor } = await import('../api/_permissions.js');
 const { default: identityHandler } = await import('../api/identity.js');
-const {
+const { withIdentityLock,
   createClub,
   createSession,
   loadTeamMembers,
@@ -144,7 +144,7 @@ test('player cannot call create_checkout → 403', async () => {
     rejectedAt: null,
     rejectedBy: null,
   });
-  await saveTeamMembers(members);
+  await withIdentityLock(() => saveTeamMembers(members));
   const playerSession = await createSession({ userId: playerClub.user.id, teamId: team.id, role: 'player' });
 
   const res = await callIdentity('create_checkout', playerSession.token);
@@ -182,7 +182,7 @@ test('admin member can still call create_checkout → not 403 (unchanged permiss
     rejectedAt: null,
     rejectedBy: null,
   });
-  await saveTeamMembers(members);
+  await withIdentityLock(() => saveTeamMembers(members));
   const adminSession = await createSession({ userId: adminClub.user.id, teamId: team.id, role: 'admin' });
 
   const res = await callIdentity('create_checkout', adminSession.token);

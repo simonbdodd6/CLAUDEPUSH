@@ -150,7 +150,7 @@ test('a code reserved by a signup record but taken since is not written as a dup
 test('every two-digit code taken → a unique three-digit code (never a hang)', async () => {
   const teams = await S.loadStoredTeams();
   for (let n = 10; n <= 99; n++) teams.push({ id: `crowded-${n}`, name: `Crowded ${n}`, teamCode: `CROWDE${n}`, createdAt: new Date().toISOString() });
-  await S.saveTeams(teams);
+  await S.withIdentityLock(() => S.saveTeams(teams));
   const c = await makeClub('Crowded');
   const code = await storedCode(c.team.id);
   assert.match(code, /^CROWDE\d{3}$/);
@@ -164,7 +164,7 @@ test('a code two stored clubs share is refused like an unknown code — nothing 
   // Legacy data: codes minted before uniqueness — B holds A's code too.
   const teams = await S.loadStoredTeams();
   teams.find(t => t.id === b.team.id).teamCode = codeA;
-  await S.saveTeams(teams);
+  await S.withIdentityLock(() => S.saveTeams(teams));
 
   assert.equal(await S.findTeamByCode(codeA), null, 'an ambiguous code names no club');
   assert.equal(await S.findTeamByCode(`  ${codeA.toLowerCase()} `), null, 'normalised spellings too');

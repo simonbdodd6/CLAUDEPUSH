@@ -40,10 +40,12 @@ const writes = () => issued.filter(c => c.command === 'SET' || c.command === 'DE
 
 /** Run fn as production (Vercel runtime), restoring the previous env after. */
 async function asProduction(fn) {
-  const prev = process.env.VERCEL;
+  const prev = process.env.VERCEL, prevEnv = process.env.VERCEL_ENV;
   process.env.VERCEL = '1';
+  process.env.VERCEL_ENV = 'production';   // Build 135: as a real deployment sets it (VERCEL alone is ambiguous → storage refused)
   try { return await fn(); } finally {
     if (prev === undefined) delete process.env.VERCEL; else process.env.VERCEL = prev;
+    if (prevEnv === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = prevEnv;
   }
 }
 async function asDev(fn) {

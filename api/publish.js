@@ -32,6 +32,7 @@ import { effectiveAccessScope, resolveEligibility, resolvePlayerGroup, isPlaying
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
 import { protectCanonicalRows, reconcileMissingRows, preserveStoredFields } from './_rosterProjection.js';
 import { isSafeName, isSafeEmailText } from './_safeText.js';
+import { withStoreLock } from './_lock.js';
 import {
   loadMedicalRecord, activeCases, upsertCase, resolveCase, projectPlayer,
 } from './_medicalStore.js';
@@ -2795,14 +2796,18 @@ async function clubHandler(req, res) {
         // every club, and the cleanup used to rewrite all of theirs too.
         if (String(conv.teamId || DEFAULT_TEAM.id) !== String(session.teamId)) continue;
         const msgsKey = key(`chat:conv:${conv.id}:msgs`);
-        const msgs = await kvLrange(msgsKey, 0, 499);
-        const cleanMsgs = msgs.filter(m => !isTestChatMessage(m));
-        if (cleanMsgs.length < msgs.length) {
-          deleted.messages += msgs.length - cleanMsgs.length;
-          await kvDel(msgsKey);
-          // Re-push oldest-first so newest ends up at index 0 (LPUSH prepends)
-          for (const m of cleanMsgs) await kvLpush(msgsKey, m);
-        }
+        // Build 135: the same per-conversation lock chat's sends and rewrites
+        // hold (api/chat.js msgsLockName), so a message sent mid-cleanup is kept.
+        await withStoreLock(`chat:msgs:${conv.id}`, async () => {
+          const msgs = await kvLrange(msgsKey, 0, 499);
+          const cleanMsgs = msgs.filter(m => !isTestChatMessage(m));
+          if (cleanMsgs.length < msgs.length) {
+            deleted.messages += msgs.length - cleanMsgs.length;
+            await kvDel(msgsKey);
+            // Re-push oldest-first so newest ends up at index 0 (LPUSH prepends)
+            for (const m of cleanMsgs) await kvLpush(msgsKey, m);
+          }
+        });
       }
 
       // 4. Roster — remove test player entries

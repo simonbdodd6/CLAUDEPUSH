@@ -151,7 +151,7 @@ async function makeClub(label, { seniors = [], u18 = [] } = {}) {
   }
   const members = await S.loadTeamMembers();
   for (const m of members) { const who = Object.values(c.people).find(p => p.user.id === m.userId); if (who && m.teamId === c.teamId) m.playerGroupId = who.gid; }
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
   for (const p of Object.values(c.people)) { p.session = await S.createSession({ userId: p.user.id, teamId: c.teamId, role: 'player' }); await subscribe(p); }
   c.coach = await S.createSession({ userId: club.user.id, teamId: c.teamId, role: 'coach' });
   return c;
@@ -299,7 +299,7 @@ test('GROUP. another group\'s answer under the same occurrence id excuses nobody
   assert.deepEqual(await AV.loadGroupAvailability(c.teamId, c.SEN, 'game'), {}, 'the Seniors\' record of the same id holds nothing');
   const members = await S.loadTeamMembers();
   for (const m of members) if (m.teamId === c.teamId && m.userId === c.people.Dua.user.id) m.playerGroupId = c.SEN;
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
   assert.deepEqual(await weeklyRecipients(c), who(c, 'Dua', 'Sam', 'Stu'), 'in the Seniors he still owes one');
 });
 
@@ -331,7 +331,7 @@ test('FAIL CLOSED. no occurrence, no group, or an unreadable store: nobody is re
   const unresolved = await makeClub('Unresolved', { seniors: ['Sam One', 'Nia None'] });
   const members = await S.loadTeamMembers();
   for (const m of members) if (m.teamId === unresolved.teamId && m.userId === unresolved.people.Nia.user.id) delete m.playerGroupId;
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
   // FAILED READ: this club's records cannot be read
   const broken = await makeClub('Broken', { seniors: ['Sam One', 'Stu Four'] });
   const healthy = await makeClub('Healthy', { seniors: ['Sam One'] });
@@ -381,7 +381,7 @@ test('ELIGIBILITY. staff are not players; notification preferences still apply; 
   await S.approveJoinRequest(both.teamMember.id, second.club.user.id, second.teamId);
   const roll = await S.loadTeamMembers();
   for (const m of roll) if (m.teamId === second.teamId && m.userId === both.user.id) m.playerGroupId = second.SEN;
-  await S.saveTeamMembers(roll);
+  await S.withIdentityLock(() => S.saveTeamMembers(roll));
   await weeklyReminder();
   const stu = PUSH.delivered.filter(d => d.userId === c.people.Stu.user.id);
   assert.equal(stu.length, 2, 'two devices, two reminders — not four');

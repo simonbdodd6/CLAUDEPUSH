@@ -82,7 +82,7 @@ globalThis.fetch = async (url, options = {}) => {
 // Imports AFTER globalThis.fetch is set — Stripe.createFetchHttpClient()
 // captures globalThis.fetch at this point.
 const { default: identityHandler } = await import('../api/identity.js');
-const {
+const { withIdentityLock,
   createClub,
   createSession,
   loadTeams,
@@ -153,7 +153,7 @@ test('create_checkout: reuses existing stripeCustomerId without creating another
   const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.stripeCustomerId = 'cus_existing_abc';
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
 
   const res = await callIdentity('create_checkout', session.token);
   assert.equal(res.statusCode, 200);
@@ -234,7 +234,7 @@ test('create_billing_portal: with stripeCustomerId → 200, portalUrl present', 
   const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.stripeCustomerId = 'cus_portal_test';
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
 
   const res = await callIdentity('create_billing_portal', session.token);
   assert.equal(res.statusCode, 200, `Expected 200, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
@@ -268,7 +268,7 @@ test('create_checkout: active Pro team → 409, no Stripe call made', async () =
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'pro'; stored.planStatus = 'active';
   stored.stripeCustomerId = 'cus_already'; stored.stripeSubscriptionId = 'sub_already';
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
 
   const res = await callIdentity('create_checkout', session.token);
   assert.equal(res.statusCode, 409);

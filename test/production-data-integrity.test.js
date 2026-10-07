@@ -38,7 +38,7 @@ globalThis.fetch = async (_url, options = {}) => {
 
 const store = await import('../api/_identityStore.js');
 const { readSecret } = await import('../api/_http.js');
-const { DEFAULT_TEAM, loadTeams, saveTeams, legacySeedEnabled } = store;
+const { withIdentityLock, DEFAULT_TEAM, loadTeams, saveTeams, legacySeedEnabled } = store;
 
 const TEAMS_KEY = 'app:identity:teams';
 const REAL = { id: 'boitsfort', name: 'Boitsfort', teamName: 'Seniors', sport: 'Rugby',
@@ -73,7 +73,7 @@ test('P0-2 (1): a production save containing DEFAULT_TEAM is REJECTED', async ()
   setStore([REAL]);
   await asProduction(async () => {
     await assert.rejects(
-      () => saveTeams([DEFAULT_TEAM, REAL]),
+      () => withIdentityLock(() => saveTeams([DEFAULT_TEAM, REAL])),
       err => err.code === 'default_team_write_blocked',
       'the placeholder must not reach a store that does not hold it');
   });
@@ -83,7 +83,7 @@ test('P0-2 (1): a production save containing DEFAULT_TEAM is REJECTED', async ()
 test('P0-2 (2): a production save WITHOUT the placeholder still works', async () => {
   setStore([REAL]);
   await asProduction(async () => {
-    await saveTeams([{ ...REAL, plan: 'enterprise' }]);
+    await withIdentityLock(() => saveTeams([{ ...REAL, plan: 'enterprise' }]));
   });
   assert.equal(readStore().length, 1);
   assert.equal(readStore()[0].plan, 'enterprise', 'an ordinary tenant update is unaffected');
@@ -95,7 +95,7 @@ test('P0-2 (3): development behaviour is preserved — the placeholder round-tri
     assert.equal(legacySeedEnabled(), true, 'dev really is a seeding runtime');
     const loaded = await loadTeams();
     assert.equal(loaded.some(t => t.id === DEFAULT_TEAM.id), true, 'loadTeams still offers it');
-    await saveTeams(loaded);               // must NOT throw: it was already stored
+    await withIdentityLock(() => saveTeams(loaded));               // must NOT throw: it was already stored
   });
   assert.equal(readStore().some(t => t.id === DEFAULT_TEAM.id), true, 're-saved unchanged');
 });
@@ -103,7 +103,7 @@ test('P0-2 (3): development behaviour is preserved — the placeholder round-tri
 test('P0-2 (4): the real Boitsfort tenant is never altered by the guard', async () => {
   setStore([REAL]);
   await asProduction(async () => {
-    await assert.rejects(() => saveTeams([DEFAULT_TEAM, { ...REAL, plan: 'trial' }]));
+    await assert.rejects(() => withIdentityLock(() => saveTeams([DEFAULT_TEAM, { ...REAL, plan: 'trial' }])));
   });
   const after = readStore();
   assert.deepEqual(after, [REAL], 'the rejected write changed nothing at all');
@@ -119,7 +119,7 @@ test('P0-2 (5): the guard holds when NODE_ENV is absent — it keys off DATA, no
     assert.equal(process.env.NODE_ENV, undefined, 'no production signal present');
     const loaded = await loadTeams();
     assert.equal(loaded[0].id, DEFAULT_TEAM.id, 'loadTeams injected the placeholder');
-    await assert.rejects(() => saveTeams(loaded), err => err.code === 'default_team_write_blocked',
+    await assert.rejects(() => withIdentityLock(() => saveTeams(loaded)), err => err.code === 'default_team_write_blocked',
       'and saving it back is refused even with no NODE_ENV');
   });
   assert.deepEqual(readStore(), [REAL], 'production store still holds only the real tenant');
@@ -128,7 +128,7 @@ test('P0-2 (5): the guard holds when NODE_ENV is absent — it keys off DATA, no
 test('P0-2 (6): the guard fails LOUDLY — it never silently strips and continues', async () => {
   setStore([REAL]);
   await asProduction(async () => {
-    await assert.rejects(() => saveTeams([DEFAULT_TEAM, REAL]));
+    await assert.rejects(() => withIdentityLock(() => saveTeams([DEFAULT_TEAM, REAL])));
   });
   // A silent strip would have written [REAL] and reported success; the caller
   // would never learn its input was altered.

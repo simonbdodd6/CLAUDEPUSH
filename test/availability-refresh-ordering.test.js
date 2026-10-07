@@ -356,7 +356,7 @@ test('browser: an older board reply released after a newer one never regresses t
     await S.approveJoinRequest(p1.teamMember.id, club.user.id, club.team.id);
     const members = await S.loadTeamMembers();
     for (const m of members) if (m.teamId === club.team.id && m.userId === p1.user.id) m.playerGroupId = U18.id;
-    await S.saveTeamMembers(members);
+    await S.withIdentityLock(() => S.saveTeamMembers(members));
     const login = async (page, email) => {
       await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#ce-welcome', { timeout: 20000 });

@@ -60,6 +60,7 @@ import { listClubInvites, findInviteByToken, persistInvite,
          migrateLegacyInvites } from './_inviteStore.js';
 import { setCors, readSecret } from './_http.js';
 import { randomBytes } from 'node:crypto';
+import { withIdentityLock } from './_lock.js';
 import { kvConfigured, kvGet, kvSet } from './_kv.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantRole, requireTenantPermission, requireClubManage, can, PERM } from './_tenant.js';
@@ -835,7 +836,8 @@ export default async function handler(req, res) {
         }
         const result = await permanentlyDeleteTeamMember(memberId, session.user.id, session.teamId);
         // Any unused invitation tied to this person can no longer be claimed.
-        const invitesRevoked = await revokeInvitesForDeletedMember(target, targetName, targetEmail);
+        // Build 135: the club's invite list is read and changed in one locked section.
+        const invitesRevoked = await withIdentityLock(() => revokeInvitesForDeletedMember(target, targetName, targetEmail));
         await auditLog('member_deleted_permanently', {
           memberId, deletedMemberId: memberId, userId: result.userId, teamId: session.teamId,
           performedBy: session.user.id, timestamp: result.deletedAt,
