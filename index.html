@@ -47435,7 +47435,10 @@
       setTimeout(() => document.getElementById(isGroup ? 'invite-first-input' : 'invite-name-input')?.focus(), 80);
     }
 
-    async function acceptInvite() {
+    // confirmDifferentPerson: the claimer answered the possible_duplicate_player
+    // question "I'm a different person" — sent with that one retry only (the
+    // button calls this with no argument).
+    async function acceptInvite({ confirmDifferentPerson = false } = {}) {
       if (!_inviteData) return;
       const isGroup = !!_inviteData.group;
       let name;
@@ -47476,10 +47479,11 @@
         const res = await fetch('/api/identity', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'claim_invite', token: _inviteToken, name, email, password, mobile, position }),
+          body: JSON.stringify({ action: 'claim_invite', token: _inviteToken, name, email, password, mobile, position,
+            ...(confirmDifferentPerson === true ? { confirmDifferentPerson: true } : {}) }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || data.ok === false) { const err = new Error(data.error || 'claim failed'); err.status = res.status; throw err; }
+        if (!res.ok || data.ok === false) { const err = new Error(data.error || 'claim failed'); err.status = res.status; err.code = data.code; throw err; }
         // The claim moved this session into the invite's club. A device that
         // held ANOTHER club's state (the production case: an existing user
         // joining a second club in the same browser) is wiped here — before
@@ -47539,6 +47543,16 @@
         showToast(`Welcome ${name.split(' ')[0]}! Your account is ready.`);
       } catch(e) {
         console.warn('[invite] claim failed', e);
+        // Someone of this name already plays here, and this email is new: the
+        // server asks rather than minting a second player. Joining again is
+        // only for a DIFFERENT person; the same person signs in instead.
+        if (e?.code === 'possible_duplicate_player') {
+          if (btn) { btn.disabled = false; btn.textContent = 'Continue & join →'; }
+          const different = await ceDialog({ title: 'Already registered?', body: String(e.message || ''),
+            confirmLabel: "I'm a different person", cancelLabel: 'Sign in instead' });
+          if (different) return acceptInvite({ confirmDifferentPerson: true });
+          return;
+        }
         showToast(friendlyAuthError(e, 'invite'));
         // 403 here means EXACTLY "this email already has an account and that
         // password didn't match it" — flip the modal into sign-in wording so

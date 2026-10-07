@@ -42,6 +42,7 @@
 // module never fabricates or copies them.
 
 import { isPlayingMember, resolvePlayerGroup } from './_accessScope.js';
+import { canonicalRole } from './_permissions.js';
 
 export const ROSTER_MAX_PLAYERS = 200;
 
@@ -82,10 +83,88 @@ export function rowMatchesMember(row, member, profile = null) {
   return false;
 }
 
+/**
+ * WHO IS A PLAYER ON THE ROSTER — the one server rule (duplicate-player
+ * investigation, 2026-10-07).
+ *
+ * An ACTIVE membership of the club whose club role is player, OR a staff
+ * membership that ALSO plays — the explicit dual role, which always carries a
+ * player profile: an admin's "Plays for" (set_player_group) creates one, and a
+ * player who became staff keeps theirs (RC4.7 C.1).
+ *
+ * A staff membership holding a playerGroupId but NO player profile is not a
+ * player. That shape had exactly one source: a manager or coach opening the
+ * squad's PLAYER join link kept their staff role (never asked a position, no
+ * profile) yet had the link's group stamped on — and the projection then
+ * minted them a "TBC" row, so staff appeared in Available Players.
+ */
+export function isPlayerCapableMember(member, profiles = []) {
+  if (!member || member.status !== 'active' || !isPlayingMember(member)) return false;
+  if (canonicalRole(member) === 'player') return true;
+  return Boolean(profileForMember(profiles, member));
+}
+
 /** Active memberships of THIS club that represent someone who plays. */
-export function activePlayingMembers(members, teamId) {
+export function activePlayingMembers(members, teamId, profiles = []) {
   return (Array.isArray(members) ? members : []).filter(m =>
-    m && s(m.teamId) === s(teamId) && m.status === 'active' && isPlayingMember(m));
+    m && s(m.teamId) === s(teamId) && isPlayerCapableMember(m, profiles));
+}
+
+/**
+ * WHAT THE ROSTER READ RETURNS AS PLAYERS.
+ *
+ * The roster record is a projection plus coach-kept detail, and it can hold
+ * rows that are not this club's players: a staff member's row (above), or a
+ * row tied to an account with no membership in this club at all (another
+ * club's person — the residue of the cross-club overwrite Build 132 found).
+ * Those rows are WITHHELD from the read, never deleted: the write path keeps
+ * them verbatim (keepWithheldRows), so nothing a coach typed is lost and a
+ * later repair can still see them.
+ *
+ * Everything else travels exactly as before: rows of club players, unlinked
+ * rows (trialist / CSV, no account), legacy compatibility ids that are not
+ * accounts, and rows of removed / archived / pending members (Members keeps
+ * its history views; the player surfaces already require an ACTIVE
+ * membership in the operating group).
+ */
+export function rosterRowStanding(row, { members, users, profiles, teamId }) {
+  const uid = s(row?.userId);
+  if (!uid) return 'unlinked';
+  const isAccount = (Array.isArray(users) ? users : []).some(u => s(u.id) === uid);
+  const mine = (Array.isArray(members) ? members : []).filter(m => s(m.teamId) === s(teamId) && s(m.userId) === uid);
+  if (!mine.length) return isAccount ? 'other_club' : 'unlinked';
+  const active = mine.find(m => m.status === 'active');
+  if (!active) return 'inactive';
+  return isPlayerCapableMember(active, profiles) ? 'player' : 'staff';
+}
+
+export function withholdNonPlayerRows({ rows, members, users, profiles, teamId }) {
+  const kept = [];
+  const withheld = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const standing = rosterRowStanding(row, { members, users, profiles, teamId });
+    if (standing === 'staff' || standing === 'other_club') withheld.push({ row, standing });
+    else kept.push(row);
+  }
+  return {
+    rows: kept,
+    withheld: withheld.map(w => w.row),
+    counts: { staff: withheld.filter(w => w.standing === 'staff').length,
+              otherClub: withheld.filter(w => w.standing === 'other_club').length },
+  };
+}
+
+/**
+ * The write half: a stored row the read withheld can never be erased by a
+ * save that omitted it (a device never saw it, so the omission is not an
+ * edit). Re-appended verbatim unless the save carries a row with its id.
+ */
+export function keepWithheldRows({ storedRows, nextRows, members, users, profiles, teamId }) {
+  const next = Array.isArray(nextRows) ? nextRows : [];
+  const ids = new Set(next.map(r => s(r.id)));
+  const { withheld } = withholdNonPlayerRows({ rows: storedRows, members, users, profiles, teamId });
+  const kept = withheld.filter(r => !ids.has(s(r.id)));
+  return { rows: kept.length ? [...next, ...kept] : next, kept };
 }
 
 /**
@@ -198,10 +277,57 @@ export function preserveStoredFields({ storedRows, nextRows }) {
   return { rows, preserved };
 }
 
+/**
+ * ONE ROW PER ACCOUNT, at the write (duplicate-player investigation).
+ *
+ * A save could carry the same person twice — the same account under the same
+ * id, or under two ids (an invite id and the user_ id) — and both rows were
+ * stored. Rows are collapsed only when they name the SAME ACCOUNT (userId) AND
+ * the same person (normalised name, or one of them unnamed): a matching name
+ * alone never merges anyone, and a userId shared by two different names is a
+ * corruption to report, not to guess at — both are kept. The surviving row is
+ * the one holding a STORED id for that account (availability, medical and
+ * appearances are keyed by it), else the first; blanks are filled from the
+ * others, nothing filled is overwritten. Exact same-id repeats of an unlinked
+ * row collapse the same way. Pure.
+ */
+export function collapseDuplicateRows({ rows, storedRows = [] }) {
+  const list = Array.isArray(rows) ? rows : [];
+  const storedIds = new Set((Array.isArray(storedRows) ? storedRows : []).map(r => s(r.id)));
+  const groups = new Map();
+  const order = [];
+  for (const row of list) {
+    if (!row || typeof row !== 'object') { order.push({ solo: row }); continue; }
+    const k = s(row.userId) ? `u:${s(row.userId)}` : `i:${s(row.id)}`;
+    if (!groups.has(k)) { groups.set(k, []); order.push({ k }); }
+    groups.get(k).push(row);
+  }
+  let collapsed = 0;
+  const out = [];
+  for (const entry of order) {
+    if (!entry.k) { out.push(entry.solo); continue; }
+    const g = groups.get(entry.k);
+    const names = new Set(g.map(r => nameKeyOf(r.name)).filter(Boolean));
+    if (g.length === 1 || names.size > 1) { out.push(...g); continue; }
+    const keep = g.find(r => storedIds.has(s(r.id))) || g[0];
+    const merged = { ...keep };
+    for (const other of g) {
+      if (other === keep) continue;
+      for (const [f, v] of Object.entries(other)) {
+        if (isBlankValue(merged[f]) && !isBlankValue(v)) merged[f] = v;
+        else if (f === 'position' && isPlaceholderPosition(merged[f]) && !isPlaceholderPosition(v)) merged[f] = v;
+      }
+      collapsed++;
+    }
+    out.push(merged);
+  }
+  return { rows: out, collapsed };
+}
+
 export function protectCanonicalRows({ storedRows, nextRows, members, profiles, teamId }) {
   const stored = Array.isArray(storedRows) ? storedRows : [];
   const next = Array.isArray(nextRows) ? nextRows : [];
-  const playing = activePlayingMembers(members, teamId);
+  const playing = activePlayingMembers(members, teamId, profiles);
   const nextIds = new Set(next.map(r => s(r.id)));
   const kept = [];
   for (const row of stored) {
@@ -232,7 +358,7 @@ export function reconcileMissingRows({ rows, members, users, profiles, structure
   const userById = new Map((Array.isArray(users) ? users : []).map(u => [s(u.id), u]));
   let changed = false;
   const created = [];
-  for (const member of activePlayingMembers(members, teamId)) {
+  for (const member of activePlayingMembers(members, teamId, profiles)) {
     if (!resolvePlayerGroup(member, structure).groupId) continue;
     const prof = profileForMember(profiles, member);
     const match = current.find(r => rowMatchesMember(r, member, prof));

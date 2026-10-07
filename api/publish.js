@@ -30,7 +30,8 @@ import {
 } from './_structureStore.js';
 import { effectiveAccessScope, resolveEligibility, resolvePlayerGroup, isPlayingMember,
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
-import { protectCanonicalRows, reconcileMissingRows, preserveStoredFields } from './_rosterProjection.js';
+import { protectCanonicalRows, reconcileMissingRows, preserveStoredFields,
+         withholdNonPlayerRows, keepWithheldRows, collapseDuplicateRows } from './_rosterProjection.js';
 import { isSafeName, isSafeEmailText } from './_safeText.js';
 import { withStoreLock } from './_lock.js';
 import {
@@ -637,7 +638,16 @@ async function rosterHandler(req, res) {
 
   if (req.method === 'GET') {
     const stored = (await readScoped(rosterKey(session.teamId), 'roster', session.teamId)) || null;
-    const all = stored?.players || [];
+    // Only the club's PLAYERS travel as players: a staff member's row, or a row
+    // tied to another club's account, is withheld here — never deleted (the
+    // write path keeps it). See withholdNonPlayerRows (_rosterProjection.js).
+    const scope = await rosterScope(session);
+    const [rosterUsers, rosterProfiles] = await Promise.all([loadUsers(), loadPlayerProfiles()]);
+    const standing = withholdNonPlayerRows({
+      rows: stored?.players || [], members: scope.members, users: rosterUsers, profiles: rosterProfiles, teamId: session.teamId,
+    });
+    const all = standing.rows;
+    const withheld = standing.withheld.length ? { withheld: standing.counts } : {};
 
     // ── D1b — OPERATIONAL group filtering, server-side ──
     // A named group is authorised against the caller's own capacity, so a
@@ -649,10 +659,10 @@ async function rosterHandler(req, res) {
     // club-administration surface.
     const requested = String(req.query?.group || '').trim();
     if (!requested) {
-      const { coversClub, inScope } = await rosterScope(session);
+      const { coversClub, inScope } = scope;
       if (coversClub) {
         return res.status(200).json({
-          ok: true, players: all,
+          ok: true, players: all, ...withheld,
           updatedAt: stored?.updatedAt || null, updatedBy: stored?.updatedBy || null,
         });
       }
@@ -662,7 +672,7 @@ async function rosterHandler(req, res) {
       });
     }
 
-    const { structure, asCapacity, groupOf } = await rosterScope(session);
+    const { structure, asCapacity, groupOf } = scope;
     let group;
     try {
       group = assertOperationalGroup(session, structure, requested, { as: asCapacity });
@@ -710,7 +720,12 @@ async function rosterHandler(req, res) {
     // A blank never erases what the club holds (Build 133, see
     // preserveStoredFields): applied before either branch, so a club-wide
     // replace and a group-scoped merge both keep stored detail.
-    const submitted = preserveStoredFields({ storedRows, nextRows: sanitised }).rows;
+    // One row per account (collapseDuplicateRows): a payload naming the same
+    // person twice — same id, or an invite id beside the user_ id — is stored
+    // once, under the stored history id.
+    const submitted = collapseDuplicateRows({
+      rows: preserveStoredFields({ storedRows, nextRows: sanitised }).rows, storedRows,
+    }).rows;
     let players = submitted;
     if (!coversClub) {
       const submittedById = new Map(submitted.filter(inScope).map(p => [String(p.id), p]));
@@ -735,6 +750,11 @@ async function rosterHandler(req, res) {
     // next organic save). Server-side canonical data only — nothing here is
     // derived from, or widened by, what the caller sent.
     const [users, profiles] = await Promise.all([loadUsers(), loadPlayerProfiles()]);
+    // Rows the read withholds (staff, another club's account) were never on
+    // the device, so their absence from a save is not a deletion.
+    players = keepWithheldRows({
+      storedRows, nextRows: players, members, users, profiles, teamId: session.teamId,
+    }).rows;
     players = protectCanonicalRows({
       storedRows, nextRows: players, members, profiles, teamId: session.teamId,
     }).rows;
