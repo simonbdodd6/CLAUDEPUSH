@@ -1410,6 +1410,24 @@ export async function claimInvite(input = {}) {
   const name = String(input.name || invite.name || '').trim();
   if (isGroup && !name) throw new Error('Your name is required');
   if (name) assertSafePersonName(name, 'Your name');
+  // ONE PERSON, ONE MEMBERSHIP (2026-10-07). Production held five U18 players
+  // twice: each had joined through the squad link a second time, weeks later,
+  // with a DIFFERENT email — so a second account, membership and roster row,
+  // with availability split between them. The email is the account key and
+  // the server cannot prove two emails are one person, so it does not guess:
+  // a player claim that would create a NEW account where this club already
+  // has an active or pending member of the same name stops and asks. The
+  // person either signs in with the account they have, or confirms they are
+  // someone else (confirmDifferentPerson). Nothing is written before this.
+  if (!existingUser && !isStaffRole(String(invite.role || 'player')) && input.confirmDifferentPerson !== true) {
+    const twin = await sameNamedClubMember(invite.teamId || DEFAULT_TEAM.id, name);
+    if (twin) {
+      const error = new Error(`${name} is already registered in this club. If that's you, sign in with the email you joined with (or reset your password) instead — joining again creates a second, separate player. If you're a different person with the same name, confirm to continue.`);
+      error.status = 409;
+      error.code = 'possible_duplicate_player';
+      throw error;
+    }
+  }
   const parts = splitDisplayName(name);
   const user = await upsertUserAccount({
     email,
@@ -1486,7 +1504,13 @@ export async function claimInvite(input = {}) {
     await applyInviteScope(member, invite, { membershipExisted, priorWasStaff, staffInvite: inviteIsStaff });
   }
   // D1a — a player invite stamps WHERE THEY PLAY, independently of staff scope.
-  if (invite.playerGroupId) {
+  // Only on a membership that IS a player after this claim: a coach or
+  // manager opening the squad's player link keeps their staff role and is
+  // never asked a position (above), so stamping the group made them "play"
+  // without a player profile — and the roster projection then listed staff
+  // in Available Players. Making staff a player is the explicit admin action
+  // ("Plays for" / set_player_group), which also creates the player profile.
+  if (invite.playerGroupId && canonicalRole(member) === 'player') {
     await applyInvitePlayerGroup(member, String(invite.playerGroupId));
   }
   // A platform-provisioned club's first administrator IS its owner. No-op for
@@ -1513,6 +1537,29 @@ export async function claimInvite(input = {}) {
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
   await rememberLastTeam(user.id, member.teamId);   // the club just joined is the club to return to
   return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, invite, session };
+}
+
+/** A person's name as a comparison key: case, accents, spacing and punctuation folded. */
+function personNameKey(value) {
+  return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * An active or pending member of this club whose name (player profile, else
+ * account display name) is the same person's name — or null. Evidence for a
+ * question to the claimer, never a merge.
+ */
+async function sameNamedClubMember(teamId, name) {
+  const wanted = personNameKey(name);
+  if (!wanted) return null;
+  const [members, users, profiles] = await Promise.all([loadTeamMembers(), loadUsers(), loadPlayerProfiles()]);
+  return members.find(m => {
+    if (String(m.teamId) !== String(teamId) || !['active', 'pending'].includes(m.status)) return false;
+    const profile = profiles.find(p => String(p.teamId) === String(teamId) && String(p.userId) === String(m.userId));
+    const user = users.find(u => String(u.id) === String(m.userId));
+    return [profile?.displayName, user?.displayName].some(n => personNameKey(n) === wanted);
+  }) || null;
 }
 
 /**
