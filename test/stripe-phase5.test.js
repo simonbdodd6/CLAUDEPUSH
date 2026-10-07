@@ -64,7 +64,7 @@ globalThis.fetch = async (url, options = {}) => {
 };
 
 const { default: identityHandler } = await import('../api/identity.js');
-const {
+const { withIdentityLock,
   createClub,
   loadTeams,
   loadStoredTeams,
@@ -117,7 +117,7 @@ async function makeTeamWithSubscription(suffix, { customerId = null, subscriptio
   const stored = teams.find(t => t.id === created.team.id);
   if (customerId) stored.stripeCustomerId = customerId;
   if (subscriptionId) stored.stripeSubscriptionId = subscriptionId;
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
   return created.team;
 }
 
@@ -182,7 +182,7 @@ test('customer.subscription.updated → updates planStatus by Stripe status', as
   const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'pro'; stored.planStatus = 'active';
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
 
   registerEvent('evt_sub_updated', 'customer.subscription.updated', {
     id: 'sub_update_test',
@@ -213,7 +213,7 @@ test('customer.subscription.deleted → plan:core, planStatus:canceled, subscrip
   const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'pro'; stored.planStatus = 'active';
-  await saveTeams(teams);
+  await withIdentityLock(() => saveTeams(teams));
 
   registerEvent('evt_sub_deleted', 'customer.subscription.deleted', {
     id: 'sub_del_test',

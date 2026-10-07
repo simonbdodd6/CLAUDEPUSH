@@ -1,4 +1,5 @@
-import { kvGet, kvSet, kvSetNX, kvDel, kvScanKeys } from './_kv.js';
+import { kvGet, kvSet, kvScanKeys } from './_kv.js';
+import { withStoreLock } from './_lock.js';
 import { APP_PREFIX, LEGACY_PREFIX, key, availabilityKey, legacyAvailabilityKey, teamAvailabilityKey, groupAvailabilityKey } from './_keys.js';
 import { DEFAULT_TEAM } from './_identityStore.js';
 import { INITIAL_GROUP_ID } from './_structureStore.js';
@@ -99,28 +100,14 @@ export function availabilityWriteLockKey(clubId, groupId, sessionId) {
 }
 
 export async function withAvailabilityWriteLock(clubId, groupId, sessionId, fn) {
+  // The shared write-lock primitive (Build 135, api/_lock.js) — the same
+  // SET NX EX + token-checked release this function always used, with its key,
+  // timings and busy answer unchanged.
   const lockKey = availabilityWriteLockKey(clubId, groupId, sessionId);
-  const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  const deadline = Date.now() + WRITE_LOCK_WAIT_MS;
-  let held = false;
-  for (;;) {
-    if (await kvSetNX(lockKey, token, WRITE_LOCK_TTL_SECONDS)) { held = true; break; }
-    if (Date.now() >= deadline) break;
-    await new Promise(resolve => setTimeout(resolve, 15 + Math.floor(Math.random() * 35)));
-  }
-  if (!held) {
-    const error = new Error('Availability is busy — please try again in a moment');
-    error.status = 503;
-    error.code = 'busy';
-    throw error;
-  }
-  try {
-    return await fn();
-  } finally {
-    // Best effort, and only our own lock: a lock that expired and was taken
-    // by another writer is theirs to release.
-    try { if ((await kvGet(lockKey)) === token) await kvDel(lockKey); } catch { /* the TTL will free it */ }
-  }
+  return withStoreLock(`availability:${lockKey}`, fn, {
+    lockKey, ttlSeconds: WRITE_LOCK_TTL_SECONDS, waitMs: WRITE_LOCK_WAIT_MS,
+    busyMessage: 'Availability is busy — please try again in a moment',
+  });
 }
 
 /** Read every availability record for ONE group, keyed by sessionId. */

@@ -29,6 +29,7 @@ import { isStaffRole } from './_permissions.js';
 import { loadClubStructure, groupById, teamById } from './_structureStore.js';
 import { effectiveAccessScope, getAccessibleGroups, canManageGroup, canManageTeam } from './_accessScope.js';
 import { randomBytes } from 'node:crypto';
+import { withIdentityLock } from './_lock.js';
 
 // Invitations live in api/_inviteStore.js, one list per club. Nothing in this
 // route reads or writes the old shared list directly any more.
@@ -532,14 +533,29 @@ export default async function handler(req, res) {
       }
       invite.emailDelivery = emailDelivery;
       if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();
-      await persistInvite(found);
+      // Build 135: the invite was read BEFORE the (slow) email send. Saving
+      // that copy could undo a claim or revoke that landed meanwhile — and turn
+      // a used single-use link back into a live one. Re-read under the lock and
+      // change only the delivery fields.
+      await withIdentityLock(async () => {
+        const fresh = await findInviteByToken(invite.token);
+        if (!fresh) return;
+        fresh.invite.emailDelivery = invite.emailDelivery;
+        if (invite.emailSentAt) fresh.invite.emailSentAt = invite.emailSentAt;
+        await persistInvite(fresh);
+      });
       await auditLog('invite_resent', { token: invite.token.slice(-8), email: invite.email, by: session.user.id, ip: requestIp(req) });
       return res.status(200).json({ ok: true, invite, emailDelivery });
     }
 
-    found.invite.status     = 'accepted';
-    found.invite.acceptedAt = new Date().toISOString();
-    await persistInvite(found);
+    // Build 135: decided on a fresh read under the lock (see resend above).
+    await withIdentityLock(async () => {
+      const fresh = await findInviteByToken(found.invite.token) || found;
+      fresh.invite.status     = 'accepted';
+      fresh.invite.acceptedAt = new Date().toISOString();
+      found.invite = fresh.invite;
+      await persistInvite(fresh);
+    });
 
     console.log(`[invite] Accepted: ${found.invite.name} (${found.invite.role})`);
     return res.status(200).json({ ok: true, invite: found.invite });
@@ -568,10 +584,14 @@ export default async function handler(req, res) {
     }
 
     // Soft-revoke (keep record for audit, just change status)
-    found.invite.status = 'revoked';
-    found.invite.revokedAt = new Date().toISOString();
-    found.invite.revokedBy = session.user.id;
-    await persistInvite(found);
+    await withIdentityLock(async () => {
+      const fresh = await findInviteByToken(found.invite.token) || found;   // Build 135: fresh read under the lock
+      fresh.invite.status = 'revoked';
+      fresh.invite.revokedAt = new Date().toISOString();
+      fresh.invite.revokedBy = session.user.id;
+      found.invite = fresh.invite;
+      await persistInvite(fresh);
+    });
 
     console.log(`[invite] Revoked: ${found.invite.name} (${found.invite.role})`);
     return res.status(200).json({ ok: true });

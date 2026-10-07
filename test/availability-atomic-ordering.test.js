@@ -106,7 +106,7 @@ async function u18Club(label) {
   }
   const members = await S.loadTeamMembers();
   for (const m of members) if (m.teamId === club.team.id && players.some(p => p.user.id === m.userId)) m.playerGroupId = U18.id;
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
   // Minted one at a time: createSession is itself a load→push→save of the
   // session list, so concurrent mints would lose each other's tokens.
   const sessions = [];

@@ -1,6 +1,7 @@
 import { kvGet, kvSet } from './_kv.js';
 import { key } from './_keys.js';
 import { createHash } from 'node:crypto';
+import { withStoreLock } from './_lock.js';
 
 const AUDIT_KEY = key('identity:audit_log');
 
@@ -38,15 +39,27 @@ export async function enforceRateLimit(scope, identifier, { limit = 5, windowMs 
 }
 
 export async function auditLog(event, details = {}) {
-  const existing = (await kvGet(AUDIT_KEY)) || [];
   const entry = {
     id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     event,
     at: new Date().toISOString(),
     ...details,
   };
-  const next = [entry, ...(Array.isArray(existing) ? existing : [])].slice(0, 500);
-  await kvSet(AUDIT_KEY, next);
+  // Build 135: the log is one array rewritten whole, so two entries written in
+  // the same window lost one. Serialised under its own lock. An audit entry is
+  // written AFTER the action it records has committed, so a lock that stays
+  // busy must not turn that success into an error: the entry is dropped with a
+  // server-side note instead — never written over someone else's.
+  try {
+    await withStoreLock('audit_log', async () => {
+      const existing = (await kvGet(AUDIT_KEY)) || [];
+      const next = [entry, ...(Array.isArray(existing) ? existing : [])].slice(0, 500);
+      await kvSet(AUDIT_KEY, next);
+    }, { ttlSeconds: 5, waitMs: 3000 });
+  } catch (error) {
+    if (error?.code !== 'busy') throw error;
+    console.error(`[audit] entry not recorded (log busy): ${event}`);
+  }
   return entry;
 }
 

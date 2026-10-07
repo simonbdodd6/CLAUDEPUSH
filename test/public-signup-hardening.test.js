@@ -39,7 +39,7 @@ globalThis.fetch = async (_u, o = {}) => {
     if (a.includes('NX') && kv.has(a[0])) r = null;             // honour SET ... NX
     else { kv.set(a[0], a[1]); r = 'OK'; }
   }
-  if (c === 'DEL') { dels.push(a[0]); kv.delete(a[0]); r = 1; }
+  if (c === 'DEL') { if (!String(a[0]).includes(':lock:')) dels.push(a[0]); kv.delete(a[0]); r = 1; }   // Build 135: lock keys are coordination, not data — not counted
   if (c === 'SCAN') { const re = globToRe(a[2] || '*'); r = ['0', [...kv.keys()].filter(k => re.test(k))]; }
   if (c === 'EXPIRE' || c === 'LPUSH' || c === 'LTRIM') r = 1;
   return { ok: true, json: async () => ({ result: r }) };

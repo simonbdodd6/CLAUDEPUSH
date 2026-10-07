@@ -58,7 +58,7 @@ async function joinExisting(userId, teamId, role = 'coach') {
   const members = await S.loadTeamMembers();
   members.push({ id: 'tm_' + (seq++) + '_' + teamId, teamId, userId, role,
     staffLevel: role === 'coach' ? 'head' : null, status: 'active', joinedAt: '2026-01-01T00:00:00.000Z' });
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
 }
 const clubOf = r => r.teamMember.teamId;
 const login = email => S.loginUser({ email, password: PW });
@@ -80,7 +80,7 @@ test('1. an account that has never chosen still prefers the default club', async
   await joinExisting(club.user.id, 'boitsfort-rfc');
   const users = await S.loadUsers();
   users.forEach(u => { if (u.id === club.user.id) delete u.lastTeamId; });
-  await S.saveUsers(users);
+  await S.withIdentityLock(() => S.saveUsers(users));
   assert.equal(clubOf(await login(email)), 'boitsfort-rfc', 'the default club still wins when nothing was chosen');
 });
 
@@ -121,7 +121,7 @@ async function makePlatformAdmin(userId) {
   const users = await S.loadUsers();
   const u = users.find(x => x.id === userId);
   u.platformRole = 'platform_admin';
-  await S.saveUsers(users);
+  await S.withIdentityLock(() => S.saveUsers(users));
 }
 
 test('3. a platform admin chooses clubs the same way, and stays a platform admin', async () => {
@@ -236,7 +236,7 @@ test('a remembered club that is no longer valid is ignored, not obeyed', async (
   // The membership is then withdrawn (the account left that club).
   const members = await S.loadTeamMembers();
   members.forEach(m => { if (m.userId === mine.user.id && m.teamId === 'boitsfort-rfc') m.status = 'removed'; });
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
 
   assert.equal(clubOf(await login(email)), mine.team.id,
     'login falls through to a club the account really belongs to');
@@ -265,7 +265,7 @@ test('login records the club it opened, so the record cannot drift from reality'
   // Forget everything: an account created before this field existed.
   let users = await S.loadUsers();
   users.forEach(u => { if (u.id === mine.user.id) delete u.lastTeamId; });
-  await S.saveUsers(users);
+  await S.withIdentityLock(() => S.saveUsers(users));
 
   const first = await login(email);                     // resolves through the default club
   assert.equal(first.teamMember.teamId, 'boitsfort-rfc');

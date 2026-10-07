@@ -159,7 +159,7 @@ async function makeClub(label, { seniors = [], u18 = [] } = {}) {
   }
   const members = await S.loadTeamMembers();
   for (const m of members) { const who = Object.values(people).find(p => p.user.id === m.userId); if (who && m.teamId === club.team.id) m.playerGroupId = who.gid; }
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
   for (const p of Object.values(people)) p.session = await S.createSession({ userId: p.user.id, teamId: club.team.id, role: 'player' });
   const coach = await S.createSession({ userId: club.user.id, teamId: club.team.id, role: 'coach' });
   return { club, teamId: club.team.id, SEN, U18, people, coach, label };
@@ -203,7 +203,7 @@ test('SERVER identity. a display name is never an identity: two same-named playe
   await S.approveJoinRequest(twin.teamMember.id, c.club.user.id, c.teamId);
   const members = await S.loadTeamMembers();
   for (const m of members) if (m.teamId === c.teamId && m.userId === twin.user.id) m.playerGroupId = c.SEN;
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
   c.people.Alex2 = { ...twin, name: 'Alex Smith', gid: c.SEN, session: await S.createSession({ userId: twin.user.id, teamId: c.teamId, role: 'player' }) };
   await subscribe(c.people.Alex); await subscribe(c.people.Alex2);
   await answer(c.people.Alex, TUE_THIS, 'unavailable', 'work');
@@ -254,7 +254,7 @@ test('SERVER group. another GROUP\'s answers under the same occurrence id excuse
   await answer(c.people.Dua, TUE_THIS, 'maybe');
   const members = await S.loadTeamMembers();
   for (const m of members) if (m.teamId === c.teamId && m.userId === c.people.Dua.user.id) m.playerGroupId = c.SEN;
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
   assert.deepEqual(await stored(c, c.SEN, TUE_THIS), [], 'the Seniors record holds no answer of his');
   assert.deepEqual(recipients(await chase(c, { group: c.SEN, sessionIds: [TUE_THIS] })), ids(c, 'Dua', 'Sam', 'Stu'),
     'so in the Seniors he still owes one — another group\'s record excuses nobody here');

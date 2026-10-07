@@ -32,6 +32,7 @@
 // teamId, which only the server ever writes.
 import { kvGet, kvSet, kvScanKeys } from './_kv.js';
 import { key, invitesKey, legacyInvitesKey, invitesKeyPattern } from './_keys.js';
+import { withIdentityLock, assertStoreLockHeld, IDENTITY_LOCK } from './_lock.js';
 
 /** Unchanged from the global list — but now spent per club, not shared. */
 export const MAX_INVITES_PER_CLUB = 200;
@@ -65,6 +66,7 @@ async function readLegacyList() {
   return asArray(await kvGet(legacyInvitesKey()));
 }
 async function writeClubList(teamId, list) {
+  await assertStoreLockHeld(IDENTITY_LOCK);   // Build 135: the list is rewritten whole — only under the lock
   await kvSet(invitesKey(String(teamId || '')), asArray(list).slice(0, MAX_INVITES_PER_CLUB));
 }
 
@@ -151,6 +153,7 @@ export async function persistInvite({ invite, teamId, source } = {}) {
     const at = legacy.findIndex(i => tokenOf(i) === wanted);
     if (at < 0) return false;
     legacy[at] = invite;
+    await assertStoreLockHeld(IDENTITY_LOCK);
     await kvSet(legacyInvitesKey(), legacy);
     return true;
   }
@@ -225,4 +228,15 @@ export async function migrateLegacyInvites({ dryRun = false } = {}) {
     report.clubs[id] = { migrated: fresh.length, alreadyMigrated: records.length - fresh.length };
   }
   return report;
+}
+
+// ─── INVITATION WRITES RUN UNDER THE IDENTITY LOCK (Build 135) ──────────────
+// Each list is read and rewritten whole, so two writers in the same window
+// (two coaches inviting, a claim and a revoke) lost one change. The writers
+// re-read the list INSIDE the lock; a claim already holding it re-enters.
+{
+  const append = appendClubInvite, persist = persistInvite, migrate = migrateLegacyInvites;
+  appendClubInvite = (...a) => withIdentityLock(() => append(...a));
+  persistInvite = (...a) => withIdentityLock(() => persist(...a));
+  migrateLegacyInvites = (...a) => withIdentityLock(() => migrate(...a));
 }

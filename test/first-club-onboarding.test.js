@@ -19,6 +19,7 @@ process.env.APP_KEY_PREFIX          = 'app';
 // (public club creation is otherwise CLOSED behind platform provisioning).
 process.env.PUBLIC_CLUB_SIGNUP = 'true';
 process.env.VERCEL                  = '1';   // production mode: no legacy seeding
+process.env.VERCEL_ENV              = 'production';   // Build 135: as a real deployment sets it (VERCEL alone is ambiguous → storage refused)
 
 const kv = new Map();
 globalThis.fetch = async (_url, options = {}) => {

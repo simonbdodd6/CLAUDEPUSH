@@ -47,7 +47,7 @@ globalThis.fetch = async (_url, options = {}) => {
   return { ok: true, json: async () => ({ result }) };
 };
 
-const {
+const { withIdentityLock,
   publicUser,
   createJoinRequest,
   createClub,
@@ -216,7 +216,7 @@ test('existing Redis user without emailVerified field: publicUser returns false'
   const legacyUsers = [
     { id: 'legacy-u1', email: 'legacy@user.test', displayName: 'Legacy User', passwordSet: false, authProvider: 'legacy-compatibility' },
   ];
-  await saveUsers(legacyUsers);
+  await withIdentityLock(() => saveUsers(legacyUsers));
 
   const users = await loadUsers();
   const raw = users.find(u => u.id === 'legacy-u1');

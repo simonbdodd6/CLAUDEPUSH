@@ -219,7 +219,7 @@ const ROSTER = [
 async function seedCases() {
   kv.clear();
   const at = (d) => d + 'T10:00:00.000Z';
-  await store.saveMedicalRecord(CLUB, { cases: [
+  await store.withMedicalLock(CLUB, () => store.saveMedicalRecord(CLUB, { cases: [
     { id: 'mc_a', playerId: 'pA', playerGroupId: GRP, status: 'active', condition: 'Hamstring strain', bodyLocation: 'Hamstring', severity: 'moderate',
       dateInjured: '2026-09-10', trainingStatus: 'unavailable', returnTarget: '2026-09-26', notes: 'Grade 2', timeline: [{ at: at('2026-09-10'), by: 'u-physio', action: 'opened', note: 'Injury logged' }] },
     { id: 'mc_b', playerId: 'pB', playerGroupId: GRP, status: 'active', condition: 'Calf tear', severity: 'minor',
@@ -231,7 +231,7 @@ async function seedCases() {
     { id: 'mc_f', playerId: 'pF', playerGroupId: GRP, status: 'resolved', condition: 'Shoulder dislocation', bodyLocation: 'Shoulder', severity: 'severe',
       dateInjured: '2026-05-01', trainingStatus: 'unavailable', returnTarget: '2026-09-22', clearanceStatus: 'cleared', resolvedAt: at('2026-08-30'), resolvedBy: 'u-physio',
       timeline: [{ at: at('2026-05-01'), by: 'u-physio', action: 'opened', note: 'Injury logged' }, { at: at('2026-07-01'), by: 'u-physio', action: 'updated', note: 'Physio — surgery done' }, { at: at('2026-08-30'), by: 'u-physio', action: 'resolved', note: '' }] },
-  ] });
+  ] }));
 }
 
 async function world(opts = {}) {

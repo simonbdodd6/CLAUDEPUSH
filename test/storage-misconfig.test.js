@@ -21,6 +21,7 @@ process.env.APP_KEY_PREFIX = 'app';
 // (public club creation is otherwise CLOSED behind platform provisioning).
 process.env.PUBLIC_CLUB_SIGNUP = 'true';
 process.env.VERCEL = '1';
+process.env.VERCEL_ENV = 'production';   // Build 135: as a real deployment sets it (VERCEL alone is ambiguous → storage refused)
 
 const GARBAGE_URL = 'UPSTASH_REDIS_REST_TOKEN="fake-pasted-token-value-12345"';
 const WRONGPASS_BODY = '{"error":"WRONGPASS invalid or missing auth token. See https://docs.upstash.com/redis/troubleshooting/http_unauthorized for details."}';

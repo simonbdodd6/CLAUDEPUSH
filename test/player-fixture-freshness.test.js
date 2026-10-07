@@ -375,7 +375,7 @@ async function makeClub(label, players) {
   }
   const members = await S.loadTeamMembers();
   for (const m of members) { const who = Object.values(c.people).find(p => p.user.id === m.userId); if (who && m.teamId === teamId && who.gid) m.playerGroupId = who.gid; }
-  await S.saveTeamMembers(members);
+  await S.withIdentityLock(() => S.saveTeamMembers(members));
   for (const p of Object.values(c.people)) p.session = await S.createSession({ userId: p.user.id, teamId, role: 'player' });
   c.coach = await S.createSession({ userId: club.user.id, teamId, role: 'coach' });
   return c;
