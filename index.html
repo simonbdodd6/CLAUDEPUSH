@@ -47553,6 +47553,14 @@
           if (different) return acceptInvite({ confirmDifferentPerson: true });
           return;
         }
+        // This account's membership was retired by a duplicate-player merge
+        // (Build 136E prep): the server's own words say what to do, instead
+        // of the generic 409 copy about a used-up invite.
+        if (e?.code === 'membership_merged') {
+          if (btn) { btn.disabled = false; btn.textContent = 'Continue & join →'; }
+          showToast(String(e.message || friendlyAuthError(e, 'invite')));
+          return;
+        }
         showToast(friendlyAuthError(e, 'invite'));
         // 403 here means EXACTLY "this email already has an account and that
         // password didn't match it" — flip the modal into sign-in wording so
