@@ -620,6 +620,9 @@ export async function createJoinRequest(input = {}) {
 
   const members = await loadTeamMembers();
   let member = members.find(item => item.teamId === team.id && item.userId === user.id);
+  // Retired by the duplicate-player merge → not a join request either
+  // (Build 136E prep); refused before the membership list is written.
+  assertMembershipNotMergedAway(member);
   if (!member) {
     member = {
       id: makeId('tm'),
@@ -909,6 +912,34 @@ async function upsertUserAccount({ email, firstName, lastName, displayName: name
   }
   await saveUsers(users);
   return user;
+}
+
+/**
+ * A MEMBERSHIP RETIRED BY A MERGE NEVER COMES BACK THROUGH A JOIN OR A CLAIM
+ * (Build 136E prep).
+ *
+ * The duplicate-player repair (docs/operations/build-136d-duplicate-player-
+ * repair-plan.md) retires the duplicate membership as `removed` with
+ * `mergedInto` naming the account that kept the person's history. Both login
+ * accounts stay. ensureTeamMember sets any existing membership back to active
+ * when its account claims an invitation, and the duplicate-name guard only
+ * watches NEW accounts — so the retired account opening the squad link again
+ * would have resurrected the duplicate. A retired-by-merge membership is
+ * refused at both doors, before anything is written. The refusal names nothing
+ * about the retained account: the caller only learns that this membership
+ * can no longer be claimed. An ordinary removed membership (no `mergedInto`)
+ * keeps today's contract and is reactivated by a claim.
+ */
+export function membershipMergedAway(member) {
+  return Boolean(member) && member.status === 'removed' && Boolean(String(member.mergedInto || '').trim());
+}
+
+function assertMembershipNotMergedAway(member) {
+  if (!membershipMergedAway(member)) return;
+  const error = new Error('This membership can no longer be claimed through an invitation or join link. Sign in with the account you use for this club, or ask your coach.');
+  error.status = 409;
+  error.code = 'membership_merged';
+  throw error;
 }
 
 async function ensureTeamMember({ teamId = DEFAULT_TEAM.id, userId, role = 'player', status = 'active', approvedBy = 'invite', forceRole = false, staffLevel = null }) {
@@ -1396,10 +1427,15 @@ export async function claimInvite(input = {}) {
   // invite never asks, and a staff member who opens a player link keeps their
   // staff role (ensureTeamMember never downgrades), so they are not asked
   // either.
+  // The account's membership of THIS club as it stands. A membership retired
+  // by the duplicate-player merge is refused here — after the password proof
+  // above, before the position question and before any write (Build 136E prep).
+  const priorMembership = existingUser
+    ? (await loadTeamMembers()).find(m => m.teamId === (invite.teamId || DEFAULT_TEAM.id) && m.userId === existingUser.id) || null
+    : null;
+  assertMembershipNotMergedAway(priorMembership);
   if (!isStaffRole(String(invite.role || 'player'))) {
-    const priorRole = existingUser
-      ? ((await loadTeamMembers()).find(m => m.teamId === (invite.teamId || DEFAULT_TEAM.id) && m.userId === existingUser.id)?.role || '')
-      : '';
+    const priorRole = priorMembership?.role || '';
     if (!isStaffRole(priorRole) && !isRecognisedRugbyPosition(input.position)) {
       const error = new Error('Please select your position.');
       error.status = 400;
