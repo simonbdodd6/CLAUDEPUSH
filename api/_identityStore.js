@@ -934,9 +934,16 @@ export function membershipMergedAway(member) {
   return Boolean(member) && member.status === 'removed' && Boolean(String(member.mergedInto || '').trim());
 }
 
-function assertMembershipNotMergedAway(member) {
+// The two doors a merged membership is refused at say different things to
+// different people: the claimer is told to sign in with the account they use;
+// an administrator is told the membership is a merge record. Neither names
+// the retained account.
+const MERGED_CLAIM_MESSAGE = 'This membership can no longer be claimed through an invitation or join link. Sign in with the account you use for this club, or ask your coach.';
+const MERGED_ADMIN_MESSAGE = 'This membership was merged into another account and cannot be restored or changed. Manage the account the person now uses instead.';
+
+function assertMembershipNotMergedAway(member, message = MERGED_CLAIM_MESSAGE) {
   if (!membershipMergedAway(member)) return;
-  const error = new Error('This membership can no longer be claimed through an invitation or join link. Sign in with the account you use for this club, or ask your coach.');
+  const error = new Error(message);
   error.status = 409;
   error.code = 'membership_merged';
   throw error;
@@ -3311,6 +3318,9 @@ export async function setMedicalAccess(memberId, enabled, changedBy, expectedTea
 export async function setPlayerGroup(memberId, groupId, changedBy, expectedTeamId) {
   const members = await loadTeamMembers();
   const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  // Merged away → refused before any write (Build 136G): it would re-create
+  // the retired profile and the healer would then strip the kept alias.
+  assertMembershipNotMergedAway(member, MERGED_ADMIN_MESSAGE);
   const next = String(groupId || '').trim();
   if (next) {
     const structure = await loadClubStructure(member.teamId);
@@ -3707,6 +3717,10 @@ export async function deleteOwnAccount(userId, { currentPassword, confirm } = {}
 export async function restoreTeamMember(memberId, restoredBy, expectedTeamId) {
   const members = await loadTeamMembers();
   const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  // A membership retired by the duplicate-player merge is `removed` and would
+  // pass the check below; restoring it would resurrect the duplicate and
+  // re-project its roster row (Build 136G). Refused before anything is written.
+  assertMembershipNotMergedAway(member, MERGED_ADMIN_MESSAGE);
   if (!['archived', 'removed'].includes(member.status)) {
     const error = new Error('Member is not archived');
     error.status = 400;
