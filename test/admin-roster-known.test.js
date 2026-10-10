@@ -320,6 +320,11 @@ const look = () => {
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
 };
 const waitFor = async (fnc, ms, every = 40) => { const t0 = Date.now(); for (;;) { let v = false; try { v = await fnc(); } catch {} if (v) return true; if (Date.now() - t0 > ms) return false; await new Promise(r => setTimeout(r, every)); } };
+// `npm test` runs nine files at once on a ten-core machine and thirty of them
+// boot Chromium, so booting the 2.5 MB app can take longer than Playwright's
+// 30 s default. Booting gets its own budget; the waits after it are
+// interactions against a loopback stub.
+const BOOT_MS = 60000;
 
 for (const view of ['desktop', 'phone']) {
   test(`browser (${view}): admin data lands LAST — Availability says loading (not an empty club), then the real board within 1 s, one render, no extra reads; the Overview prompt the same way`, { timeout: 120000 }, async (t) => {
@@ -336,7 +341,7 @@ for (const view of ['desktop', 'phone']) {
       const errors = [], consoleErrors = [];
       page.on('pageerror', e => errors.push(e.message));
       page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) consoleErrors.push(m.text().slice(0, 160)); });
-      await page.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'domcontentloaded', timeout: BOOT_MS });
       return { ctx, page, errors, consoleErrors };
     };
     const count = re => ctl.api.filter(x => re.test(x)).length;
@@ -344,7 +349,18 @@ for (const view of ['desktop', 'phone']) {
       // ── Availability on show ──
       ctl.api.length = 0; ctl.hold();
       let h = await open('message');
-      assert.ok(await waitFor(() => h.page.evaluate(() => typeof currentResolvedAvailability === 'function' && currentResolvedAvailability() !== null), 15000), 'the board read landed first');
+      assert.ok(await waitFor(() => h.page.evaluate(() => typeof currentResolvedAvailability === 'function' && currentResolvedAvailability() !== null), BOOT_MS), 'the board read landed first');
+      // The board's own live tick re-reads /api/availability every 5 s while
+      // the section is on show (loadLiveMessaging arms it once this first read
+      // has settled). The tick is its own behaviour with its own tests; the
+      // question here is what the ADMIN LANDING causes, read off the server's
+      // request log — so the tick is paused for the measurement. Under suite
+      // load the fixed waits below drifted past its 5 s and its by-design read
+      // was counted as the landing's "extra" one (a second GET 5054 ms after
+      // the first). The landing's render cannot re-arm it: the 15 s live-cycle
+      // guard sends loadLiveMessaging straight back out.
+      assert.ok(await waitFor(() => h.page.evaluate(() => typeof _availPollTimer !== 'undefined' && _availPollTimer !== null), BOOT_MS), 'the live tick is armed');
+      await h.page.evaluate(() => { clearInterval(_availPollTimer); _availPollTimer = null; });
       await new Promise(r => setTimeout(r, 1500));
       let s = await h.page.evaluate(look);
       assert.equal(s.admin, false, 'the admin data is still out');
@@ -372,7 +388,7 @@ for (const view of ['desktop', 'phone']) {
       // ── Overview on show ──
       ctl.api.length = 0; ctl.hold();
       h = await open('overview');
-      assert.ok(await waitFor(() => h.page.evaluate(() => typeof currentResolvedAvailability === 'function' && currentResolvedAvailability() !== null), 15000));
+      assert.ok(await waitFor(() => h.page.evaluate(() => typeof currentResolvedAvailability === 'function' && currentResolvedAvailability() !== null), BOOT_MS));
       await new Promise(r => setTimeout(r, 1500));
       s = await h.page.evaluate(look);
       assert.equal(s.status, 'loading', 'the prompt is withheld because the roster is unknown');
