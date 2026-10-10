@@ -638,6 +638,11 @@ const look = () => {
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
 };
 const waitFor = async (fnc, ms, every = 40) => { const t0 = Date.now(); for (;;) { let v = false; try { v = await fnc(); } catch {} if (v) return true; if (Date.now() - t0 > ms) return false; await new Promise(r => setTimeout(r, every)); } };
+// `npm test` runs nine files at once on a ten-core machine and thirty of them
+// boot Chromium, so booting the 2.5 MB app — up to its first admin read
+// settling — can take longer than Playwright's 30 s default. Booting gets its
+// own budget; the waits after it are interactions against a loopback stub.
+const BOOT_MS = 60000;
 async function browserHarness(t, view) {
   if (!chromium) { t.skip('playwright not installed'); return null; }
   let browser;
@@ -653,14 +658,14 @@ async function browserHarness(t, view) {
     page.on('pageerror', e => errors.push(e.message));
     // The 500 this test serves is reported by the browser as a failed resource, and loadAdminData logs nothing for an HTTP error.
     page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) consoleErrors.push(m.text().slice(0, 160)); });
-    await page.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'domcontentloaded', timeout: BOOT_MS });
     return { ctx, page, errors, consoleErrors };
   };
   const close = async () => { ctl.release(); await browser.close(); srv.close(); };
   return { ctl, open, close };
 }
 /** The first admin read has failed and its outcome has been painted. */
-const failedAndSettled = page => waitFor(() => page.evaluate(() => _adminData.failed === true && _adminData.loading === false && _adminData.loaded === false && _adminRetryTimer !== null), 15000);
+const failedAndSettled = page => waitFor(() => page.evaluate(() => _adminData.failed === true && _adminData.loading === false && _adminData.loaded === false && _adminRetryTimer !== null), BOOT_MS);
 
 for (const view of ['desktop', 'phone']) {
   test(`browser (${view}): the first admin read FAILS, the server heals, nobody touches the screen — the Overview says so honestly and recovers on its own`, { timeout: 120000 }, async (t) => {
@@ -679,14 +684,19 @@ for (const view of ['desktop', 'phone']) {
       assert.equal(s.overview.prompt, null, 'no "N players haven\'t replied" claim');
       assert.equal(s.status, 'loading', 'the chase context claims nothing');
       assert.equal(b.ctl.adminReads(), 1, 'one admin read so far');
+      // WHICH retry is booked is read off the app's own counter: one real
+      // failure so far means the wait is ADMIN_RETRY_FIRST_MS (15 s), not a
+      // doubled tier. This replaces a wall-clock bound on the recovery below,
+      // which under suite load the retry's fetch, its render and this test's
+      // own polling pushed past a fixed 20 s.
+      assert.equal(await h.page.evaluate(() => _adminRetryFails), 1, 'the booked retry is the first 15 s tier');
       // The server is healthy again. No click, no navigation, no render() from here: only the booked retry.
       b.ctl.identity = 'ok';
       const renders = await h.page.evaluate(() => window.__r.length);
       const t0 = Date.now();
       assert.ok(await waitFor(() => h.page.evaluate(() => /\d+ players? haven't replied/.test(document.getElementById('coach-overview')?.innerText || '')), 30000, 100),
         'the Overview recovered with no interaction (it used to stay on "Loading the squad…" for good)');
-      const ms = Date.now() - t0;
-      assert.ok(ms < 20000, `within the 15 s backoff (${ms} ms)`);
+      t.diagnostic(`recovered ${Date.now() - t0} ms after the server healed (booked: the 15 s tier, asserted above)`);
       s = await h.page.evaluate(look);
       assert.equal(s.overview.prompt, "11 players haven't replied");
       assert.equal(s.overview.failed, 0, 'the failed copy is gone'); assert.equal(s.overview.loadingSquad, false);
