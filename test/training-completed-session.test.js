@@ -404,9 +404,29 @@ const B_SCHEDULE = [
 ];
 const B_PLANS = { 'slot_tue-20260922': B_BLOCKS, 'slot_thu-20260924': B_BLOCKS };
 
-/** Every context/server opened, so a failed assertion still releases them. */
+/**
+ * Every context/server opened, so a failed assertion still releases them.
+ * A handle is registered the moment its server exists, not once the page has
+ * booted: planner() used to push it only after goto() and the Training wait,
+ * so a boot that timed out under load threw with its server still listening,
+ * nothing ever closed that listener, and the listener kept this file's
+ * process alive after its tests had finished — `node --test` then waited on
+ * it for ever. That is how one slow page boot became a hung release gate.
+ */
 const OPEN = [];
-async function closeAll() { while (OPEN.length) { const o = OPEN.pop(); try { await o.ctx.close(); } catch {} try { o.srv.close(); } catch {} } }
+async function releaseHandle(o) {
+  try { await o.ctx?.close(); } catch {}
+  // closeAllConnections() ends idle keep-alive sockets so close() completes
+  // now; close(cb) is awaited so the listener is provably gone before the
+  // next page opens or the process is expected to exit.
+  try { o.srv.closeAllConnections?.(); await new Promise(r => o.srv.close(() => r())); } catch {}
+}
+async function closeAll() { while (OPEN.length) await releaseHandle(OPEN.pop()); }
+// `npm test` runs nine files at once on a ten-core machine and thirty of them
+// boot Chromium, so reaching DOMContentLoaded and the first Training paint can
+// take longer than Playwright's 30 s default. Booting gets its own budget;
+// the waits after it are interactions against a loopback stub.
+const BOOT_MS = 60000;
 
 /** Open the planner with the clock fixed at `when`, on the session `sessId`. */
 /**
@@ -434,29 +454,31 @@ const ZONES = ['Europe/Brussels', 'UTC', 'America/Santiago', 'Pacific/Auckland']
 
 async function planner(browser, view, when, sessId, zone = 'Europe/Brussels') {
   const srv = plannerServer();
+  // Tracked BEFORE the first await: whatever throws below, closeAll() still
+  // finds this server and closes it.
+  const handle = { srv, ctx: null, page: null, errors: [], requests: [], text: null,
+                   close: async () => { const i = OPEN.indexOf(handle); if (i >= 0) OPEN.splice(i, 1); await releaseHandle(handle); } };
+  OPEN.push(handle);
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const BASE = `http://127.0.0.1:${srv.address().port}`;
-  const ctx = await browser.newContext({
+  const ctx = handle.ctx = await browser.newContext({
     ...(view === 'phone' ? devices['Pixel 5'] : { viewport: { width: 1440, height: 900 } }),
     serviceWorkers: 'block', timezoneId: zone });
   await ctx.addInitScript(seed => localStorage.setItem('coach-eye-real-workflow-mvp-state-v1', JSON.stringify(seed)), B_SEED);
-  const page = await ctx.newPage();
+  const page = handle.page = await ctx.newPage();
   // setFixedTime, not install(): only Date/now is overridden, so the app's
   // own timers and Playwright's polling keep running.
   await page.clock.setFixedTime(when);
-  const errors = []; page.on('pageerror', e => errors.push(e.message));
-  const requests = []; page.on('request', r => requests.push(r.url()));
-  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => /Training/.test(document.getElementById('coach-training')?.innerText || ''), null, { timeout: 20000 });
+  const errors = handle.errors; page.on('pageerror', e => errors.push(e.message));
+  const requests = handle.requests; page.on('request', r => requests.push(r.url()));
+  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: BOOT_MS });
+  await page.waitForFunction(() => /Training/.test(document.getElementById('coach-training')?.innerText || ''), null, { timeout: BOOT_MS });
   await page.evaluate(d => { state.schedule = d.sched; state.trainingBlocks = d.plans; saveState(); },
                       { sched: B_SCHEDULE, plans: B_PLANS });
   if (sessId) await page.evaluate(id => setTrainingSession(id), sessId);
   await page.evaluate(() => renderTraining());
   await page.waitForTimeout(250);
-  const text = () => page.evaluate(() => (document.getElementById('coach-training')?.innerText || '').replace(/\s+/g, ' '));
-  const handle = { page, ctx, srv, errors, requests, text,
-                   close: async () => { await ctx.close(); srv.close(); OPEN.splice(OPEN.indexOf(handle), 1); } };
-  OPEN.push(handle);
+  handle.text = () => page.evaluate(() => (document.getElementById('coach-training')?.innerText || '').replace(/\s+/g, ' '));
   return handle;
 }
 /** Is the EDITABLE planner on screen? Its controls, not its words.
@@ -477,6 +499,21 @@ const editable = p => p.evaluate(() => {
     doneFields: done ? done.querySelectorAll('input, textarea, select').length : -1,
     doneHandlers: done ? [...done.querySelectorAll('[onclick]')].map(e => e.getAttribute('onclick')) : [],
   };
+});
+
+// The leak itself, without a browser: a planner() that dies before its page
+// exists must still leave its server where closeAll() can shut it. Before the
+// fix, OPEN was empty here, the server stayed listening, and this file's
+// process never exited.
+test('a planner() that fails to boot leaves no listener behind (the hang that stalled the release gate)', async () => {
+  const brokenBrowser = { newContext: async () => { throw new Error('boot failed before the page existed'); } };
+  await assert.rejects(planner(brokenBrowser, 'desktop', new Date(), 'thu'), /boot failed/);
+  assert.equal(OPEN.length, 1, 'the server opened before the failure is tracked');
+  const srv = OPEN[0].srv;
+  assert.equal(srv.listening, true, 'and it is still listening at this point');
+  await closeAll();
+  assert.equal(OPEN.length, 0);
+  assert.equal(srv.listening, false, 'closeAll() closed it, so this process can exit');
 });
 
 for (const view of ['desktop', 'phone']) {

@@ -78,6 +78,12 @@ function stub() {
 }
 const seed = () => ({ activeView: 'coach', activeCoachSection: 'message', stateTeamId: CLUB, clubName: 'Dup RFC', currentUserId: COACH.id,
   users: [{ ...COACH }], operationalGroupId: GRP, players: structuredClone(PLAYERS), fixtures: [], messages: [], onboardingDismissed: true, availabilityRequests: [] });
+// `npm test` runs nine files at once on a ten-core machine and thirty of
+// them boot Chromium, so the 2.5 MB app can take longer than Playwright's
+// 30 s default to reach DOMContentLoaded (two of eight concurrent copies of
+// this file did on 2026-10-10). Booting gets a budget of its own; every wait
+// after it is an interaction against a loopback stub and keeps 30 s.
+const BOOT_MS = 60000;
 const waitFor = async (f, ms = 20000) => { const t0 = Date.now(); for (;;) { let v = false; try { v = await f(); } catch {} if (v) return true; if (Date.now() - t0 > ms) return false; await new Promise(r => setTimeout(r, 50)); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const pool = page => page.evaluate(() => mcComputeAvailable().map(p => ({ id: String(p.id), userId: String(p.userId || ''), name: p.name })));
@@ -103,8 +109,8 @@ test('CLIENT: delayed, failed and repeated roster reads with the identity link r
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     // 1 — the first read is DELAYED while the identity link is due
     ctl.hold();
-    await page.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'domcontentloaded' });
-    assert.ok(await waitFor(() => page.evaluate(() => _adminData.loaded === true)), 'memberships loaded');
+    await page.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'domcontentloaded', timeout: BOOT_MS });
+    assert.ok(await waitFor(() => page.evaluate(() => _adminData.loaded === true), BOOT_MS), 'memberships loaded');
     await page.evaluate(() => { _availRosterLinkedAt = 0; return ensureCoachRosterIdentityLinked(); });
     ctl.release();
     assert.ok(await waitFor(() => page.evaluate(() => rosterIsRead())), 'the delayed read landed');
@@ -145,7 +151,7 @@ test('CLIENT: delayed, failed and repeated roster reads with the identity link r
   } finally { ctl.release(); await browser.close(); srv.close(); }
 });
 
-test('CLIENT: joining under a name the club already has asks first — "Sign in instead" sends nothing more; "I\'m a different person" resends once, confirmed', { timeout: 90000 }, async () => {
+test('CLIENT: joining under a name the club already has asks first — "Sign in instead" sends nothing more; "I\'m a different person" resends once, confirmed', { timeout: 120000 }, async () => {
   assert.ok(chromium, 'playwright must be installed: this data-integrity test may not skip');
   const browser = await chromium.launch();
   const claims = [];
@@ -173,8 +179,8 @@ test('CLIENT: joining under a name the club already has asks first — "Sign in 
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
-    await page.goto(`http://127.0.0.1:${srv.address().port}/?inv=tok_dup`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#invite-first-input', { timeout: 30000 });
+    await page.goto(`http://127.0.0.1:${srv.address().port}/?inv=tok_dup`, { waitUntil: 'domcontentloaded', timeout: BOOT_MS });
+    await page.waitForSelector('#invite-first-input', { timeout: BOOT_MS });
     await page.fill('#invite-first-input', 'Gaëtan');
     await page.fill('#invite-last-input', 'Example');
     await page.fill('#invite-email-input', 'second@dup.test');
@@ -189,14 +195,21 @@ test('CLIENT: joining under a name the club already has asks first — "Sign in 
     assert.match(await page.textContent('#ce-modal-title'), /Already registered/);
     assert.match(await page.textContent('#ce-modal-cancel'), /Sign in instead/);
     await page.click('#ce-modal-cancel');
-    await sleep(500);
+    // The dialog's own handler removes the overlay synchronously, so its
+    // disappearance IS the moment the decline has been processed — wait for
+    // that, not for a fixed interval. The stale overlay being gone also means
+    // the next wait below can only match the second question.
+    await page.waitForSelector('#ce-modal-overlay', { state: 'detached', timeout: 30000 });
     assert.equal(claims.length, 1, 'declining sends nothing more');
     assert.ok(await page.$('#invite-modal'), 'the join form stays open for the person to sign in instead');
     await page.click('#invite-accept-btn');
     await page.waitForSelector('#ce-modal-overlay', { timeout: 30000 });
+    // Order is the proof that declining sent nothing: the very next claim the
+    // server sees is this plain second attempt, not a confirmed resend.
+    assert.ok(await waitFor(() => claims.length === 2, 30000), `claims: ${claims.length}`);
+    assert.equal(claims[1].confirmDifferentPerson, undefined, 'the second plain attempt is not confirmed');
     await page.click('#ce-modal-ok');
     assert.ok(await waitFor(() => claims.length === 3, 30000), `claims: ${claims.length}`);
-    assert.equal(claims[1].confirmDifferentPerson, undefined, 'the second plain attempt is not confirmed');
     assert.equal(claims[2].confirmDifferentPerson, true, 'only the explicit choice confirms');
     assert.equal(claims.filter(c => c.confirmDifferentPerson).length, 1, 'exactly once');
     assert.deepEqual(errors, []);
