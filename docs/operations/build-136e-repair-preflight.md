@@ -160,6 +160,10 @@ store is then "missing"), never guessed.
 - **Not captured:** the flat pre-scoping availability keys
   (`availability:<sessionId>` without a club) — inert legacy history that no
   club-scoped reader consults.
+- **Known limitation:** direct-message threads are selected by a substring
+  match of the club's ids against the key name. With the app's long ids
+  (`user_<timestamp>_<suffix>`, `inv-…`) this cannot over-match in practice;
+  a short synthetic id could. Key names only are kept either way.
 
 **Authorisation required before any live snapshot:** the owner's explicit
 approval for a read-only production read (the environment variables are the
