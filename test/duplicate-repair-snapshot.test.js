@@ -310,6 +310,38 @@ test('CLI: credentials from the environment only, loopback stub, mode-600 output
   } finally { srv.closeAllConnections?.(); await new Promise(r => srv.close(() => r())); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('CLI fetch tripwire: a non-read command raised inside the running process is refused before it leaves, exit 3, nothing written', async () => {
+  // The CLI itself can only ask for reads, so the tripwire is provoked from OUTSIDE its code: a preload module
+  // (--import) schedules a SET-shaped fetch for the next macrotask, i.e. after the CLI's top-level code has
+  // installed the wrapper and while the snapshot is awaiting the stub. No test hook exists in the CLI.
+  const data = store();
+  const seen = [];
+  const srv = http.createServer(async (req, res) => {
+    let body = ''; for await (const ch of req) body += ch;
+    const command = JSON.parse(body); const cmd = String(command[0]).toUpperCase(); seen.push(cmd);
+    await new Promise(r => setTimeout(r, 150));          // keep the snapshot in flight while the preload fires
+    const send = o => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
+    if (cmd === 'GET') return send({ result: data[command[1]] ?? null });
+    if (cmd === 'SCAN') return send({ result: ['0', Object.keys(data).filter(k => k.startsWith(command[3].split('*')[0]))] });
+    return send({ result: 'OK' });                        // a write would "succeed" here — the tripwire must stop it first
+  });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-tripwire-'));
+  try {
+    const url = `http://127.0.0.1:${srv.address().port}`;
+    const preload = path.join(dir, 'provoke-write.mjs');
+    fs.writeFileSync(preload, `setTimeout(() => { globalThis.fetch(${JSON.stringify(url)}, { method: 'POST', body: JSON.stringify(['SET', 'app:identity:users', '[]']) }).catch(() => {}); }, 0);\n`);
+    const out = path.join(dir, 'snapshot.json');
+    const cli = path.join(ROOT, 'scripts', 'duplicate-repair-snapshot.mjs');
+    const r = await runCli(['--import', preload, cli, '--club', A, '--out', out], { ...process.env, UPSTASH_REDIS_REST_URL: url, UPSTASH_REDIS_REST_TOKEN: 'test-token' });
+    assert.equal(r.status, 3, r.stderr);
+    assert.match(r.stderr, /TRIPWIRE — refused non-read Redis command: SET/);
+    assert.ok(!seen.includes('SET'), `the stub never received the write (saw: ${seen.join(',')})`);
+    assert.ok(seen.every(c => c === 'GET' || c === 'SCAN'), 'whatever reached the stub before the process ended was a read (the first GET may not have been dispatched yet)');
+    assert.ok(!fs.existsSync(out), 'no snapshot file was written');
+  } finally { srv.closeAllConnections?.(); await new Promise(r => srv.close(() => r())); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('SOURCE: the snapshot CLI and library read no .env file, issue no write command and import only node built-ins and the library', () => {
   for (const f of ['scripts/duplicate-repair-snapshot-lib.mjs', 'scripts/duplicate-repair-snapshot.mjs']) {
     const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
