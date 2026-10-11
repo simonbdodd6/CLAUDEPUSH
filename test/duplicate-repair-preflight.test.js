@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   buildManifest, findPairs, findStaffWithPlayMarks, requiredConfirmations, validateConfirmations, validateSnapshot,
-  hashValue, hashStore, canonicalJson, fold, maskEmail, publishReferences,
+  hashValue, hashStore, canonicalJson, fold, maskEmail, publishReferences, knownIdsOf, reducePublishRecord, PUBLISH_REDUCED, PUBLISH_HASH_METHOD,
   SNAPSHOT_SCHEMA, CONFIRMATIONS_SCHEMA, MANIFEST_SCHEMA, MERGE_REMOVED_BY, PLAN_DATE, EVIDENCE_MIN_ANSWERS,
 } from '../scripts/duplicate-repair-lib.mjs';
 
@@ -72,14 +72,17 @@ function snapshot() {
       { userId: 'u_keep', playerId: 'u_keep', legacyPlayerId: 'u_keep', label: 'phone', subscription: { endpoint: 'https://push.example/endpoint/keep-device-0001' } },
     ],
     availability: avail,
-    publish: {
-      [`app:publish:${CLUB}:fixture:fx_1:squad`]: { formationKeys: { 2: 'id:u_other', 13: 'id:u_dup' }, benchKeys: ['id:u_keep'], updatedBy: 'user_admin' },
+    publish: reducedPublish({
+      [`app:publish:${CLUB}:fixture:fx_1:squad`]: { formationKeys: { 2: 'id:u_other', 13: 'id:u_dup' }, benchKeys: ['id:u_keep'], updatedBy: 'user_admin', notes: 'tactical plan — never in a snapshot' },
       [`app:publish:${CLUB}:fixture:fx_2:coachsheet`]: { benchKeys: ['id:u_other', 'id:u_dup'] },
-    },
+    }),
     medical: {},
     messages: [],
   };
 }
+/** Publish records as the snapshot taker stores them: reduced with the club's known ids. */
+const KNOWN = new Set(['u_keep', 'u_dup', 'u_other', 'u_staff', 'u_coach']);
+const reducedPublish = raw => Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, reducePublishRecord(v, KNOWN)]));
 const pairRecord = (over = {}) => ({ slot: 'pair:alex-example', kind: 'pair', person: 'Alex Example', relationship: 'same', keepUserId: 'u_keep', duplicateUserId: 'u_dup',
   confirmedBy: 'Head coach (test)', confirmedAt: iso(NOW - 3600_000), channel: 'in person', ...over });
 const staffRecord = (over = {}) => ({ slot: 'staff:u_staff', kind: 'staff', person: 'Casey Staff', decision: 'clear_plays_for', confirmedBy: 'Head coach (test)', confirmedAt: iso(NOW - 3600_000), ...over });
@@ -221,12 +224,18 @@ test('a malformed or incomplete snapshot blocks before anything is inspected', (
   }
 });
 test('a reference to the duplicate the plan does not know how to re-point blocks: other publish paths, key names, medical, messages', () => {
-  let snap = snapshot(); snap.publish[`app:publish:${CLUB}:squad:current:${GRP}`] = { players: [{ id: 'u_dup', name: 'Alex Example' }] };
-  let m = run(snap); assert.equal(m.ok, false); assert.match(blockersOf(m), /unexpected reference to the duplicate in app:publish:club_t:squad:current:grp_1 at \$\.players\[0\]\.id: u_dup/);
-  snap = snapshot(); snap.publish[`app:publish:${CLUB}:fixture:fx_1:draft:u_dup`] = { formationKeys: {} };
+  let snap = snapshot(); snap.publish[`app:publish:${CLUB}:squad:current:${GRP}`] = reducePublishRecord({ players: [{ id: 'u_dup', name: 'Alex Example' }] }, KNOWN);
+  let m = run(snap); assert.equal(m.ok, false); assert.match(blockersOf(m), /unexpected reference to the duplicate in app:publish:club_t:squad:current:grp_1 at outside its sheet positions \(reduced record names the id elsewhere\): u_dup/);
+  snap = snapshot(); snap.publish[`app:publish:${CLUB}:fixture:fx_1:draft:u_dup`] = reducePublishRecord({ formationKeys: {} }, KNOWN);
   m = run(snap); assert.equal(m.ok, false); assert.match(blockersOf(m), /at \(key name\)/);
-  snap = snapshot(); snap.publish[`app:publish:${CLUB}:fixture:fx_1:squad`].updatedBy = 'u_dup';
-  m = run(snap); assert.equal(m.ok, false); assert.match(blockersOf(m), /\$\.updatedBy: u_dup/);
+  snap = snapshot(); snap.publish[`app:publish:${CLUB}:fixture:fx_1:squad`] = reducePublishRecord({ formationKeys: { 13: 'id:u_dup' }, updatedBy: 'u_dup' }, KNOWN);
+  m = run(snap); assert.equal(m.ok, false); assert.match(blockersOf(m), /outside its sheet positions .*: u_dup/);
+  // a key-form reference elsewhere ("id:<dup>" in a players list) is caught too
+  snap = snapshot(); snap.publish[`app:publish:${CLUB}:squad:current:${GRP}`] = reducePublishRecord({ players: ['id:u_dup'] }, KNOWN);
+  m = run(snap); assert.equal(m.ok, false); assert.match(blockersOf(m), /outside its sheet positions/);
+  // a RAW (unreduced) publish record is refused outright — it would both leak and hash differently from a reduced re-read
+  snap = snapshot(); snap.publish[`app:publish:${CLUB}:fixture:fx_1:squad`] = { formationKeys: { 13: 'id:u_dup' }, notes: 'raw' };
+  m = run(snap); assert.equal(m.ok, false); assert.match(blockersOf(m), /snapshot: publish record app:publish:club_t:fixture:fx_1:squad is not in the reduced form/); assert.deepEqual(m.pairs, []);
   snap = snapshot(); snap.medical[`app:medical:${CLUB}`] = { cases: [{ playerId: 'u_dup' }] };
   m = run(snap); assert.equal(m.ok, false); assert.match(blockersOf(m), /medical record .* names the duplicate/);
   snap = snapshot(); snap.messages = ['app:chat:conv:dm:u_dup:u_other:msgs'];
@@ -286,6 +295,23 @@ test('required confirmations come from the snapshot: every 2+-account name, ever
   const keep = run(snapshot(), confirmations([pairRecord(), staffRecord({ decision: 'keep_plays_for' })]));
   assert.equal(keep.ok, true); assert.deepEqual(keep.staff[0].writes, []); assert.equal(keep.summary.staffKeep, 1);
 });
+test('the publish precondition guards the reduced projection: sheet positions and references change it, unrelated edits do not, and it equals a reduced re-read', () => {
+  const snap = snapshot();
+  const m = run(snap);
+  const w = m.pairs[0].writes.find(x => x.store === 'publish' && x.key.endsWith('fx_1:squad'));
+  assert.equal(w.precondition.method, PUBLISH_HASH_METHOD);
+  const live = { formationKeys: { 2: 'id:u_other', 13: 'id:u_dup' }, benchKeys: ['id:u_keep'], updatedBy: 'user_admin', notes: 'tactical plan — never in a snapshot' };
+  const known = knownIdsOf(snap);
+  assert.equal(w.precondition.sha256, hashStore(reducePublishRecord(live, known)), 'a re-read reduced with the snapshot\'s known ids hashes identically');
+  assert.equal(hashStore(reducePublishRecord({ ...live, notes: 'coach edited the notes meanwhile', transportNotes: 'bus at 9' }, known)), w.precondition.sha256, 'unrelated edits do not block');
+  assert.notEqual(hashStore(reducePublishRecord({ ...live, formationKeys: { 2: 'id:u_other', 13: 'id:u_other' } }, known)), w.precondition.sha256, 'a changed sheet position does');
+  assert.notEqual(hashStore(reducePublishRecord({ ...live, benchKeys: ['id:u_keep', 'id:u_dup'] }, known)), w.precondition.sha256, 'so does a bench change');
+  assert.notEqual(hashStore(reducePublishRecord({ ...live, updatedBy: 'u_dup' }, known)), w.precondition.sha256, 'so does a new reference to a known id');
+  assert.notEqual(hashStore(reducePublishRecord({ ...live, benchKeys: ['id:u_other', 'id:u_keep'] }, known)), hashStore(reducePublishRecord({ ...live, benchKeys: ['id:u_keep', 'id:u_other'] }, known)), 'bench order is positional');
+  assert.deepEqual([...known].sort(), ['u_coach', 'u_dup', 'u_keep', 'u_other', 'u_staff'], 'knownIdsOf: club members, roster rows and legacy ids');
+  assert.equal(reducePublishRecord(live, known).reduced, PUBLISH_REDUCED);
+  assert.deepEqual(Object.keys(reducePublishRecord(live, known)).sort(), ['benchKeys', 'formationKeys', 'reduced', 'referencedIds']);
+});
 test('name folding matches the audit that found the pairs; emails are masked in output', () => {
   assert.equal(fold('  Gaétan  VAN-AKEN '), 'gaetan van aken');
   assert.equal(findPairs(snapshot())[0].slot, 'pair:alex-example');
@@ -333,6 +359,6 @@ test('SOURCE: the library and the CLI have no network, no credentials, no store 
       assert.ok(!src.includes(forbidden), `${f} must not contain ${forbidden}`);
     }
     const imports = [...src.matchAll(/^import .* from '([^']+)'/gm)].map(m => m[1]);
-    assert.ok(imports.every(i => i.startsWith('node:') || i === './duplicate-repair-lib.mjs'), `${f} imports only node built-ins and the library: ${imports.join(', ')}`);
+    assert.ok(imports.every(i => i.startsWith('node:') || i === './duplicate-repair-lib.mjs' || i === './duplicate-repair-shared.mjs'), `${f} imports only node built-ins and the repair libraries: ${imports.join(', ')}`);
   }
 });

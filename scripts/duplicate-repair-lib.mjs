@@ -32,6 +32,8 @@
  * scripts/audit-duplicate-players.mjs, the audit that found the pairs.
  */
 import { createHash } from 'node:crypto';
+import { knownIdsOf, reducePublishRecord, isReducedPublishRecord, PUBLISH_REDUCED } from './duplicate-repair-shared.mjs';
+export { knownIdsOf, reducePublishRecord, isReducedPublishRecord, PUBLISH_REDUCED };
 
 export const SNAPSHOT_SCHEMA = 'coacheasier-duplicate-repair-snapshot/1';
 export const CONFIRMATIONS_SCHEMA = 'coacheasier-duplicate-repair-confirmations/1';
@@ -75,6 +77,8 @@ export const hashValue = value => createHash('sha256').update(canonicalJson(valu
  * Publish sheets are positional (formationKeys / benchKeys) and hash as they are.
  */
 export const HASH_METHOD = 'sha256 of canonical JSON; record arrays (and roster.players) order-insensitive';
+/** Publish records are hashed in their REDUCED form: re-read the live record, reduce it with reducePublishRecord(live, knownIdsOf(snapshot)), then hash. */
+export const PUBLISH_HASH_METHOD = 'sha256 of canonical JSON of reducePublishRecord(live record, knownIdsOf(snapshot)) — the re-read must be reduced the same way before comparing';
 export function hashStore(value) {
   const sortRecords = arr => [...arr].map(canonicalJson).sort();
   if (Array.isArray(value)) return createHash('sha256').update('[' + sortRecords(value).join(',') + ']').digest('hex');
@@ -100,6 +104,11 @@ export function validateSnapshot(snapshot) {
     if (!snapshot[f] || typeof snapshot[f] !== 'object' || Array.isArray(snapshot[f])) errors.push(`snapshot.${f} must be an object keyed by store key (may be empty)`);
   }
   if (!Array.isArray(snapshot.messages)) errors.push('snapshot.messages must be an array of DM key names (may be empty)');
+  if (snapshot.publish && typeof snapshot.publish === 'object' && !Array.isArray(snapshot.publish)) {
+    for (const [key, v] of Object.entries(snapshot.publish)) {
+      if (!isReducedPublishRecord(v)) errors.push(`publish record ${key} is not in the reduced form (${PUBLISH_REDUCED}) — take the snapshot with the current tool; raw publish records are never accepted`);
+    }
+  }
   return errors;
 }
 
@@ -292,6 +301,7 @@ export function publishReferences(snapshot, dupIds, keepUserId) {
       if (!hit) return;
       const m = path.match(/^\$\.(formationKeys\.[^.\[]+|benchKeys\[\d+\])$/);
       if (!isKey && m && v === `id:${hit}`) repoints.push({ key, path: m[1], before: v, after: `id:${keepUserId}` });
+      else if (/^\$\.referencedIds\[\d+\]$/.test(path)) unexpected.push({ key, path: 'outside its sheet positions (reduced record names the id elsewhere)', value: v });
       else unexpected.push({ key, path, value: v.length > 80 ? v.slice(0, 77) + '…' : v });
     });
   }
@@ -394,7 +404,7 @@ export function checkPair(snapshot, pair, record) {
     precondition: { method: HASH_METHOD, sha256: hashStore(snapshot.subscriptions) } });
   for (const r of refs.repoints) {
     writes.push({ store: 'publish', key: r.key, mechanism: 'direct store write (sheet key re-point; names untouched)',
-      changes: [{ target: { path: r.path }, before: r.before, after: r.after }], precondition: { method: HASH_METHOD, sha256: hashStore(snapshot.publish[r.key]) } });
+      changes: [{ target: { path: r.path }, before: r.before, after: r.after }], precondition: { method: PUBLISH_HASH_METHOD, sha256: hashStore(snapshot.publish[r.key]) } });
   }
   out.status = 'ready';
   return out;
@@ -422,6 +432,7 @@ export const WRITE_PROTOCOL = [
   'Before ANY write: take a fresh snapshot of every key named below with the same read-only audit, recompute this manifest from it, and require it to be byte-identical (bar generatedAt) to the one reviewed.',
   'Immediately before each store write, under withIdentityLock, re-read the key and compare its sha256 (canonical JSON) with the precondition recorded here; abort the pair on any mismatch.',
   `The roster key has no lock: re-read it immediately before its write and run while coaches are idle.`,
+  'A publish record is compared in its REDUCED form (reducePublishRecord with knownIdsOf(snapshot)): the hash guards the sheet positions and references the repair depends on; the write is a read-modify-write of the LIVE record at the one named path, so unrelated edits made meanwhile survive.',
   'One pair at a time; verify the pair read-only before starting the next.',
   'No permanent delete is ever part of this repair; keep the snapshot files (umask 077) until post-release verification.',
 ];

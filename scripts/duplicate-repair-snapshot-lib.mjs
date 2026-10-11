@@ -18,6 +18,9 @@
  * sessions, which the preflight needs in order to refuse a cross-club merge.
  */
 
+import { s, referencedIds, knownIdsOf, reducePublishRecord } from './duplicate-repair-shared.mjs';
+export { referencedIds, knownIdsOf, reducePublishRecord };
+
 export const READ_ONLY_COMMANDS = Object.freeze(['GET', 'SCAN', 'LRANGE']);
 export const SNAPSHOT_SCHEMA = 'coacheasier-duplicate-repair-snapshot/1';
 export const SNAPSHOT_SOURCE = 'scripts/duplicate-repair-snapshot.mjs — GET/SCAN only, read-only guard armed';
@@ -26,8 +29,6 @@ export const DEFAULT_MAX_SCAN_PAGES = 10_000;
 
 export class TripwireError extends Error { constructor(cmd) { super(`TRIPWIRE — refused non-read Redis command: ${cmd || '(unparsable)'}`); this.name = 'TripwireError'; this.command = cmd; } }
 export class StoreFormatError extends Error { constructor(key, why) { super(`store ${key}: ${why}`); this.name = 'StoreFormatError'; this.key = key; } }
-
-const s = v => String(v ?? '').trim();
 
 /** Wrap any command function so that only read commands can ever be issued. */
 export function guardReadOnly(redis) {
@@ -66,7 +67,7 @@ export const sanitizeUser = u => pick(u, ['id', 'email', 'displayName', 'created
 export const sanitizeMember = m => pick(m, ['id', 'teamId', 'userId', 'role', 'staffLevel', 'status', 'playerGroupId', 'mergedInto', 'joinedAt', 'createdAt', 'approvedBy', 'accessChangedBy', 'accessChangedAt', 'removedAt', 'removedBy']);
 export const sanitizeProfile = p => pick(p, ['id', 'teamId', 'userId', 'displayName', 'legacyPlayerId', 'playerGroupId', 'position']);
 export const sanitizeSession = x => pick(x, ['id', 'userId', 'teamId', 'createdAt', 'lastSeenAt', 'expiresAt']);
-export const sanitizeSubscription = x => ({ ...pick(x, ['userId', 'playerId', 'legacyPlayerId', 'label', 'createdAt']), subscription: { endpoint: s(x?.subscription?.endpoint) } });
+export const sanitizeSubscription = x => ({ ...pick(x, ['userId', 'playerId', 'legacyPlayerId', 'createdAt']), subscription: { endpoint: s(x?.subscription?.endpoint) } });
 export function sanitizeRosterRow(r) {
   const out = pick(r, ['id', 'userId', 'legacyPlayerId', 'name', 'position', 'playerGroupId', 'number', 'status']);
   for (const [k, v] of Object.entries(r || {})) if (k.startsWith('avail_') && v !== undefined && v !== null && v !== '') out[k] = v;
@@ -80,18 +81,6 @@ export function sanitizeAvailabilityEntries(entries) {
   }
   return out;
 }
-/**
- * Which of the KNOWN ids (the club's user ids, legacy ids and roster row ids)
- * a record names, as JSON string values or keys — exactly the question the
- * preflight's reference scan asks (`"<id>"` in the canonical JSON). Nothing
- * else about the record is kept, so a redacted medical record carries no
- * clinical text, and no heuristic can mistake a word for an id.
- */
-export function referencedIds(value, knownIds) {
-  const text = JSON.stringify(value) || '';
-  return [...new Set([...knownIds].map(s).filter(id => id && text.includes(`"${id}"`)))].sort();
-}
-
 const byId = (a, b) => s(a.id || a.userId).localeCompare(s(b.id || b.userId)) || JSON.stringify(a).localeCompare(JSON.stringify(b));
 
 /**
@@ -121,9 +110,8 @@ export async function takeSnapshot({ redis, prefix = 'app', club, now = Date.now
   const clubUsers = new Set(members.filter(m => s(m.teamId) === clubId).map(m => s(m.userId)));
   for (const row of rosterRows) if (s(row.userId)) clubUsers.add(s(row.userId));
   const profiles = profilesRaw.filter(x => x && s(x.teamId) === clubId && s(x.userId));
-  const ids = new Set(clubUsers);
-  for (const x of profiles) if (s(x.legacyPlayerId)) ids.add(s(x.legacyPlayerId));
-  for (const row of rosterRows) { if (s(row.id)) ids.add(s(row.id)); if (s(row.legacyPlayerId)) ids.add(s(row.legacyPlayerId)); }
+  // The SAME formula the preflight applies to the finished snapshot (shared module), so both sides scan for identical ids.
+  const ids = knownIdsOf({ club: clubId, team_members: members, player_profiles: profiles, roster: { players: rosterRows } });
 
   const users = usersRaw.filter(u => { if (!u || !s(u.id)) { notes.push('dropped a user record without id'); return false; } return clubUsers.has(s(u.id)); });
   const team_members = members.filter(m => clubUsers.has(s(m.userId)));                       // any club: the preflight refuses cross-club merges
@@ -141,7 +129,8 @@ export async function takeSnapshot({ redis, prefix = 'app', club, now = Date.now
   const publish = {};
   const publishKeys = new Set(await scanAll(r, `${k('publish:')}${clubId}:*`, { maxPages: maxScanPages }));
   publishKeys.add(k(`publish:${clubId}`));
-  for (const key of [...publishKeys].sort()) { const v = await getJson(r, key); if (v != null) publish[key] = v; }
+  // Reduced to what the repair reasons about: sheet positions and the known ids named elsewhere. Notes, attendance detail, logos never leave the store.
+  for (const key of [...publishKeys].sort()) { const v = await getJson(r, key); if (v != null) publish[key] = reducePublishRecord(v, ids); }
   const medical = {};
   const medicalRaw = await getJson(r, k(`medical:${clubId}`));
   if (medicalRaw != null) medical[k(`medical:${clubId}`)] = { redacted: true, referencedIds: referencedIds(medicalRaw, ids) };

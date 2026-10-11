@@ -21,7 +21,7 @@ import {
   takeSnapshot, guardReadOnly, scanAll, referencedIds, summarize, sanitizeRosterRow, sanitizeUser,
   TripwireError, StoreFormatError, READ_ONLY_COMMANDS, SNAPSHOT_SCHEMA,
 } from '../scripts/duplicate-repair-snapshot-lib.mjs';
-import { validateSnapshot, buildManifest, CONFIRMATIONS_SCHEMA } from '../scripts/duplicate-repair-lib.mjs';
+import { validateSnapshot, buildManifest, CONFIRMATIONS_SCHEMA, hashStore, knownIdsOf, reducePublishRecord, PUBLISH_REDUCED } from '../scripts/duplicate-repair-lib.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 /** Async spawn: the loopback stub lives in THIS process, so a blocking spawnSync would deadlock against it. */
@@ -79,8 +79,10 @@ function store() {
     [`app:availability:${A}:group:grp_a:fx_2`]: j({ u_a2: { userId: 'u_a2', response: 'unavailable', respondedAt: '2026-10-10T10:00:00Z' } }),
     [`app:availability:${B}:fx_9`]: j({ u_b_only: { userId: 'u_b_only', response: 'maybe' } }),
     [`app:availability_lock:${A}::fx_1`]: j({ owner: 'x' }),
-    [`app:publish:${A}:fixture:fx_1:squad`]: j({ formationKeys: { 13: 'id:u_a2' }, benchKeys: ['id:u_a1'], updatedBy: 'user_admin' }),
-    [`app:publish:${A}`]: j({ club: { id: A, name: 'Club A' } }),
+    [`app:publish:${A}:fixture:fx_1:squad`]: j({ formationKeys: { 13: 'id:u_a2' }, benchKeys: ['id:u_a1'], updatedBy: 'user_admin', notes: 'TACTICAL-NOTE-NEVER-LEAKS', transportNotes: 'BUS-NOTE-NEVER-LEAKS' }),
+    [`app:publish:${A}:fixture:fx_1:coachsheet`]: j({ benchKeys: ['id:u_both'], blocks: [{ keyFocus: 'COACHING-NOTE-NEVER-LEAKS', staffNotes: 'STAFF-NOTE-NEVER-LEAKS' }] }),
+    [`app:publish:${A}:fixture:fx_1:attendance`]: j({ register: { u_a1: 'present', u_both: 'ABSENT-REASON-NEVER-LEAKS' }, takenBy: 'u_both' }),
+    [`app:publish:${A}`]: j({ club: { id: A, name: 'Club A', logoDataUrl: 'data:image/png;base64,LOGO-NEVER-LEAKS', colours: { primary: '#000' } }, fixtures: [{ id: 'fx_1', notes: 'FIXTURE-NOTE-NEVER-LEAKS', referee: 'REF-NEVER-LEAKS' }] }),
     [`app:publish:${B}:fixture:fx_9:squad`]: j({ formationKeys: { 1: 'id:u_b_only' } }),
     [`app:medical:${A}`]: j({ cases: [{ id: 'case_1', playerId: 'u_a1', diagnosis: 'hamstring strain — CONFIDENTIAL', notes: 'see physio' }] }),
     'app:chat:conv:dm:u_a1:u_both:msgs': j([{ text: 'hi' }]),
@@ -121,13 +123,20 @@ test('the snapshot is scoped to the club, sanitised, schema-valid, and feeds the
   assert.deepEqual(sn.player_profiles.map(p => p.id), ['pp_a1', 'pp_a2', 'pp_both_a']);
   assert.deepEqual(sn.sessions.map(x => x.id), ['sess_a2', 'sess_both_b']);
   assert.deepEqual(sn.roster.players.map(x => x.id), ['u_a1', 'u_a2', 'u_both']);
-  assert.deepEqual(sn.subscriptions.map(x => x.subscription.endpoint), ['https://push.example/a2']);
+  assert.deepEqual(sn.subscriptions, [{ userId: 'u_a2', playerId: 'u_a2', legacyPlayerId: 'u_a2', subscription: { endpoint: 'https://push.example/a2' } }], 'ids and endpoint only — no device label');
   assert.deepEqual(Object.keys(sn.availability), [`app:availability:${A}:fx_1`, `app:availability:${A}:group:grp_a:fx_2`], 'club-scoped and group-scoped records, never the lock key, never club B');
-  assert.deepEqual(Object.keys(sn.publish), [`app:publish:${A}`, `app:publish:${A}:fixture:fx_1:squad`]);
+  assert.deepEqual(Object.keys(sn.publish), [`app:publish:${A}`, `app:publish:${A}:fixture:fx_1:attendance`, `app:publish:${A}:fixture:fx_1:coachsheet`, `app:publish:${A}:fixture:fx_1:squad`]);
+  // publish records are REDUCED: sheet positions kept positionally, every other field gone, known ids named elsewhere listed
+  assert.deepEqual(sn.publish[`app:publish:${A}:fixture:fx_1:squad`], { reduced: PUBLISH_REDUCED, formationKeys: { 13: 'id:u_a2' }, benchKeys: ['id:u_a1'], referencedIds: [] });
+  assert.deepEqual(sn.publish[`app:publish:${A}:fixture:fx_1:coachsheet`], { reduced: PUBLISH_REDUCED, benchKeys: ['id:u_both'], referencedIds: [] });
+  assert.deepEqual(sn.publish[`app:publish:${A}:fixture:fx_1:attendance`], { reduced: PUBLISH_REDUCED, referencedIds: ['u_a1', 'u_both'] }, 'attendance keeps WHO is named, never the detail');
+  assert.deepEqual(sn.publish[`app:publish:${A}`], { reduced: PUBLISH_REDUCED, referencedIds: [] }, 'the club record keeps nothing: no logo, no notes, no colours');
+  assert.ok(Object.values(sn.publish).every(v => v.reduced === PUBLISH_REDUCED));
   assert.deepEqual(sn.messages, ['app:chat:conv:dm:u_a1:u_both:msgs'], 'only threads naming a club-A person, as names only');
   // sanitised: nothing secret or personal beyond the whitelist
   const text = JSON.stringify(sn);
-  for (const leak of ['HASH-NEVER-LEAKS', 'SALT', 'TOKEN-NEVER-LEAKS', 'KEY-NEVER-LEAKS', 'AUTH-NEVER-LEAKS', '+32', '2008-01-01', 'private', 'injury detail', 'CONFIDENTIAL', 'see physio', 'bonly@example.test']) {
+  for (const leak of ['HASH-NEVER-LEAKS', 'SALT', 'TOKEN-NEVER-LEAKS', 'KEY-NEVER-LEAKS', 'AUTH-NEVER-LEAKS', '+32', '2008-01-01', 'private', 'injury detail', 'CONFIDENTIAL', 'see physio', 'bonly@example.test',
+    'TACTICAL-NOTE-NEVER-LEAKS', 'BUS-NOTE-NEVER-LEAKS', 'COACHING-NOTE-NEVER-LEAKS', 'STAFF-NOTE-NEVER-LEAKS', 'ABSENT-REASON-NEVER-LEAKS', 'LOGO-NEVER-LEAKS', 'data:image', 'FIXTURE-NOTE-NEVER-LEAKS', 'REF-NEVER-LEAKS', 'Club A', '#000', '"label"', '"phone"']) {
     assert.ok(!text.includes(leak), `must not contain ${leak}`);
   }
   assert.deepEqual(sn.users[0], { id: 'u_a1', email: 'a1@example.test', displayName: 'Alex Example', createdAt: '2026-08-16T10:00:00Z', lastLoginAt: '2026-10-04T10:00:00Z' });
@@ -156,6 +165,18 @@ test('a snapshot from the store can reach a clean preflight manifest end to end'
   assert.equal(m.pairs[0].status, 'ready');
   assert.deepEqual(m.pairs[0].writes.filter(w => w.store === 'publish').map(w => w.changes[0].target.path), ['formationKeys.13']);
   assert.equal(summarize(sn).availabilityRecords, 2);
+  // the stale-state guard: the precondition equals the reduced live record's hash, and the taker's known ids equal the preflight's
+  const w = m.pairs[0].writes.find(x => x.store === 'publish');
+  const liveRaw = JSON.parse(data[`app:publish:${A}:fixture:fx_1:squad`]);
+  assert.equal(w.precondition.sha256, hashStore(reducePublishRecord(liveRaw, knownIdsOf(sn))));
+  assert.notEqual(w.precondition.sha256, hashStore(reducePublishRecord({ ...liveRaw, formationKeys: { 13: 'id:u_both' } }, knownIdsOf(sn))), 'a changed slot would block');
+  assert.equal(w.precondition.sha256, hashStore(reducePublishRecord({ ...liveRaw, notes: 'edited meanwhile' }, knownIdsOf(sn))), 'an edited note would not');
+  // a duplicate named in an attendance register blocks the pair, through the reduced record
+  const data2 = store(); delete data2[`app:medical:${A}`];
+  data2[`app:publish:${A}:fixture:fx_1:attendance`] = JSON.stringify({ register: { u_a2: 'present' } });
+  const { sn: sn2 } = await snap(data2);
+  const m2 = buildManifest(sn2, { schema: CONFIRMATIONS_SCHEMA, records: [{ slot: 'pair:alex-example', kind: 'pair', person: 'Alex Example', relationship: 'same', keepUserId: 'u_a1', duplicateUserId: 'u_a2', confirmedBy: 'Head coach (test)', confirmedAt: '2026-10-12T09:00:00Z' }] }, { now: NOW });
+  assert.equal(m2.ok, false); assert.match(m2.blockers.join('\n'), /fx_1:attendance at outside its sheet positions/);
 });
 
 test('the medical reference check still works on the redacted record (the kept account is named, the duplicate is not)', async () => {
@@ -278,6 +299,14 @@ test('CLI: credentials from the environment only, loopback stub, mode-600 output
     assert.equal(r.status, 1); assert.match(r.stderr, /snapshot failed — redis GET: unauthorized/); assert.ok(!fs.existsSync(path.join(dir, 'y.json')));
     r = await runCli([cli, '--club', A], env);
     assert.equal(r.status, 2); assert.match(r.stderr, /usage:/);
+    // prefix selection: APP_KEY_PREFIX is the default, --prefix overrides it, and a wrong prefix is refused with nothing written
+    for (const key of Object.keys(data)) data['ce2:' + key.slice(4)] = data[key];     // the same store under a second prefix
+    r = await runCli([cli, '--club', A, '--out', path.join(dir, 'p1.json')], { ...env, APP_KEY_PREFIX: 'ce2' });
+    assert.equal(r.status, 0, r.stderr); assert.equal(JSON.parse(r.stdout).keyPrefix, 'ce2'); assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'p1.json'), 'utf8')).keyPrefix, 'ce2');
+    r = await runCli([cli, '--club', A, '--out', path.join(dir, 'p2.json'), '--prefix', 'app'], { ...env, APP_KEY_PREFIX: 'ce2' });
+    assert.equal(r.status, 0, r.stderr); assert.equal(JSON.parse(r.stdout).keyPrefix, 'app', '--prefix wins over the environment');
+    r = await runCli([cli, '--club', A, '--out', path.join(dir, 'p3.json'), '--prefix', 'nope'], env);
+    assert.equal(r.status, 1); assert.match(r.stderr, /snapshot refused — store nope:identity:users: missing/); assert.ok(!fs.existsSync(path.join(dir, 'p3.json')), 'a wrong prefix writes nothing');
   } finally { srv.closeAllConnections?.(); await new Promise(r => srv.close(() => r())); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -286,8 +315,10 @@ test('SOURCE: the snapshot CLI and library read no .env file, issue no write com
     const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
     for (const forbidden of ['readFileSync', 'dotenv', "'SET'", "'DEL'", "'HSET'", "'LPUSH'", "'EXPIRE'", 'child_process', 'spawn']) assert.ok(!src.includes(forbidden), `${f} must not contain ${forbidden}`);
     const imports = [...src.matchAll(/^import .* from '([^']+)'/gm)].map(m => m[1]);
-    assert.ok(imports.every(i => i.startsWith('node:') || i === './duplicate-repair-snapshot-lib.mjs'), `${f}: ${imports.join(', ')}`);
+    assert.ok(imports.every(i => i.startsWith('node:') || i === './duplicate-repair-snapshot-lib.mjs' || i === './duplicate-repair-shared.mjs'), `${f}: ${imports.join(', ')}`);
   }
-  const lib = fs.readFileSync(path.join(ROOT, 'scripts/duplicate-repair-snapshot-lib.mjs'), 'utf8');
-  assert.ok(!lib.includes('process.env') && !lib.includes('fetch('), 'the library has no environment or transport access at all');
+  for (const f of ['scripts/duplicate-repair-snapshot-lib.mjs', 'scripts/duplicate-repair-shared.mjs']) {
+    const lib = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    assert.ok(!lib.includes('process.env') && !lib.includes('fetch('), `${f} has no environment or transport access at all`);
+  }
 });
