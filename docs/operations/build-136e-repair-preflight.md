@@ -110,6 +110,47 @@ medical and messages are never in the manifest.
 Every write carries `precondition.sha256`: the hash (canonical JSON) of the
 whole store value at snapshot time.
 
+## Taking the snapshot (read-only)
+
+```
+UPSTASH_REDIS_REST_URL=… UPSTASH_REDIS_REST_TOKEN=… \
+node scripts/duplicate-repair-snapshot.mjs --club <clubId> --out snapshot.json [--prefix app]
+```
+
+- `scripts/duplicate-repair-snapshot-lib.mjs` builds the document from an
+  injected command function; `scripts/duplicate-repair-snapshot.mjs` is the
+  CLI. Tested by `test/duplicate-repair-snapshot.test.js` against synthetic
+  records for two clubs and a loopback stub — never against production.
+- **Credentials come from the environment only.** There is deliberately no
+  `.env.local` fallback: a live snapshot is an explicit, approved act, run with
+  the two variables exported for that one command.
+- **Two read-only guards.** Every command passes `guardReadOnly()` in the
+  library (GET / SCAN / LRANGE, nothing else, before any client is called), and
+  the CLI wraps `fetch` with the production audit's tripwire so a non-read
+  command aborts the process before it is sent.
+- **Data minimisation.** Records are reduced to whitelisted fields: no password
+  hashes, session tokens, push keys, phone numbers, dates of birth or notes.
+  Only the target club's people are included, plus their other-club memberships
+  and sessions so the preflight can refuse a cross-club merge. Medical records
+  are reduced to the ids they reference (`{ redacted: true, referencedIds }`),
+  which is all the reference scan needs. Direct-message threads are key names
+  only, and only those naming a club member. Availability entries keep ids,
+  response and time; roster rows keep ids, name, position and the `avail_*`
+  mirrors.
+- **Refusals.** A missing or non-JSON users / memberships store, a roster that
+  is not `{ players: [] }`, an availability record that is not an object, a
+  SCAN reply of the wrong shape, or a SCAN that does not terminate all abort
+  with nothing written. Records without an id are dropped and listed in
+  `notes`. The output file is created with mode 600 and never overwritten.
+- **Not captured:** the flat pre-scoping availability keys
+  (`availability:<sessionId>` without a club) — inert legacy history that no
+  club-scoped reader consults.
+
+**Authorisation required before any live snapshot:** the owner's explicit
+approval for a read-only production read (the environment variables are the
+owner's to export), run on the owner's machine, output kept under `umask 077`
+and deleted after post-release verification.
+
 ## The write protocol this tool enforces by contract — and does not implement
 
 1. Take a fresh snapshot with the read-only audit and recompute the manifest;
