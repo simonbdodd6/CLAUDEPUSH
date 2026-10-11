@@ -35,8 +35,8 @@ GET/SCAN/LRANGE-only tripwire. Required fields, with the store key each mirrors:
 | `roster.players` | `roster:<club>` | `{ id, userId, legacyPlayerId, name, position, … }` |
 | `subscriptions` | `subscriptions` | `{ userId, playerId, legacyPlayerId, subscription: { endpoint } }` |
 | `availability` | `availability:<club>:…` | `{ "<key>": { "<entryKey>": { userId, playerId, legacyPlayerId, response, respondedAt } } }` |
-| `publish` | `publish:<club>:…` | `{ "<key>": <parsed record> }` — every publish record of the club |
-| `medical` | `medical:<club>` | `{ "<key>": <record> }` (may be empty) |
+| `publish` | `publish:<club>:…` | `{ "<key>": { reduced, formationKeys?, benchKeys?, referencedIds } }` — every publish record of the club, REDUCED to its sheet positions and the known ids it names elsewhere (`reducePublishRecord`); a raw record is refused |
+| `medical` | `medical:<club>` | `{ "<key>": { redacted: true, referencedIds } }` — the known ids the record names, nothing clinical (may be empty) |
 | `messages` | `chat:conv:dm:*:msgs` | array of DM key names (may be empty) |
 
 Omitting `medical` or `messages` is a blocker: the preflight cannot prove the
@@ -107,15 +107,25 @@ publish sheet keys re-pointed. Staff `clear_plays_for` proposes the admin
 `set_player_group` action with an empty group. Users, availability records,
 medical and messages are never in the manifest.
 
-Every write carries `precondition.sha256`: the hash (canonical JSON) of the
-whole store value at snapshot time.
+Every write carries `precondition.sha256`: the hash (canonical JSON, record
+arrays order-insensitive) of the whole store value at snapshot time. For a
+publish record the hash is of its REDUCED form: the write step re-reads the
+live record, reduces it with the same shared function and the snapshot's known
+ids, and compares. The hash therefore guards exactly the sheet positions and
+references the repair depends on; a coach's unrelated edit to the same record
+meanwhile neither blocks the pair nor is lost, because the write is a
+read-modify-write of the live record at the one named path.
 
 ## Taking the snapshot (read-only)
 
 ```
-UPSTASH_REDIS_REST_URL=… UPSTASH_REDIS_REST_TOKEN=… \
-node scripts/duplicate-repair-snapshot.mjs --club <clubId> --out snapshot.json [--prefix app]
+UPSTASH_REDIS_REST_URL=… UPSTASH_REDIS_REST_TOKEN=… [APP_KEY_PREFIX=app] \
+node scripts/duplicate-repair-snapshot.mjs --club <clubId> --out snapshot.json [--prefix <p>]
 ```
+
+The key prefix is `--prefix` when given, else `APP_KEY_PREFIX` exactly as the
+app and the audit read it, else `app`. A wrong prefix is refused (the users
+store is then "missing"), never guessed.
 
 - `scripts/duplicate-repair-snapshot-lib.mjs` builds the document from an
   injected command function; `scripts/duplicate-repair-snapshot.mjs` is the
@@ -133,10 +143,15 @@ node scripts/duplicate-repair-snapshot.mjs --club <clubId> --out snapshot.json [
   Only the target club's people are included, plus their other-club memberships
   and sessions so the preflight can refuse a cross-club merge. Medical records
   are reduced to the ids they reference (`{ redacted: true, referencedIds }`),
-  which is all the reference scan needs. Direct-message threads are key names
-  only, and only those naming a club member. Availability entries keep ids,
-  response and time; roster rows keep ids, name, position and the `avail_*`
-  mirrors.
+  which is all the reference scan needs. **Publish records are reduced** by the
+  shared `reducePublishRecord` to `formationKeys` / `benchKeys` (kept
+  positionally — these are what gets re-pointed) and `referencedIds` (the known
+  ids the record names anywhere else, as `"<id>"` or `"id:<id>"`); coaching
+  and transport notes, attendance details, logos and every other field never
+  leave the store. Direct-message threads are key names only, and only those
+  naming a club member. Availability entries keep ids, response and time;
+  roster rows keep ids, name, position and the `avail_*` mirrors;
+  subscriptions keep ids and endpoint (no device label).
 - **Refusals.** A missing or non-JSON users / memberships store, a roster that
   is not `{ players: [] }`, an availability record that is not an object, a
   SCAN reply of the wrong shape, or a SCAN that does not terminate all abort
