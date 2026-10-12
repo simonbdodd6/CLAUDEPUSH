@@ -46432,6 +46432,12 @@
             // localStorage had no coach role at boot): restore their private draft.
             loadCoachDraft().catch(() => {});
           }
+        } else if (res.status >= 500) {
+          // The server could not ANSWER (storage outage, crash, gateway timeout)
+          // — that is not a refusal, so it must not sign anyone out. Treat it
+          // like offline. Never undo a refusal already learned: a device the
+          // server has signed out stays signed out until a 200 proves otherwise.
+          if (_serverAuthState !== 'anon') _serverAuthState = 'unknown';
         } else {
           _serverAuthState = 'anon';
           if (typeof availabilityStopLive === 'function') availabilityStopLive();   // Build 129

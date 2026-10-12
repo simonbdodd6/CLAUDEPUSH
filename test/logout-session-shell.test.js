@@ -310,7 +310,7 @@ test('H — checkServerSession repaints when the boundary flips', () => {
   const body = src.slice(src.indexOf('async function checkServerSession()'));
   assert.match(body.slice(0, 600), /const wasSignedOut = sessionSignedOut\(\);/,
     'the boundary is sampled before the request');
-  assert.match(body.slice(0, 4000), /if \(wasSignedOut !== sessionSignedOut\(\)\) \{ render\(\); \}/,
+  assert.match(fn('checkServerSession'), /if \(wasSignedOut !== sessionSignedOut\(\)\) \{ render\(\); \}/,
     'and a flip in EITHER direction repaints the sections');
 });
 
