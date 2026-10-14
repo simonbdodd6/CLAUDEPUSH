@@ -9825,17 +9825,29 @@
               checkServerSession().catch(() => {});   // flips the app into its signed-out presentation
               setAuthTab('login');                    // the same entry the Welcome screen / banner use
             }
-            // A refused write is not a pending one: retrying it would fail again
+            // A refused TAP is not a pending one: retrying it would fail again
             // for the same reason, and the local answer has just been put back.
-            clearIfHeld(entry);
-            return { ok: false, auth: true };
+            // A RETRY has nothing to put back (availabilityFlushPending passes no
+            // revert), so dropping its entry left the card showing an answer the
+            // coach never received, with nothing left to send it. It stays held
+            // as "not sent" instead — sent by this owner once signed in again.
+            if (typeof revert === 'function') { clearIfHeld(entry); return { ok: false, auth: true }; }
+            markFailed(entry);
+            return { ok: false, auth: true, pending: true };
           }
           // 5xx is the server having a bad moment — worth retrying. Any other
-          // refusal (a malformed session id, say) never will be, so it is not
-          // kept as pending and the caller reports the failure plainly.
+          // refusal (a malformed session id, say) never will be, so a tap is
+          // put back exactly like a refused one and the caller reports the
+          // failure plainly. A retry has nothing to put back: it stays held as
+          // "not sent" rather than vanish behind a card that looks saved.
           if (res.status >= 500) { markFailed(entry); return { ok: false, pending: true }; }
-          clearIfHeld(entry);
-          return { ok: false };
+          if (typeof revert === 'function') {
+            revert(); saveState('Availability revert — not saved'); render();
+            clearIfHeld(entry);
+            return { ok: false };
+          }
+          markFailed(entry);
+          return { ok: false, pending: true };
         } catch {
           // OFFLINE / transport failure — the answer is kept exactly as the
           // player left it, marked pending, and retried. This is the case that
@@ -21967,6 +21979,13 @@
         if (ok) data = await res.json().catch(() => null);
       } catch { ok = false; }
       if (!ok || !data?.responses) {
+        if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(true);
+        return;
+      }
+      // `anonymous`: the server could not tell whose answers to read, so its {}
+      // speaks for nobody. Reconciling against it would erase answers this
+      // device already confirmed — treated like a failed read instead.
+      if (data.anonymous === true) {
         if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(true);
         return;
       }
