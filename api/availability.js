@@ -15,6 +15,23 @@ function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
 }
 
+// A session that cannot be READ is not a session that does not exist. During
+// the 2026-10-12 Upstash outage the blanket `.catch(() => null)` turned every
+// storage failure into "no session": a save answered 401 "your session has
+// expired" (the client reverted the answer and sent the player to log in) and
+// the player's self-read answered 200 with no answers (the client then erased
+// answers it had already confirmed). Storage unavailability is rethrown so the
+// caller answers 503 — the client already keeps a 5xx answer pending and
+// retries it. Every other failure keeps its old meaning: no session.
+async function availabilitySession(req) {
+  try {
+    return await resolveSessionFromRequest(req);
+  } catch (error) {
+    if (error?.code === 'STORAGE_UNAVAILABLE') throw error;
+    return null;
+  }
+}
+
 // ── GROUP CONTEXT (D1b Pass 3 — the storage split) ─────────────────────────
 // Availability is a GROUP resource. Two derivations, never interchangeable:
 //
@@ -229,9 +246,13 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     // Player self-GET: returns the logged-in player's own responses across all sessions.
     if (req.query?.myResponse === '1') {
-      const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
+      let sessionContext;
+      try { sessionContext = await availabilitySession(req); }
+      catch (error) { return sendAuthError(res, error); }
       const identity = availabilityIdentityFromSession(sessionContext);
-      if (!identity) return res.status(200).json({ responses: {} });
+      // No identity is not a read of anyone's answers. `anonymous` tells the
+      // client so, so it never reconciles its held answers against this {}.
+      if (!identity) return res.status(200).json({ responses: {}, anonymous: true });
       // Read by IDENTITY across every stored session, not a published session-id
       // list. The player's app can POST under a sessionId the published list no
       // longer contains (stale schedule, republished/custom ids) — constraining
@@ -312,7 +333,9 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
+    let sessionContext;
+    try { sessionContext = await availabilitySession(req); }
+    catch (error) { return sendAuthError(res, error); }
     const { action: postAction, response, sessionId, reason, sessions: clearSessions } = req.body || {};
 
     // ── Coach-gated clear_week action ──────────────────────────────────────────
