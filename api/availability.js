@@ -16,6 +16,15 @@ function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
 }
 
+// A read that did not complete is a failure the caller must SEE — never an
+// empty success. Storage keeps its own 503 and fixed message; anything else is
+// a 500 whose engine text stays server-side.
+function sendReadFailure(res, error) {
+  if (error?.code === 'STORAGE_UNAVAILABLE') return res.status(503).json({ ok: false, error: error.message });
+  console.error('[availability] board read failed:', error);
+  return res.status(500).json({ ok: false, error: 'Could not read availability — please try again.' });
+}
+
 // A session that cannot be READ is not a session that does not exist. During
 // the 2026-10-12 Upstash outage the blanket `.catch(() => null)` turned every
 // storage failure into "no session": a save answered 401 "your session has
@@ -315,11 +324,17 @@ export default async function handler(req, res) {
       let boardGroup;
       try { boardGroup = await coachGroupForRequest(tenant, req.query?.group); }
       catch (error) { return sendAuthError(res, error); }
-      const roster = await listIdentityState(tenant.teamId).catch(() => ({ player_profiles: [] }));
-      const identities = (roster.player_profiles || []).map(p => ({
-        userId: p.userId, playerId: p.userId, legacyPlayerId: p.legacyPlayerId || '',
-      }));
-      const resolvedList = await resolveGroupAvailabilityForIdentities(tenant.teamId, boardGroup, identities);
+      // A roster that cannot be read is NOT an empty roster: answering
+      // { resolved: {} } told the coach's board that nobody had replied, and
+      // the client then cleared every answer it was showing.
+      let resolvedList;
+      try {
+        const roster = await listIdentityState(tenant.teamId);
+        const identities = (roster.player_profiles || []).map(p => ({
+          userId: p.userId, playerId: p.userId, legacyPlayerId: p.legacyPlayerId || '',
+        }));
+        resolvedList = await resolveGroupAvailabilityForIdentities(tenant.teamId, boardGroup, identities);
+      } catch (error) { return sendReadFailure(res, error); }
       const resolved = {};
       resolvedList.forEach(({ identity, answers }) => {
         if (!answers || !Object.keys(answers).length) return;

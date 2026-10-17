@@ -43920,8 +43920,12 @@
         const _ctxAtStart = _ctxNow();
         const _ctxLeft = () => { const c = _ctxNow(); return (_ctxAtStart.club && c.club !== _ctxAtStart.club) || (_ctxAtStart.group && c.group !== _ctxAtStart.group); };
         const readSeq = (typeof _availabilityReadSeq !== 'undefined') ? ++_availabilityReadSeq : 1;
+        // Only a reply that CARRIES a resolved map is a read. A 200 without one
+        // is a failed read like any other — reading it as {} would take the
+        // empty-board path below and clear every answer on show.
         const reply = await fetch('/api/availability?resolveRoster=1' + _availGroupQ)
           .then(r => r.ok ? r.json() : null)
+          .then(body => (body && body.resolved && typeof body.resolved === 'object' && !Array.isArray(body.resolved)) ? body : null)
           .catch(() => null);
         // ── ORDER + CONTEXT, before ANYTHING this reply could touch ──
         // Ignored completely — no map, no stamp, no roster patch, no chip,
@@ -43952,7 +43956,7 @@
           if (ts) { ts.textContent = 'Sync failed — will retry'; ts.className = 'msg-chip unavailable'; }
           return;
         }
-        const resolved = reply.resolved || {};
+        const resolved = reply.resolved;     // shape checked as the reply landed
         // This read is now the newest to have applied: every read that left
         // before it, however late its reply lands, is stale from here on.
         if (typeof _availabilityAppliedSeq !== 'undefined') _availabilityAppliedSeq = readSeq;
