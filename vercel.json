@@ -15,6 +15,11 @@
       "source": "/:file(vercel\\.json.*)",
       "destination": "/404.html",
       "permanent": false
+    },
+    {
+      "source": "/packages/:file(.*)",
+      "destination": "/404.html",
+      "permanent": false
     }
   ],
   "headers": [
@@ -90,6 +95,14 @@
     {
       "source": "/api/reminder",
       "destination": "/api/cron?job=reminder"
+    },
+    {
+      "source": "/api/coach-memory",
+      "destination": "/api/publish?resource=coach-memory"
+    },
+    {
+      "source": "/api/brain-draft",
+      "destination": "/api/publish?resource=brain-draft"
     }
   ],
   "crons": [

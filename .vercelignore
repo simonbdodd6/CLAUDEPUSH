@@ -31,6 +31,15 @@
 !/season-intelligence
 !/src
 
+# --- Brain reasoning packages (staging/brain-integration) -----------------
+# Byte-identical copies of the Brain's pure reasoning code (see
+# packages/BRAIN_PROVENANCE.json), imported at runtime by api/_brainProviders.js
+# behind the Brain draft's gates — so they MUST be uploaded or the function
+# cannot load them. Uploaded files are statically servable (outputDirectory
+# "."), so vercel.json denies /packages/* with a 404, exactly as it does for
+# /api/*.js: the bundle can read the source, the public web cannot.
+!/packages
+
 # --- serverless functions ------------------------------------------------
 # Must be uploaded: Vercel builds api/**/*.js into functions. Being uploaded
 # also makes the source statically reachable, so vercel.json additionally

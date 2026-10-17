@@ -199,8 +199,8 @@ test('24–28: no rewrite was added for the 404 — existing routes are untouche
   // catch-all rewrite would have swallowed /api/*, which is exactly the risk
   // the audit flagged.
   const sources = vercel.rewrites.map(r => r.source);
-  assert.deepEqual(sources.sort(), ['/api/reminder', '/api/roster', '/privacy', '/terms'].sort(),
-    'still exactly the four known rewrites — no catch-all');
+  assert.deepEqual(sources.sort(), ['/api/brain-draft', '/api/coach-memory', '/api/reminder', '/api/roster', '/privacy', '/terms'].sort(),
+    'still exactly the six known rewrites — no catch-all');
   assert.ok(!sources.some(s => s.includes('(.*)') || s === '/:path*'), 'no catch-all route added');
   assert.equal(vercel.outputDirectory, '.');
 });

@@ -211,7 +211,7 @@ test('19+20: robots.txt keeps the authenticated app out of search results', () =
 // ─── 21: the app itself is untouched ───────────────────────────────────────
 test('21: the SPA is unchanged — same single entry point, no new routing architecture', () => {
   assert.equal(vercel.outputDirectory, '.', 'static serving unchanged');
-  assert.equal(vercel.rewrites.length, 4, 'exactly the two new page routes plus the two existing API rewrites');
+  assert.equal(vercel.rewrites.length, 6, 'exactly the two page routes plus the four API rewrites (roster, reminder, coach-memory, brain-draft)');
   assert.ok(!vercel.routes, 'no new routing mechanism introduced');
   // H2 added `redirects`, but only as a deny rule: each one refuses to serve a
   // server-side file and sends the request to the branded 404 page. That is not

@@ -230,7 +230,9 @@ test('H2-9: function routes still resolve — the block is extension-scoped', ()
 
 test('H2-10: existing rewrites still reach their destinations', () => {
   const sources = vercelConfig.rewrites.map(r => r.source);
-  assert.deepEqual(sources, ['/terms', '/privacy', '/api/roster', '/api/reminder']);
+  // /api/coach-memory (Core Memory M5) is served by the publish function, like /api/roster.
+  // /api/brain-draft (staging) is served by the publish function too, gated by BRAIN_ENABLED + the club flag.
+  assert.deepEqual(sources, ['/terms', '/privacy', '/api/roster', '/api/reminder', '/api/coach-memory', '/api/brain-draft']);
   for (const r of vercelConfig.rewrites) {
     assert.ok(!isBlocked(r.source), `${r.source} is intercepted before its rewrite`);
     assert.ok(!isBlocked(r.destination.split('?')[0]),

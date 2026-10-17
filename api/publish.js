@@ -65,6 +65,8 @@ import { createHash } from 'node:crypto';
 import { auditLog, requestIp } from './_security.js';
 import { findDuplicate } from '../src/fixture-import.js';
 import { runWeeklyAvailabilityCheck } from './cron.js';
+import { produceTrainingPublishMemory, produceSquadPublishMemory, squadSelectionCounts } from './_coachMemoryProducers.js';
+import { coachMemoryHandler } from './_coachMemoryRoute.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -3549,6 +3551,13 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'training') return trainingHandler(req, res);
   if (String(req.query?.resource || '') === 'fixtures') return fixturesHandler(req, res);
   if (String(req.query?.resource || '') === 'training-schedule') return trainingScheduleHandler(req, res);
+  // Core Memory M5 write route, served from this function (vercel.json rewrites /api/coach-memory
+  // here) so the Hobby function ceiling is not exceeded. Self-gated on PERM.AI_INTELLIGENCE.
+  if (String(req.query?.resource || '') === 'coach-memory') return coachMemoryHandler(req, res);
+  // Brain draft (staging): vercel.json rewrites /api/brain-draft here. Imported only for this
+  // resource so ordinary publish requests never load it; it is off unless BRAIN_ENABLED + the
+  // club's Brain flag are both set, and self-gated on PERM.AI_INTELLIGENCE.
+  if (String(req.query?.resource || '') === 'brain-draft') return (await import('./_brainDraftRoute.js')).brainDraftHandler(req, res);
 
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {
@@ -3900,6 +3909,14 @@ export default async function handler(req, res) {
         // for; failing to note the session must not fail their save.
         console.error('[attendance ledger]', e && e.message);
       }
+      // Best-effort Coach Memory producer (Core Memory M6). Dormant Brain feed: runs only after
+      // the group-scoped schedule write has succeeded, and a memory-write failure must never
+      // affect the publish result — the producer never throws and its outcome is not part of the
+      // response contract. The resolved group is passed so the memory names the playing group
+      // this schedule was published for, not just the club.
+      await produceTrainingPublishMemory({
+        teamId: session.teamId, coachId: session.user.id, groupId: gid, sessionCount: sessions.length,
+      }).catch(() => {});
       return res.status(200).json({ ok: true, sessions, groupId: gid });
     }
 
@@ -3936,6 +3953,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, squad: null });
       }
       squad.publishedAt = squad.publishedAt || new Date().toISOString();
+      let sheetGroupId;   // the playing group this sheet was published for (Coach Memory M7 only)
       if (squad.fixtureId && squad.sideId) {
         // One key per fixture+side: publishing Premier can never overwrite
         // Premier Development. The pointer names the FIXTURE context only —
@@ -3943,10 +3961,12 @@ export default async function handler(req, res) {
         // it is scoped to the fixture's OWN group, so it moves only that
         // group's players, never a sibling group's.
         const g = await fixturePointerGroup(session.teamId, squad.fixtureId);
+        sheetGroupId = g;
         await kvSet(fixtureSideSquadKey(session.teamId, squad.fixtureId, squad.sideId), squad);
         await writeSquadPointer(session.teamId, 'fixture', squad.fixtureId, session.user.id, g);
       } else if (squad.fixtureId) {
         const g = await fixturePointerGroup(session.teamId, squad.fixtureId);
+        sheetGroupId = g;
         await kvSet(fixtureSquadKey(session.teamId, squad.fixtureId), squad);
         // The publish IS the decision about what players see. No dates, no
         // "newest wins" — publishing Amstelveense leaves Mons stored and
@@ -3960,7 +3980,15 @@ export default async function handler(req, res) {
         // slot belongs to the INITIAL group only.
         await kvSet(squadKey(session.teamId), squad);
         await writeSquadPointer(session.teamId, 'legacy', '', session.user.id, INITIAL_GROUP_ID);
+        sheetGroupId = INITIAL_GROUP_ID;
       }
+      // Best-effort Coach Memory producer (Core Memory M7). Runs only after the sheet and its
+      // pointer are stored, and only ever sees aggregate COUNTS — no player names or ids. Gated by
+      // the shared producer kill-switch; a memory-write failure never affects this publish, the
+      // producer never throws and its outcome is not part of the response contract.
+      await produceSquadPublishMemory({
+        teamId: session.teamId, coachId: session.user.id, groupId: sheetGroupId, ...squadSelectionCounts(squad),
+      }).catch(() => {});
       return res.status(200).json({ ok: true, squad });
     }
 

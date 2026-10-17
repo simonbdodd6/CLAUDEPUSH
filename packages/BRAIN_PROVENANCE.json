@@ -1,0 +1,560 @@
+{
+  "type": "brain-package-provenance",
+  "schemaVersion": 1,
+  "build": "Build 118",
+  "source": {
+    "repository": "CLAUDEPUSH-Brain (git worktree of the same repository; branch feature/coaches-eye-intelligence-brain)",
+    "commit": "4be1a865b2c67ebb4871b8fe799f6cccc8ef0dfa",
+    "commitSubject": "fix(brain): make coach intelligence dependency closure self-contained"
+  },
+  "rule": "Every file listed here is a byte-identical copy of the Brain source blob at `source.commit`. These files are never edited in Core; a change lands in the Brain repository first and is re-copied with a new manifest. test/brain-packages-provenance.test.js enforces this.",
+  "closure": "The complete static import closure (relative imports only, zero external specifiers) of: brain-decision-planner/brain-dry-run-harness.js (runBrainDryRun), coach-intelligence/index.js (pipelines + readiness chain + M230 Coach View), coach-memory/index.js (M108–M117 incl. M112 synthesis, M113 DNA signals, M114 DNA profile).",
+  "packages": {
+    "packages/brain-decision-planner": "7 files — runBrainDryRun and its harness dependencies",
+    "packages/coach-core-adapter": "24 files — Core→Brain loader/selection-input adapters (pure)",
+    "packages/coach-intelligence": "33 files — pipelines, readiness chain, presenters, M230 Coach View (self-contained since 4be1a865)",
+    "packages/coach-memory": "13 files — M108 model, M110–M117"
+  },
+  "fileCount": 77,
+  "files": [
+    {
+      "sourcePath": "packages/brain-decision-planner/boundary-squad-capstone-harness.js",
+      "destinationPath": "packages/brain-decision-planner/boundary-squad-capstone-harness.js",
+      "bytes": 3830,
+      "sha256": "5cd9d792f3e281235c3f706607a4bfa7e11b8f0e3826ea5403a9785bbeca3629",
+      "gitBlob": "4e737e6ee8d9cf152bc453bc35070fa825f3e5ed"
+    },
+    {
+      "sourcePath": "packages/brain-decision-planner/brain-dry-run-harness.js",
+      "destinationPath": "packages/brain-decision-planner/brain-dry-run-harness.js",
+      "bytes": 4128,
+      "sha256": "d014e45d1ea2dbfc9fb9a2482d9e0f734291172b30971a22a02d5c6073e901eb",
+      "gitBlob": "bbbeb82cc1983d9bf8466355b0b3de535e6ac9e6"
+    },
+    {
+      "sourcePath": "packages/brain-decision-planner/brain-inputs-facade.js",
+      "destinationPath": "packages/brain-decision-planner/brain-inputs-facade.js",
+      "bytes": 2902,
+      "sha256": "333ff138e4f686bee616b13c394028eb3b33c17c4ccf6953cf780b6c7259fbf6",
+      "gitBlob": "e934566eabea4e6a0fcfc9812b57e94e2e50e5ea"
+    },
+    {
+      "sourcePath": "packages/brain-decision-planner/brain-inputs-summary.js",
+      "destinationPath": "packages/brain-decision-planner/brain-inputs-summary.js",
+      "bytes": 2689,
+      "sha256": "6ff346879d9c4ad5f3f0430cf6380f01b1279b6bd98d9e6ee57cd497b46f2469",
+      "gitBlob": "e6635e643e024bd1dc38a2ea566898cf04cbb7af"
+    },
+    {
+      "sourcePath": "packages/brain-decision-planner/decision-plan-context-mapper.js",
+      "destinationPath": "packages/brain-decision-planner/decision-plan-context-mapper.js",
+      "bytes": 2412,
+      "sha256": "c96e233f63d689a129ff527e59baf4f66631e55bf7ef88569140f050576ddf4e",
+      "gitBlob": "9a17f7b04576e1bd0627aaa1ef6ab07ae8e24ef3"
+    },
+    {
+      "sourcePath": "packages/brain-decision-planner/decision-plan-source-contract.js",
+      "destinationPath": "packages/brain-decision-planner/decision-plan-source-contract.js",
+      "bytes": 2751,
+      "sha256": "39f194591f773bfb19c3fb8d1edc71dc51e71d0bb3c88b4e26d995d97cc64451",
+      "gitBlob": "ffbc5602aa63d4cd480ed86958c538ff1d9ea1d6"
+    },
+    {
+      "sourcePath": "packages/brain-decision-planner/intelligence-boundary-harness.js",
+      "destinationPath": "packages/brain-decision-planner/intelligence-boundary-harness.js",
+      "bytes": 2776,
+      "sha256": "5f0fb30cea3d00b5462c1bd3b2c2216bb2007a50187f55d90553f1a30ec56b22",
+      "gitBlob": "87d27da75ac5d7522a930f409b85116896db7f5d"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/assemble-selection-inputs.js",
+      "destinationPath": "packages/coach-core-adapter/assemble-selection-inputs.js",
+      "bytes": 3232,
+      "sha256": "309d81cb493e6ce8a4003b03393b8912b75fdeaa479163be5b800daf4d4ae605",
+      "gitBlob": "26b286401d104442157ae34584b7796a948d3f84"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/availability-mapping.js",
+      "destinationPath": "packages/coach-core-adapter/availability-mapping.js",
+      "bytes": 2551,
+      "sha256": "ac5d34aac5640ca7d743f962cf831f3cb706e1c180bb4b1cc0c744ea474fd71e",
+      "gitBlob": "f5ceeb632072d446967a136ea33a01e6820de8fa"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/candidate-assembler.js",
+      "destinationPath": "packages/coach-core-adapter/candidate-assembler.js",
+      "bytes": 5221,
+      "sha256": "a07bfd184490860701a162de31ba7079ab2dbea03f27cf2feaacade4c45e9693",
+      "gitBlob": "a3f6c79e478611ecdec765930587222e48d67475"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/coach-dna-from-memories.js",
+      "destinationPath": "packages/coach-core-adapter/coach-dna-from-memories.js",
+      "bytes": 2390,
+      "sha256": "20938710d2e38c5f9b4d6ff41ae4baa47e1ae6f8ea62b1bbee3c7e42c4ed1c79",
+      "gitBlob": "d140cd7bf733556303c221a90197f3bd1b2a8a9f"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/coach-dna-profile.js",
+      "destinationPath": "packages/coach-core-adapter/coach-dna-profile.js",
+      "bytes": 7310,
+      "sha256": "6303597d588a9790d6533304378872417de05bcf6d7d99be26558db4db1a9614",
+      "gitBlob": "3d77be307328a1b947b169881bbf6de7eae4d885"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/coach-memory-adapter.js",
+      "destinationPath": "packages/coach-core-adapter/coach-memory-adapter.js",
+      "bytes": 2592,
+      "sha256": "2bb51f47b6a5bb8fd9c131a3b5a6cc982bc9d6bd325726f1da9d85d0635d17a5",
+      "gitBlob": "d16a67f6405f8ca73f2b14dfcb4d0ef27b8f29ba"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/confidence-source.js",
+      "destinationPath": "packages/coach-core-adapter/confidence-source.js",
+      "bytes": 4720,
+      "sha256": "11e9b54998e805ac673e4ee2edd6a68c43178e7b42b0f0f0e424227f76b82494",
+      "gitBlob": "382a9b4bee6532a26001bc76688b94d3aebf057b"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/core-squad-loader-contract.js",
+      "destinationPath": "packages/coach-core-adapter/core-squad-loader-contract.js",
+      "bytes": 2964,
+      "sha256": "4aa49743fcfddf0056e85ef7358536ea989f4fa4f501ceb81138b57d9596ad64",
+      "gitBlob": "48f3742adbaef1b857e86336657e4034db6d9796"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/create-selection-inputs.js",
+      "destinationPath": "packages/coach-core-adapter/create-selection-inputs.js",
+      "bytes": 4252,
+      "sha256": "87b8ba68fbf2c01d890d84fede1adb8c2d42327e9098184835fb68eb46dc9f68",
+      "gitBlob": "f27698c1d1169668cca17e46812cfe2a1a54ec67"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/decision-plan-builder.js",
+      "destinationPath": "packages/coach-core-adapter/decision-plan-builder.js",
+      "bytes": 8042,
+      "sha256": "5e59954916b2c1303ee09f43a1fe5f10e78694740e194e14e5acc1c683a8cfba",
+      "gitBlob": "9eb62ab7f4e80bcd63f23542d25a3ff872372e8d"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/dna-confidence-provider.js",
+      "destinationPath": "packages/coach-core-adapter/dna-confidence-provider.js",
+      "bytes": 4335,
+      "sha256": "bd9a37f20891a8263bc4e116e8290fb8d4531d7732e18832ea79598abc954b3a",
+      "gitBlob": "40e04ca25311170319db225637098831cf49d6d8"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/formation-resolver.js",
+      "destinationPath": "packages/coach-core-adapter/formation-resolver.js",
+      "bytes": 6692,
+      "sha256": "a5bc8000dfaf82c4395ce560a8d471830e2ec9ab82b3d76a3b659b825c3e0936",
+      "gitBlob": "e25a2e6cd5f3ea4b14ef60025aa5b4e97e464a53"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/index.js",
+      "destinationPath": "packages/coach-core-adapter/index.js",
+      "bytes": 2745,
+      "sha256": "be5386542f039e4d9d1a1df081cbec57c495a9bd6ff77d8e3b854c649b1c1799",
+      "gitBlob": "39f365a8e456f474a87d3e0b3c2568bbfe63374a"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/intelligence-input-completer.js",
+      "destinationPath": "packages/coach-core-adapter/intelligence-input-completer.js",
+      "bytes": 4178,
+      "sha256": "f3c678b092b80bacd09264cba61777700ee297d76e472a8ed17c06d80a8ab692",
+      "gitBlob": "6772e86eb0fb7d705bfd8d8a6500f1cbed752c3e"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/intelligence-services-assembler.js",
+      "destinationPath": "packages/coach-core-adapter/intelligence-services-assembler.js",
+      "bytes": 2915,
+      "sha256": "ccaf78d7e90387b7e378907d54b4bba0a47e66e9817f275077a9d79dad6e90e8",
+      "gitBlob": "378ccc69f26faac5a69e67acae0057bfd5a5c761"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/loader-to-selection-inputs.js",
+      "destinationPath": "packages/coach-core-adapter/loader-to-selection-inputs.js",
+      "bytes": 2441,
+      "sha256": "acafcaafcf584e366fa8d710b4b5507fc80a92ea86865e16bb4fb02e7f7bd668",
+      "gitBlob": "bc2155ceb29a4a168f3195e1f34c8f3d477bcf9b"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/pipeline-bridge.js",
+      "destinationPath": "packages/coach-core-adapter/pipeline-bridge.js",
+      "bytes": 3773,
+      "sha256": "721682f94ffa1370742c213adfd115827462be7528f06fb7ad26dc716596e72e",
+      "gitBlob": "a5e7880d494213a38e8799e55821f716191c7791"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/player-confidence-provider.js",
+      "destinationPath": "packages/coach-core-adapter/player-confidence-provider.js",
+      "bytes": 2932,
+      "sha256": "44270af191367d6549f5b3163d373ec7092ed0e54573633a08c94ff3656eebf0",
+      "gitBlob": "0bc2209b6545f014a263b90de66d6c5fec071aa8"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/player-dna-influence.js",
+      "destinationPath": "packages/coach-core-adapter/player-dna-influence.js",
+      "bytes": 5477,
+      "sha256": "0f5d2725181718bdd97b918f7b844fe04bcdc3d81b8ab8c0953e828075d728b0",
+      "gitBlob": "5ba9407f273298334985dd184b88bcfaaa4c57aa"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/player-dna-source.js",
+      "destinationPath": "packages/coach-core-adapter/player-dna-source.js",
+      "bytes": 6174,
+      "sha256": "b78ab16cb1f9a5a3b7a034fc461c747998511d99af565a62f324c9397fd0282a",
+      "gitBlob": "287ef0cdc622da62085519f1956e2b0aa61a6905"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/position-assignment-resolver.js",
+      "destinationPath": "packages/coach-core-adapter/position-assignment-resolver.js",
+      "bytes": 5390,
+      "sha256": "7b18e89cb5084e8f3d69bc8b54743255e7513de1059a502ce662ace1233c5d1c",
+      "gitBlob": "97bdb9e153437c9924e571b122823c055586cfd4"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/position-normalization.js",
+      "destinationPath": "packages/coach-core-adapter/position-normalization.js",
+      "bytes": 3767,
+      "sha256": "241b66b09b1f0c5db0290ee7e1a910ca9f1be3c612db2d2462aaa4a0c789438b",
+      "gitBlob": "7e6070c832d03734117ec610c4dc95ff419585a2"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/selection-context-builder.js",
+      "destinationPath": "packages/coach-core-adapter/selection-context-builder.js",
+      "bytes": 4134,
+      "sha256": "1c8b2aec0d2c5f82c6892b10bd91f954ef70b60e24b6ed66926282c686504444",
+      "gitBlob": "6a726eb13ea94ed925ad0d8fc56ca6fc41eb9560"
+    },
+    {
+      "sourcePath": "packages/coach-core-adapter/selection-dry-run.js",
+      "destinationPath": "packages/coach-core-adapter/selection-dry-run.js",
+      "bytes": 4063,
+      "sha256": "97a86012154ca00b4f855fad6f8281bc89e3fda8aa781aa0273fc581203d5054",
+      "gitBlob": "9cd7076bc67e93353b3f7ceeec1c709329033ccd"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/bench-recommendation.js",
+      "destinationPath": "packages/coach-intelligence/bench-recommendation.js",
+      "bytes": 4271,
+      "sha256": "b6d28e20c5aced2a703e3c76d7e8491fcbac59eb08e50ec9382aee2878e73202",
+      "gitBlob": "6173fdac7b753992fc2391334eb7d10517253221"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/canonical-stringify.js",
+      "destinationPath": "packages/coach-intelligence/canonical-stringify.js",
+      "bytes": 2012,
+      "sha256": "dd7a1f45ee11d83521a5f557b031ed59b7e0c49de8fa484716079f8fe3f55433",
+      "gitBlob": "387e2a01e689f05b6fc413134e556f2bb21fdd43"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/captain-recommendation.js",
+      "destinationPath": "packages/coach-intelligence/captain-recommendation.js",
+      "bytes": 4149,
+      "sha256": "9a246f1d2479fe3df89ac19e31085bc66c39ee454e118240856382eaf39c857e",
+      "gitBlob": "6ce6b99cedfb4e1a8a7dc57679707f335261ec1a"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/coach-dna-coach-view-sample.js",
+      "destinationPath": "packages/coach-intelligence/coach-dna-coach-view-sample.js",
+      "bytes": 5515,
+      "sha256": "d2c5edc5a276d40609fbfa2cdfb659716c625e6dd8b4184cb4f216b4238a9027",
+      "gitBlob": "cd8342527ba017eb37a1d7c8862631f56b2c9320"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/coach-dna-coach-view.js",
+      "destinationPath": "packages/coach-intelligence/coach-dna-coach-view.js",
+      "bytes": 6221,
+      "sha256": "d0f9be349e6675aba7827c5dcfa539163a6b17205dc22f1992eec34bb32bf559",
+      "gitBlob": "29c2335a7ee527bd9d008183e669437fe30bb299"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/decision-intelligence-diff-presenter.js",
+      "destinationPath": "packages/coach-intelligence/decision-intelligence-diff-presenter.js",
+      "bytes": 5285,
+      "sha256": "be24cb302aed0ee934ea76e22a816cd0a6324fc6532bc027623c905f54205419",
+      "gitBlob": "93db750795f6aecf5e4035dc68877104824913b6"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/decision-intelligence-diff-severity.js",
+      "destinationPath": "packages/coach-intelligence/decision-intelligence-diff-severity.js",
+      "bytes": 3099,
+      "sha256": "5f25c1a925b0911833636e7d654c69c509a7788ed1f011ec97b4f2496db392fa",
+      "gitBlob": "b2636384eb59331b5ecd7cc4f9f42e28bf18f772"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/decision-intelligence-diff.js",
+      "destinationPath": "packages/coach-intelligence/decision-intelligence-diff.js",
+      "bytes": 8027,
+      "sha256": "8b8022e7b9f22e9e7fc994c665ed5e29f04ebf1db1c5170109aa18405f24c9b3",
+      "gitBlob": "a0cbf56751f4f0118cdfe211f8eddcbdf146a051"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/depth-chart.js",
+      "destinationPath": "packages/coach-intelligence/depth-chart.js",
+      "bytes": 4489,
+      "sha256": "9fcfb24632c7b2adddd8b3b5d84f22cdca7b445b98425bb6b85f1140deb4c4b9",
+      "gitBlob": "4177c857c81721333c1f94d10708494b77b41ffc"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/index.js",
+      "destinationPath": "packages/coach-intelligence/index.js",
+      "bytes": 2523,
+      "sha256": "35165efaad3a051517be30c21e15d0f4997faa9828c6e59c0b27d4cd7600c4dc",
+      "gitBlob": "a6a52905e0cadb647046ed2284ef8d7f6e9162b9"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/match-day-squad.js",
+      "destinationPath": "packages/coach-intelligence/match-day-squad.js",
+      "bytes": 4770,
+      "sha256": "17795d5df95e9b181d3291aa3122dfb308ebe0996da2b9a809257fda30375780",
+      "gitBlob": "325363ed4a14d5a6c2605f1199705fe867fa95ed"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/match-readiness-explanations.js",
+      "destinationPath": "packages/coach-intelligence/match-readiness-explanations.js",
+      "bytes": 5743,
+      "sha256": "786b3fb02c315a9bdca45f7d0d70349962eef2123071a61b478eb045dff66766",
+      "gitBlob": "2ff27104b5ccf0963fc308111d36613c52f5021a"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/match-readiness-presenter.js",
+      "destinationPath": "packages/coach-intelligence/match-readiness-presenter.js",
+      "bytes": 5260,
+      "sha256": "846875a26b6876a73a953ad20d198e48881c7480f8449b6f20de1dd567e02a9c",
+      "gitBlob": "038fbb720a4571dc3d53dcad2f8cf9ec44c8b816"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/match-readiness-summary.js",
+      "destinationPath": "packages/coach-intelligence/match-readiness-summary.js",
+      "bytes": 6352,
+      "sha256": "a086d17c9f4db09023b44855b6a389b07031ccff3c50982b9bfecfe7bdc0329d",
+      "gitBlob": "acfae1502b42528b8fa2a9890331481758d45285"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/match-readiness-trend.js",
+      "destinationPath": "packages/coach-intelligence/match-readiness-trend.js",
+      "bytes": 5267,
+      "sha256": "6d75f0a0314d4385beb520813a41449ac839212ac7a4210dfb8c01269c947eff",
+      "gitBlob": "d24e18c5d5b1d654aed1f96f98e079031ec9af9a"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/match-readiness.js",
+      "destinationPath": "packages/coach-intelligence/match-readiness.js",
+      "bytes": 6657,
+      "sha256": "369d2e839f05966bc4bf348c3d1409635a72993475b4ad11e10034bc46010b55",
+      "gitBlob": "597693b70765c95e94f6d4eeced9139603a513af"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/pipeline.js",
+      "destinationPath": "packages/coach-intelligence/pipeline.js",
+      "bytes": 4172,
+      "sha256": "9b8b118d894934a93f3d4b9375cb60434d6aad92d4a91cf144966c3f95d4e42b",
+      "gitBlob": "ec024698412581352059f35efdd9850ef84afc59"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/readiness-coach-view-sample.js",
+      "destinationPath": "packages/coach-intelligence/readiness-coach-view-sample.js",
+      "bytes": 4242,
+      "sha256": "94ccdb4ab88bc3056786a59faaceef3fed8c40676b72cc17ece4132f2e3756e7",
+      "gitBlob": "b11c2b714e4a018a3a9a8527443b1f526221bfb5"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/readiness-coach-view.js",
+      "destinationPath": "packages/coach-intelligence/readiness-coach-view.js",
+      "bytes": 5398,
+      "sha256": "23e307800caaa497c000610ad2e6199a9dbc4528066e654fd782194d14ffe99b",
+      "gitBlob": "ea0dc9a61eb237061e471fff4550687bd0157dbb"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/readiness-evidence-bundle-presenter.js",
+      "destinationPath": "packages/coach-intelligence/readiness-evidence-bundle-presenter.js",
+      "bytes": 3151,
+      "sha256": "1e5c4b218e1c16389821fa8f39fc265105c741c070dc34f9a4bf2895f08ae228",
+      "gitBlob": "49598a619431381da0580251264d42bda372fee0"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/readiness-evidence-bundle.js",
+      "destinationPath": "packages/coach-intelligence/readiness-evidence-bundle.js",
+      "bytes": 6214,
+      "sha256": "f4a602abf4b6294696e247562d8b1db1c9453bd526860eb9451f538b9d98fa64",
+      "gitBlob": "935294d3b813c32227dae21e27cb6592631053b8"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/readiness-report-envelope.js",
+      "destinationPath": "packages/coach-intelligence/readiness-report-envelope.js",
+      "bytes": 3718,
+      "sha256": "22f4971d3750c1ab0816fbfbe8d5a496a391c4d6c9d3ab13a59bffeeedc3adb8",
+      "gitBlob": "6ae3a842c2613097d00659dc3054780c4e66d322"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/recommend-starting-xv.js",
+      "destinationPath": "packages/coach-intelligence/recommend-starting-xv.js",
+      "bytes": 5633,
+      "sha256": "e36fd41fc3d0d337f745fbec79a0aac156a5792d76bad077fca2fe4446ce3550",
+      "gitBlob": "131d55b976a7582f1337ae98da59b66cebef8073"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/recommendation.js",
+      "destinationPath": "packages/coach-intelligence/recommendation.js",
+      "bytes": 3839,
+      "sha256": "a5e00e69aee4cbb804f092048b7a4d47ac6accfecf701fc4930b6ca354f4d520",
+      "gitBlob": "a3a5007bc08438817985cc94c5a1a9f4cd463eb9"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/selection-engine.js",
+      "destinationPath": "packages/coach-intelligence/selection-engine.js",
+      "bytes": 4108,
+      "sha256": "cfedcb07795c2f74e3d5c37ae594e02c02104703132a0954a9c708e73312edaa",
+      "gitBlob": "acb34827da19e9dcea69084508a442a2063e198d"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/selection-explanation-presenter.js",
+      "destinationPath": "packages/coach-intelligence/selection-explanation-presenter.js",
+      "bytes": 5025,
+      "sha256": "8b40d35f0588da6560ed60f55a79e92b5267eecd37143a38db4ae518cc55176d",
+      "gitBlob": "52699065d960429b3f7f170d31a1b0b8ff16ba13"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/selection-explanation.js",
+      "destinationPath": "packages/coach-intelligence/selection-explanation.js",
+      "bytes": 6488,
+      "sha256": "e1347a650a1a7c4b325e69a7837b7f2da8acdedbc234bdf07b25507b09368852",
+      "gitBlob": "568c2151314f908f266bff51891227bb090d082a"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/selection-pipeline.js",
+      "destinationPath": "packages/coach-intelligence/selection-pipeline.js",
+      "bytes": 3079,
+      "sha256": "badfb73ae783c1e7427dc2d087cf388115ebb8fb50e6bb4a281d5fe5c25a0d60",
+      "gitBlob": "cc9677b29decff264b770b80404ab93a6a3afde2"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/selection-risk.js",
+      "destinationPath": "packages/coach-intelligence/selection-risk.js",
+      "bytes": 7029,
+      "sha256": "ac663195257ee3902e61785f3dc0eedd8b86058ca021f49be3c43d5c45dfadc8",
+      "gitBlob": "3e46a48e29924ef424c987b471053f8a22290cc3"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/squad-evaluation.js",
+      "destinationPath": "packages/coach-intelligence/squad-evaluation.js",
+      "bytes": 4259,
+      "sha256": "b20f93ce275e3e0f0d7713ce227af68efd5ca492d1511639ee6522f1b33a30f9",
+      "gitBlob": "c9e7be41f7161ae64263e75c21bd3f59004605ff"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/summarize-selection-risk.js",
+      "destinationPath": "packages/coach-intelligence/summarize-selection-risk.js",
+      "bytes": 3732,
+      "sha256": "984c956dedaf85bffa74ce0a881b61789b9a34cb5996353b5301f918ae4c3860",
+      "gitBlob": "031d7be4388831fa3ef89195463167dfb9a603fb"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/team-sheet.js",
+      "destinationPath": "packages/coach-intelligence/team-sheet.js",
+      "bytes": 4762,
+      "sha256": "522ed737bcacabcc04389bb789859cf2d1489d3bb6a5be6972bd3fc80ca45f31",
+      "gitBlob": "bc1bbe423c98676a2d8bd8e27aaf96b95dc41e99"
+    },
+    {
+      "sourcePath": "packages/coach-intelligence/team-signoff.js",
+      "destinationPath": "packages/coach-intelligence/team-signoff.js",
+      "bytes": 3621,
+      "sha256": "48bd8a2b490e7ae071098f2f424c0817a9b97474964f7c2c84be96fec5c30cc3",
+      "gitBlob": "9262d0f4f94068d43b8bd4937c7f358cfc0fefbb"
+    },
+    {
+      "sourcePath": "packages/coach-memory/adapter-contract.js",
+      "destinationPath": "packages/coach-memory/adapter-contract.js",
+      "bytes": 1307,
+      "sha256": "b363fc350b939d375581633a50e72f5cde390c637210cc07d7b06f1eea25f4dc",
+      "gitBlob": "141f5cf38aaa7dbcf990e067c60105a3ab11b762"
+    },
+    {
+      "sourcePath": "packages/coach-memory/decision-alignment.js",
+      "destinationPath": "packages/coach-memory/decision-alignment.js",
+      "bytes": 4001,
+      "sha256": "c23d9ddc0c8059c07cedb8c190b0cd91f5f9b5755e9cd170d6c674ee603c67b1",
+      "gitBlob": "90de0fbaa3be156fe57c078d7d1e003315fd94b4"
+    },
+    {
+      "sourcePath": "packages/coach-memory/decision-challenge.js",
+      "destinationPath": "packages/coach-memory/decision-challenge.js",
+      "bytes": 4245,
+      "sha256": "3181f288fdd044771c520433072e65746d7330f8f7a2770fa54a6c929cdbeb0c",
+      "gitBlob": "d7203427d6c0ddc1ff9ad2e0ee3f8139b88cfd63"
+    },
+    {
+      "sourcePath": "packages/coach-memory/decision-explanation.js",
+      "destinationPath": "packages/coach-memory/decision-explanation.js",
+      "bytes": 3287,
+      "sha256": "60ee31c11679a7a0a2ca8ccdba71b23d1f94138370887ee242903add5f94f21e",
+      "gitBlob": "7ef340e2d8c71a5c6104d9f7445b45e17983a2a7"
+    },
+    {
+      "sourcePath": "packages/coach-memory/dna-profile.js",
+      "destinationPath": "packages/coach-memory/dna-profile.js",
+      "bytes": 3641,
+      "sha256": "2fe91fe230f22f0e0dd71716b05c8c0e1c3d335806c5fd1cd873b4da591740d3",
+      "gitBlob": "ee2ff68ff8e10cc40806d2e3304b73e9606c0b5e"
+    },
+    {
+      "sourcePath": "packages/coach-memory/dna-signals.js",
+      "destinationPath": "packages/coach-memory/dna-signals.js",
+      "bytes": 3295,
+      "sha256": "a69ffc8e4125f5ea8239532de648a777acb809fd9ca3ea767652b8dabc64bf00",
+      "gitBlob": "b58a78d1e3c5eb5bdd2da52d897b0172f41e6fbf"
+    },
+    {
+      "sourcePath": "packages/coach-memory/index.js",
+      "destinationPath": "packages/coach-memory/index.js",
+      "bytes": 1247,
+      "sha256": "ca4821222a3be6980cec3f9a458ca47e3877cb60b4bbe85b1c04281ac1f61dce",
+      "gitBlob": "14a7865136a7af1c3146bcd42f73f23ff4328f67"
+    },
+    {
+      "sourcePath": "packages/coach-memory/learning.js",
+      "destinationPath": "packages/coach-memory/learning.js",
+      "bytes": 6567,
+      "sha256": "41fb57cbf305a24d295277b16821a34cf33cc44c90ab3ee8e205e0cb1da2759d",
+      "gitBlob": "9e9ecd4fc74840959903deb08553a20eb7300bea"
+    },
+    {
+      "sourcePath": "packages/coach-memory/model.js",
+      "destinationPath": "packages/coach-memory/model.js",
+      "bytes": 4993,
+      "sha256": "6f4f9e237cf1ead779c40ff618fe8a2c1cdbe3ff110b0ed4a52dccb678779c1c",
+      "gitBlob": "0a5fedc8738e6e093a7e1b6539ef07dee2a40325"
+    },
+    {
+      "sourcePath": "packages/coach-memory/query-plan.js",
+      "destinationPath": "packages/coach-memory/query-plan.js",
+      "bytes": 5205,
+      "sha256": "3efae4bedf92892885d51a10d91737622fbf0b6b12cb080fdf14261d6dc6cf61",
+      "gitBlob": "733951ed476b481012d32b58a3436292bfb1e88b"
+    },
+    {
+      "sourcePath": "packages/coach-memory/retrieval.js",
+      "destinationPath": "packages/coach-memory/retrieval.js",
+      "bytes": 4309,
+      "sha256": "c30bc25887175307696b4bae052d13f1c8ff07878017aa3f84f1d1ca809f0bff",
+      "gitBlob": "75a422fdd3e276f873d6e19b6a47f805599f723d"
+    },
+    {
+      "sourcePath": "packages/coach-memory/scoring.js",
+      "destinationPath": "packages/coach-memory/scoring.js",
+      "bytes": 2258,
+      "sha256": "11a63a192c37f5749a7bd6377785b59d0f6842725001b56ca74f61d061151eac",
+      "gitBlob": "bfaacbf62c3bdfb8ef4149b595e4aa1f88f7eb84"
+    },
+    {
+      "sourcePath": "packages/coach-memory/synthesis.js",
+      "destinationPath": "packages/coach-memory/synthesis.js",
+      "bytes": 3561,
+      "sha256": "3adede754e1b2dece2f4fedbb3bb65bb0d4748d94a47c4da2410f1c7902e8509",
+      "gitBlob": "52256d255ff1ab7677a8256e83b1b8f615f1cefc"
+    }
+  ]
+}
