@@ -198,6 +198,29 @@ test('8: a player who answered under U18 and whose group then becomes unresolvab
   assert.equal(kv.has(groupKey(SEN)), false);
 });
 
+// The production shape found by the 2026-10-21 read-only audit: staff-only
+// members (no player group) in a multi-group club whose earlier answers the old
+// fallback placed in the INITIAL group's record. Those answers must stay
+// exactly where the coach already sees them; only new saves and the member's
+// own read are refused.
+test('8b: a STAFF-ONLY member with a historical answer in the initial group — save 409 with no write, self-read 409, the coach board holding the answer still returns it', async () => {
+  const t = await seed({ role: 'head_coach', status: 'active' });     // no playerGroupId; the club has two active groups
+  const prior = JSON.stringify({ 'u-p': { userId: 'u-p', playerId: 'u-p', response: 'available', respondedAt: '2026-10-15T08:00:00Z' } });
+  kv.set(groupKey(SEN), prior);                                        // where the old grp_initial fallback put it
+  const before = availKeys();
+  const w = await call('POST', {}, SAVE, t.p);
+  assert.equal(w.statusCode, 409, JSON.stringify(w.body));
+  assert.equal(w.body?.code, 'group_assignment_required');
+  assert.deepEqual(availKeys(), before, 'nothing written anywhere');
+  assert.equal(kv.get(groupKey(SEN)), prior, 'the historical record is byte-identical');
+  const self = await call('GET', { myResponse: '1' }, null, t.p);
+  assert.equal(self.statusCode, 409, JSON.stringify(self.body));
+  assert.equal(self.body?.code, 'group_assignment_required');
+  assert.equal(self.body?.responses, undefined, 'never an empty successful read');
+  assert.equal(await boardFor(t.admin, SEN), 'available', 'the coach board for the group holding the answer still returns it');
+  assert.equal(await boardFor(t.admin, U18), undefined, 'and no other group\'s board shows it');
+});
+
 test('9a: a genuine single-group club keeps its legacy behaviour — a member with no playerGroupId saves to the one group', async () => {
   const t = await seed({ role: 'player', status: 'active' }, { groups: [{ id: SEN, name: 'Seniors', type: 'general', status: 'active' }] });
   const w = await call('POST', {}, SAVE, t.p);
