@@ -9722,6 +9722,19 @@
     // parallel (Yes to all). typeof-guarded for the sandboxes that extract
     // saveAvailabilityResponseToServer alone.
     let _availSendChain = {};
+    // A held answer the server refused FOR GOOD (no active membership / no
+    // team group — Issue 2) is not this player's answer: drop it from every
+    // record that shows it, so the card cannot claim an answer that was never
+    // saved. Only the retry path needs this; a tap puts back what it replaced.
+    function availabilityForgetLocalAnswer(sessionId) {
+      const player = typeof getPlayer === 'function' ? getPlayer() : null;
+      if (!player) return;
+      const k = sessionKey(sessionId);
+      const records = [player, ...(typeof findLiveAvailabilityRecords === 'function' ? findLiveAvailabilityRecords(state.players, player) : [])];
+      records.forEach(r => { if (!r) return; delete r[k]; delete r[k + 'Reason']; delete r[k + 'RespondedAt']; });
+      saveState('Availability refused');
+      render();
+    }
     /**
      * Send one availability answer. Returns WHAT HAPPENED, so the caller can
      * tell the player the truth instead of assuming:
@@ -9743,6 +9756,11 @@
       const sendResponse = response === 'injured' ? 'unavailable' : response;
       const sendReason   = response === 'injured' ? 'injury'     : (reason || '');
       const id = String(sessionId || '');
+      // Was an UNSENT answer already held for this session when this tap was
+      // made? Then the value a tap would "put back" is that unsent answer — a
+      // refusal must not restore it as if it were saved (Issue 2.1).
+      const replacedUnsent = !retryEntry && typeof state !== 'undefined' && state
+        && state.availabilityPending && state.availabilityPending[id] ? true : false;
       // The intent this call is about: the entry just recorded (latest wins), the
       // held entry a retry is re-sending, or — where no store exists — the answer itself.
       const initial = retryEntry
@@ -9811,6 +9829,38 @@
             if (typeof availabilityNoteConfirmed === 'function') availabilityNoteConfirmed(id);
             clearIfHeld(entry);
             return superseded ? { ok: true, superseded: true, response: String(body.response || ''), reason: String(body.reason || '') } : { ok: true };
+          }
+          // REFUSED FOR GOOD (Issue 2): the session is fine, but there is no
+          // active membership in this club (403 no_membership) or no team group
+          // to answer in (409 group_assignment_required). Signing in again or
+          // retrying cannot change that — only the coach can. So the answer is
+          // put back (tap) or dropped (retry), never queued, never shown as
+          // saved, and the player is told who can fix it.
+          if (res.status === 403 || res.status === 409) {
+            const refusedBody = typeof res.json === 'function' ? await res.json().catch(() => null) : null;
+            const refusedCode = String((refusedBody && refusedBody.code) || '');
+            if (refusedCode === 'no_membership' || refusedCode === 'group_assignment_required') {
+              // ONLY the request whose intent the store still holds may change
+              // the card or the queue. A newer tap made while this request was
+              // out owns the session now — its own outcome decides; an older
+              // refusal landing late must never clear or revert it (Issue 2.1).
+              const current = !hasStore() || sameIntent(held(), entry);
+              if (current) {
+                // Put back what the tap replaced — unless that was itself an
+                // unsent answer: restoring it would show an answer that was
+                // never saved. A retry has nothing to put back either way.
+                if (typeof revert === 'function' && !replacedUnsent) { revert(); saveState('Availability revert — refused'); render(); }
+                else availabilityForgetLocalAnswer(id);
+                clearIfHeld(entry);
+                if (Date.now() - _availAuthPromptedAt > 4000) {
+                  _availAuthPromptedAt = Date.now();
+                  showToast(refusedCode === 'no_membership'
+                    ? 'Not saved — your account is not an active member of this club. Please ask your coach.'
+                    : 'Not saved — you are not assigned to a team group yet. Please ask your coach to add you to your group.');
+                }
+              }
+              return { ok: false, refused: true, code: refusedCode, stale: !current };
+            }
           }
           if (res.status === 401 || res.status === 403) {
             // The server REFUSED this write — the just-applied local value is a
@@ -21972,12 +22022,27 @@
       if (_playerAvailFetched) return; // only auto-fetch once per session
       _playerAvailFetched = true;
       const readStartedAt = Date.now();     // what this read can speak for: answers confirmed before it left
-      let data = null, ok = false;
+      let data = null, ok = false, refusedCode = '';
       try {
         const res = await fetch('/api/availability?myResponse=1');
         ok = Boolean(res && res.ok);
         if (ok) data = await res.json().catch(() => null);
+        else if (res && (res.status === 403 || res.status === 409)) {
+          const body = await res.json().catch(() => null);
+          refusedCode = String((body && body.code) || '');
+        }
       } catch { ok = false; }
+      // A STAFF session previewing a player asks for "my" answers with the
+      // coach's own membership. When that membership does not PLAY, the server
+      // refuses for good (no player group / not a playing member) — a fact
+      // about the coach, not about anyone's answers, and none about the board.
+      // It must not raise the failure flag the coach's board shares (Issue 2.1).
+      // A playing member's refusal, and every transient failure, stay failures.
+      if (!ok && (refusedCode === 'group_assignment_required' || refusedCode === 'no_membership')
+          && typeof membershipPlays === 'function' && typeof _myMembership !== 'undefined'
+          && _myMembership && !membershipPlays(_myMembership)) {
+        return;
+      }
       if (!ok || !data?.responses) {
         if (typeof availabilitySetReadFailed === 'function') availabilitySetReadFailed(true);
         return;
@@ -22494,6 +22559,7 @@
       render();
       const outcomes = await Promise.all(_sends);
       if (outcomes.some(o => o && o.auth)) return;                 // already reverted and reported
+      if (outcomes.some(o => o && o.refused)) return;              // refused for good: put back and reported
       if (outcomes.some(o => o && o.pending)) {
         saveState('Availability pending');
         render();
@@ -22533,6 +22599,7 @@
       render();
       const outcome = await _savePromise;
       if (outcome && outcome.auth) return;        // the save path has already reverted, toasted and re-rendered
+      if (outcome && outcome.refused) return;     // refused for good: put back, and the player told to ask their coach
       if (outcome && outcome.pending) {
         saveState('Availability pending');
         render();

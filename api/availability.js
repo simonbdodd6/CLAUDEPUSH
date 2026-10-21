@@ -3,12 +3,12 @@
 import { loadAvailability, saveAvailability, loadAvailabilityForIdentity, resolveAvailabilityForIdentities,
          loadGroupAvailability, saveGroupAvailability, withAvailabilityWriteLock,
          loadGroupAvailabilityForIdentity, resolveGroupAvailabilityForIdentities } from './_availabilityStore.js';
-import { loadClubStructure, activeGroups, INITIAL_GROUP_ID } from './_structureStore.js';
-import { assertOperationalGroup, operationalGroupsFor, resolvePlayerGroup } from './_accessScope.js';
+import { loadClubStructure, activeGroups } from './_structureStore.js';
+import { assertOperationalGroup, operationalGroupsFor, resolvePlayerGroup, playerGroupIdOf } from './_accessScope.js';
 import { setCors } from './_http.js';
 import { kvConfigured, kvGet } from './_kv.js';
 import { key } from './_keys.js';
-import { DEFAULT_TEAM, resolveSessionFromRequest, requireSession, listIdentityState, loadTeamMembers } from './_identityStore.js';
+import { DEFAULT_TEAM, resolveSessionFromRequest, requireSession, listIdentityState } from './_identityStore.js';
 import { requireClubManage, requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
 import { gatherClubExport } from './_clubExportSource.js';
 
@@ -21,7 +21,7 @@ function sendAuthError(res, error) {
 // a 500 whose engine text stays server-side.
 function sendReadFailure(res, error) {
   if (error?.code === 'STORAGE_UNAVAILABLE') return res.status(503).json({ ok: false, error: error.message });
-  console.error('[availability] board read failed:', error);
+  console.error('[availability] read failed:', error);
   return res.status(500).json({ ok: false, error: 'Could not read availability — please try again.' });
 }
 
@@ -49,24 +49,58 @@ async function availabilitySession(req) {
 //   playerGroupId (where the person PLAYS) — an arbitrary client group id is
 //   never trusted, and coaching scope never manufactures a player group. A
 //   membership that predates groups resolves through resolvePlayerGroup's
-//   single-group rule, else to the INITIAL group — the documented owner of
-//   all pre-structure club data. That is compatibility, not a guess: the
-//   club's history genuinely belongs to its original (Seniors) group.
+//   single-group rule — a club with ONE active group (a pre-structure club's
+//   synthesised initial group included) owns all of its answers.
+//
+//   A player with NO resolvable group is REFUSED, never placed. The old
+//   fallback to the initial group answered 200 for a U18 player with no or an
+//   archived group, a staff member with no player group, or a membership that
+//   was no longer active, and stored the answer in grp_initial: the player
+//   read it back as saved and the U18 coach never saw it (Issue 2).
 //
 //   COACH READS/ACTIONS name a group explicitly (?group=) and are asserted
 //   against the caller's staff scope; with exactly one operable group it is
 //   the default, so today's Seniors-only clients keep working unchanged.
 
-/** The group whose keyspace a PLAYER identity reads and writes. */
+/** A save or self-read the server refuses for good: retrying cannot help. */
+function placementRefusal(status, code, message) {
+  const error = new Error(message);
+  error.status = status;
+  error.code = code;
+  error.placement = true;
+  return error;
+}
+
+/** Answer a player-placement failure: a refusal as itself, storage as 503, anything else as a safe 500. */
+function sendPlacementFailure(res, error) {
+  if (error?.placement) return res.status(error.status).json({ ok: false, error: error.message, code: error.code });
+  return sendReadFailure(res, error);
+}
+
+/**
+ * The group whose keyspace a PLAYER identity reads and writes.
+ * The membership is the SESSION's own (identity.member, set from the session
+ * context) — never a second lookup that could disagree with it. Throws a
+ * placementRefusal when there is no active membership in this club (403
+ * no_membership) or no group to place the player in (409
+ * group_assignment_required); storage errors propagate to the caller.
+ */
 async function playerGroupForIdentity(clubId, identity) {
-  const candidates = [identity?.userId, identity?.playerId, identity?.legacyPlayerId]
-    .map(v => String(v || '').trim()).filter(Boolean);
-  const [structure, members] = await Promise.all([loadClubStructure(clubId), loadTeamMembers()]);
-  const member = members.find(m =>
-    String(m.teamId) === String(clubId) && m.status === 'active' &&
-    candidates.some(c => String(m.userId) === c));
+  const member = identity?.member || null;
+  if (!clubId || !member || member.status !== 'active' || String(member.teamId) !== String(clubId)) {
+    throw placementRefusal(403, 'no_membership', 'Your account is not an active member of this club — ask your coach.');
+  }
+  const structure = await loadClubStructure(clubId);
   const { groupId } = resolvePlayerGroup(member || {}, structure);
-  return groupId || INITIAL_GROUP_ID;
+  if (groupId) return groupId;
+  // Legacy: a club with exactly one active group owns every answer, staff
+  // included. An EXPLICIT group that no longer resolves (archived / unknown)
+  // is never quietly replaced by another one.
+  if (!playerGroupIdOf(member)) {
+    const live = activeGroups(structure);
+    if (live.length === 1) return live[0].id;
+  }
+  throw placementRefusal(409, 'group_assignment_required', 'You are not assigned to a team group yet — ask your coach to add you to your group.');
 }
 
 /** The group a COACH request operates on: asserted, or the single default. */
@@ -175,6 +209,9 @@ function availabilityIdentityFromSession(sessionContext = {}) {
     label: profile.displayName || user.displayName ||
       [user.firstName, user.lastName].filter(Boolean).join(' ') ||
       user.name || user.email || userId,
+    // The session's own ACTIVE membership (null when it is not active) — the
+    // only membership player placement trusts. Never stored or echoed.
+    member: sessionContext?.teamMember || null,
   };
 }
 
@@ -300,9 +337,15 @@ export default async function handler(req, res) {
       // it lives. Write path and storage format are unchanged.
       // GROUP-scoped self-read: a player's answers live in THEIR group's
       // keyspace (with the initial group's legacy fallback inside the loader).
+      // The SAME placement as the save: a refusal (403 / 409) or a storage
+      // failure (503) is answered as itself — never an empty successful read
+      // the client would reconcile its answers against.
       const clubId = tenantTeamId(sessionContext);
-      const myGroup = await playerGroupForIdentity(clubId, identity);
-      const found = await loadGroupAvailabilityForIdentity(clubId, myGroup, identity);
+      let found;
+      try {
+        const myGroup = await playerGroupForIdentity(clubId, identity);
+        found = await loadGroupAvailabilityForIdentity(clubId, myGroup, identity);
+      } catch (error) { return sendPlacementFailure(res, error); }
       const result = {};
       for (const [sid, v] of Object.entries(found)) result[sid] = { response: v.response, reason: v.reason || '' };
       return res.status(200).json({ responses: result });
@@ -457,7 +500,11 @@ export default async function handler(req, res) {
     if (!writeTeamId) {
       return res.status(403).json({ ok: false, error: 'Your account is not an active member of a club', code: 'no_membership' });
     }
-    const writeGroup = await playerGroupForIdentity(writeTeamId, identity);
+    // No active membership, or no group to place the player in, is REFUSED
+    // (403 / 409) and nothing is written; a storage failure is a 503.
+    let placementFailure = null;
+    const writeGroup = await playerGroupForIdentity(writeTeamId, identity).catch(error => { placementFailure = error; return null; });
+    if (placementFailure) return sendPlacementFailure(res, placementFailure);
     const intent = intentFromBody(req.body);
     const sameIdentity = v => Boolean(v && typeof v === 'object' && (
       (identity.userId         && v.userId         === identity.userId) ||
