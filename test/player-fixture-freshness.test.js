@@ -531,7 +531,10 @@ for (const view of ['desktop', 'phone']) {
       assert.equal(s.known, true, 'the list is known');
       const ids = s.cards.map(x => x.sessionId);
       assert.ok(ids.length === 3 && ids[0].startsWith('slot_') && ids.includes(premier.id) && ids.includes(second.id), 'Tuesday training and both U18 Saturday fixtures, under their own ids: ' + ids);
-      assert.equal(s.cards.filter(x => x.title === 'Saturday Match').length, 2, 'two U18 sides on one Saturday: two cards');
+      // Two U18 sides on one Saturday: two cards, each naming its own team —
+      // they used to read "Saturday Match" twice, indistinguishable.
+      assert.deepEqual(s.cards.filter(x => x.title.startsWith('Saturday Match')).map(x => x.title).sort(),
+        ['Saturday Match — U18 2', 'Saturday Match — U18 Premier'], 'two U18 sides on one Saturday: two team-named cards');
       assert.ok(!s.cards.some(x => x.sessionId === seniors.id), 'never the Seniors match');
       assert.ok(!s.cards.some(x => x.sessionId === 'game'), 'no generic card once real fixtures are known');
       assert.deepEqual(s.cards.find(x => x.sessionId === premier.id).controls, ['Available', 'Maybe', 'Unavailable'], 'all three controls');
