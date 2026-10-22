@@ -9081,6 +9081,8 @@
         slots: (_trainingSchedule && _trainingSchedule.slots) || [],
         currentWeekStart: availWeekStart(availToday()),
         fixturesKnown: typeof fixturesKnown === 'function' ? fixturesKnown() : true,
+        // typeof-guarded: test sandboxes extract these callers without the resolver.
+        teamLabel: typeof fixtureTeamLabel === 'function' ? fixtureTeamLabel : null,
       });
     }
 
@@ -9178,6 +9180,7 @@
         slots: _trainingSchedule.slots || [],
         currentWeekStart: currentWeek,
         fixturesKnown: true,
+        teamLabel: typeof fixtureTeamLabel === 'function' ? fixtureTeamLabel : null,
       });
       if (!sessions.length) return context('empty');
       return context('ready', {
@@ -18678,6 +18681,7 @@
         slots: (_trainingSchedule && _trainingSchedule.slots) || [],
         currentWeekStart: availWeekStart(availToday()),
         fixturesKnown: typeof fixturesKnown === 'function' ? fixturesKnown() : true,
+        teamLabel: typeof fixtureTeamLabel === 'function' ? fixtureTeamLabel : null,
       });
     }
 
@@ -22206,7 +22210,11 @@
      * the list lands. Callers that have no such signal keep today's rule.
      */
     function availabilityEventsForWeek(weekStartIso, sources = {}) {
-      const { fixtures = [], slots = [], currentWeekStart = '', fixturesKnown = true } = sources;
+      // `teamLabel` (optional) resolves a fixture to its TEAM's display name —
+      // callers that have the club structure pass fixtureTeamLabel; a caller
+      // without it gets the fixture's own free-text team. Injected so this
+      // builder stays pure and structure-free.
+      const { fixtures = [], slots = [], currentWeekStart = '', fixturesKnown = true, teamLabel = null } = sources;
       const weekEnd = availAddDays(weekStartIso, 6);
       const isCurrentWeek = weekStartIso === currentWeekStart;
       const events = [];
@@ -22240,6 +22248,15 @@
           title: 'Match',
           opponent: fx.opposition || '',
           venue: fx.venue || '',
+          // WHICH TEAM / COMPETITION it is. Every fixture read "Saturday
+          // Match" — two sides playing the same day were indistinguishable —
+          // because normalizeFixture keeps `sideId`, `team` and `competition`
+          // but this builder dropped them. Carry the canonical side, its
+          // RESOLVED name and the competition; availabilitySessionLabel names
+          // the match with them.
+          sideId: String(fx.sideId || ''),
+          team: String((typeof teamLabel === 'function' ? teamLabel(fx) : fx.team) || '').trim(),
+          competition: String(fx.competition || '').trim(),
           sourceId: fx.id,
         });
       }
@@ -22275,17 +22292,27 @@
      * Anything it cannot vouch for falls back to what this screen already
      * showed (title, then id): an unrecognised type is never renamed, and an
      * undated session (the legacy generic match) gets no invented weekday.
+     *
+     *   fixture — a match names its team ("Saturday Match — U18 Premier"),
+     *             else its competition, as resolved by availabilityEventsForWeek
+     *             from the club's own structure and fixture record. Nothing is
+     *             hard-coded; a match with neither keeps its plain label, and
+     *             training is group-wide so never carries one.
      */
     function availabilitySessionLabel(session) {
       const kind = { training: 'Training', match: 'Match' }[String(session?.type || '').toLowerCase()];
       const fallback = kind || session?.title || session?.id || '';
+      const detail = kind === 'Match'
+        ? (String(session?.team || '').trim() || String(session?.competition || '').trim())
+        : '';
+      const named = base => (detail ? `${base} — ${detail}` : base);
       const m = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(String(session?.date || '').trim());
-      if (!kind || !m) return fallback;
+      if (!kind || !m) return named(fallback);
       const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
       const at = new Date(Date.UTC(y, mo - 1, d));
-      if (at.getUTCFullYear() !== y || at.getUTCMonth() !== mo - 1 || at.getUTCDate() !== d) return fallback;
+      if (at.getUTCFullYear() !== y || at.getUTCMonth() !== mo - 1 || at.getUTCDate() !== d) return named(fallback);
       const weekday = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][at.getUTCDay()];
-      return `${weekday} ${kind}`;
+      return named(`${weekday} ${kind}`);
     }
 
     /** Today as YYYY-MM-DD. Injectable so tests never depend on the clock. */
@@ -22361,6 +22388,7 @@
         currentWeekStart: availWeekStart(availToday()),
         // No generic match while the list is still loading (Build 107).
         fixturesKnown: typeof fixturesKnown === 'function' ? fixturesKnown() : true,
+        teamLabel: typeof fixtureTeamLabel === 'function' ? fixtureTeamLabel : null,
       });
     }
 
