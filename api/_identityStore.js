@@ -2954,14 +2954,22 @@ export async function loadNotificationPreferenceMap() {
   return Object.fromEntries(users.filter(u => u.preferences).map(u => [u.id, u.preferences]));
 }
 
-export function notificationAllowed(prefMap, userId, { type = 'message', sessionId = '' } = {}) {
+// `kind` ('match' | 'training' | 'week') is what an availability reminder is
+// ABOUT, classified from the club's records by availabilityReminderKind
+// (_reminderKind.js). A whole-week reminder concerns both kinds, so it is
+// withheld only when BOTH are off. A caller that passes no kind keeps the old
+// id-based reading (`game` = match, anything else = training).
+export function notificationAllowed(prefMap, userId, { type = 'message', sessionId = '', kind = '' } = {}) {
   const prefs = prefMap?.[userId];
   if (!prefs) return true;
   if (prefs.pushEnabled === false) return false;
   const isAvailability = ['availability', 'availability-reminder'].includes(String(type));
-  if (isAvailability && String(sessionId) === 'game' && prefs.matchReminders === false) return false;
-  if (isAvailability && String(sessionId) !== 'game' && prefs.trainingReminders === false) return false;
-  return true;
+  if (!isAvailability) return true;
+  const k = ['match', 'training', 'week'].includes(String(kind)) ? String(kind)
+    : (String(sessionId) === 'game' ? 'match' : 'training');
+  if (k === 'match') return prefs.matchReminders !== false;
+  if (k === 'training') return prefs.trainingReminders !== false;
+  return prefs.matchReminders !== false || prefs.trainingReminders !== false;
 }
 
 export async function destroyAllSessionsForUser(userId, { exceptTokenHash = null } = {}) {
