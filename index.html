@@ -8331,7 +8331,7 @@
     }
 
     async function sendPushToPlayers(title, body, opts = {}) {
-      const { type, sessionId, targetLabel, targetUserId, targetPlayerId, audience } = opts;
+      const { type, sessionId, reminderKind, targetLabel, targetUserId, targetPlayerId, audience } = opts;
       // Staff-context sends carry the OPERATING group so the server narrows
       // delivery to that group's players (asserted server-side).
       const _pushGroup = state.activeView !== 'player' ? (state.operationalGroupId || '') : '';
@@ -8339,6 +8339,7 @@
         const payload = { title, body, from: currentUser().name };
         if (type)        payload.type        = type;
         if (sessionId)   payload.sessionId   = sessionId;
+        if (reminderKind) payload.reminderKind = reminderKind;
         if (targetLabel) payload.targetLabel = targetLabel;
         if (targetUserId) payload.targetUserId = targetUserId;
         if (targetPlayerId) payload.targetPlayerId = targetPlayerId;
@@ -19402,7 +19403,11 @@
             type: 'TEXT', isAutomated: false })
         });
       } catch(e) { console.warn('Chat write failed:', e); }
-      sendPushToPlayers(`Availability request — ${session.title}`, body, { type: 'availability', sessionId });
+      // The session's own kind travels with it: the server classifies a real
+      // fixture or training occurrence from the club's records, and uses this
+      // only for an id with no record (the generic match card).
+      const reminderKind = { match: 'match', training: 'training' }[String(session.type || '').toLowerCase()] || '';
+      sendPushToPlayers(`Availability request — ${session.title}`, body, { type: 'availability', sessionId, reminderKind });
       showToast(`${session.title} request sent to ${created.length} players ✓`);
       render(); // re-enable the button
     }
@@ -26328,9 +26333,9 @@
       };
       const _diagOn = (typeof _diagnosticsOn === 'function' && _diagnosticsOn());
       const cardAccount       = `
-          <!-- Coach account -->
+          <!-- Your account -->
           <div class="card">
-            <h2 style="margin-bottom:4px">Coach account</h2>
+            <h2 style="margin-bottom:4px">Your account</h2>
             <p class="muted" style="font-size:12px;margin-bottom:14px">Signed in as <strong>${esc(user.name || '')}</strong>${user.email ? ` · ${esc(user.email)}` : ''}</p>
             <div style="display:grid;gap:10px">
               <label style="${labelStyle}">Display name
@@ -26355,13 +26360,23 @@
               <button class="btn" type="button" onclick="settingsLogoutAll()" style="min-height:40px;font-size:13px;border-color:rgba(245,158,11,0.4);color:#fbbf24">Log out of all other devices</button>
             </div>
           </div>`;
-      const cardClub          = `
+      // Club settings write the club config, which the server accepts only
+      // from MANAGE_TEAMS (api/publish.js clubHandler). Staff without it (medical,
+      // S&C…) used to be shown every control, see it applied on their own device
+      // and then refused — so the whole card follows the server's gate.
+      // canI() answers isCoach() until the session's permission list arrives,
+      // which showed medical staff this card for as long as the session took;
+      // it waits for the server's actual answer instead (legacy mode keeps its
+      // role check). typeof-guarded for the isolated render harnesses.
+      const clubPermsKnown = (typeof _myPermissions !== 'undefined' && Array.isArray(_myPermissions))
+        || state.features?.permissionsV2 === false;
+      const cardClub          = clubPermsKnown && canI('manage_teams') ? `
           <!-- Club settings -->
           <div class="card">
             <h2 style="margin-bottom:4px">Club settings</h2>
-            <p class="muted" style="font-size:12px;margin-bottom:10px">Names, season name and the training schedule are edited in Club Admin.</p>
-            ${canI('manage_teams') ? `<button class="btn" type="button" style="margin-bottom:14px;font-size:12.5px"
-              onclick="setSection('coach','admin')">Open Club Admin →</button>` : ''}
+            <p class="muted" style="font-size:12px;margin-bottom:10px">The club name and season name are edited in Club Admin.</p>
+            <button class="btn" type="button" style="margin-bottom:14px;font-size:12.5px"
+              onclick="setSection('coach','admin')">Open Club Admin →</button>
             <div style="display:grid;gap:12px">
               <div style="display:flex;align-items:center;gap:14px">
                 <div id="set-logo-preview" style="width:54px;height:54px;border-radius:12px;border:1px solid var(--line);background:var(--panel-2) center/cover no-repeat;flex-shrink:0;${state.clubLogo ? `background-image:url(${state.clubLogo})` : ''}"></div>
@@ -26397,7 +26412,7 @@
               </div>
               <p class="muted" style="font-size:11px;margin:4px 0 0">Changes here save automatically and apply your branding across the app.</p>
             </div>
-          </div>`;
+          </div>` : '';
       // <!-- Appearance — a DEVICE preference, saved locally (see setAppearance) -->
       const cardAppearance    = !appearanceChoices.length ? '' : `
           <div class="card">
@@ -26424,11 +26439,11 @@
           <!-- Notifications -->
           <div class="card">
             <h2 style="margin-bottom:4px">Notifications</h2>
-            <p class="muted" style="font-size:12px;margin-bottom:8px">Your personal preferences — players manage their own on their devices.</p>
+            <p class="muted" style="font-size:12px;margin-bottom:8px">These apply to your account only. Players turn notifications on or off on their own device.</p>
             ${toggle('pushEnabled', 'Push notifications', 'Master switch for everything sent to your devices')}
-            ${toggle('emailEnabled', 'Email notifications', 'Applies to reminder emails (account emails always send)')}
-            ${toggle('matchReminders', 'Match reminders', 'Availability chasers for match day')}
-            ${toggle('trainingReminders', 'Training reminders', 'Availability chasers for training sessions')}
+            ${toggle('matchReminders', 'Match reminders', 'Availability requests and reminders for matches')}
+            ${toggle('trainingReminders', 'Training reminders', 'Availability requests and reminders for training sessions')}
+            <p class="muted" style="font-size:11px;margin:10px 0 0">The weekly availability reminder covers both, so it stops only when both are off.</p>
             ${!canUseFeature('unlimited_push') ? `<div style="margin-top:12px">${renderUnavailableNotice('unlimited_push', { compact: true })}</div>` : ''}
           </div>`;
       // <!-- Teams → Training schedule (RC4.10C) -->
@@ -26471,7 +26486,7 @@
           </div>`;
       const cardBeta          = `
           <!-- Beta Readiness — build/session diagnostics. RC4.10D: authorised
-               diagnostics mode only, never normal UI in any environment. -->               diagnostics mode only, never normal UI in any environment. -->
+               diagnostics mode only, never normal UI in any environment. -->
           ${(typeof _diagnosticsOn === 'function' && _diagnosticsOn()) ? `
           <div class="card">
             <h2 style="margin-bottom:4px">Beta Readiness</h2>
@@ -26505,8 +26520,6 @@
           <!-- Advanced → device reset. RC4.9B: this wipes ALL local club state on the
                device, so it is no longer part of normal production use. It appears only
                in the authorised-admin diagnostics mode (?diagnostics=1 + danger_zone),
-               which support can talk a club admin into when a device needs clearing. -->               device, so it is no longer part of normal production use. It appears only
-               in the authorised-admin diagnostics mode (?diagnostics=1 + danger_zone),
                which support can talk a club admin into when a device needs clearing. -->
           ${(typeof _diagnosticsOn === 'function' && _diagnosticsOn()) ? `
           <div class="card" style="padding:0;overflow:hidden">
@@ -26526,9 +26539,6 @@
                enforces for the read (PERM.REPORTS), so what the UI offers and
                what the API allows can never drift apart. Deliberately NOT
                inside the developer diagnostics panel: that is off by default,
-               and an error log nobody can find is not monitoring. -->               enforces for the read (PERM.REPORTS), so what the UI offers and
-               what the API allows can never drift apart. Deliberately NOT
-               inside the developer diagnostics panel: that is off by default,
                and an error log nobody can find is not monitoring. -->
           ${canI('reports') ? `
           <div class="card">
@@ -26545,7 +26555,6 @@
       const cardDeleteAccount = `
           <!-- H4 — self-service account deletion (App Store requirement).
                A quiet, honest card: the destructive ceremony lives in the
-               modal, not here. -->               A quiet, honest card: the destructive ceremony lives in the
                modal, not here. -->
           <div class="card" style="border-color:rgba(220,38,38,0.25)">
             <h3 style="font-size:13px;font-weight:800;margin:0 0 4px;color:#dc2626">Delete account</h3>

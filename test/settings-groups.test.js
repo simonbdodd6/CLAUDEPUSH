@@ -49,7 +49,11 @@ const ACTIONS = [
 const CHANGE_ACTIONS = [['settingsUploadLogo(this)', 1], ['settingsSaveMatchDay(this.value)', 1], ['settingsSaveSeason()', 2]];
 const INPUTS = ['set-displayname', 'set-curpw1', 'set-newpw', 'set-newemail', 'set-curpw2',
                 'set-colour1', 'set-colour2', 'set-matchday', 'set-season-start', 'set-season-end'];
-const TOGGLES = ['pushEnabled', 'emailEnabled', 'matchReminders', 'trainingReminders'];
+// emailEnabled was removed deliberately (Settings decision 2): no reminder
+// emails exist, so the toggle governed nothing. The stored preference key is
+// still accepted server-side; only the control is gone.
+const TOGGLES = ['pushEnabled', 'matchReminders', 'trainingReminders'];
+const REMOVED_TOGGLES = ['emailEnabled'];
 
 test('every setting is still present, exactly once', () => {
   for (const a of ACTIONS) {
@@ -64,6 +68,7 @@ test('every setting is still present, exactly once', () => {
     const n = settings.split(`toggle('${key}'`).length - 1;
     assert.equal(n, 1, `toggle ${key} appears once (found ${n})`);
   }
+  for (const key of REMOVED_TOGGLES) assert.equal(settings.includes(`toggle('${key}'`), false, `toggle ${key} stays removed`);
   for (const [c, want] of CHANGE_ACTIONS) {
     const n = settings.split(`onchange="${c}"`).length - 1;
     assert.equal(n, want, `${c} appears ${want}× (found ${n})`);
@@ -126,7 +131,10 @@ test('the Danger zone heading hides exactly when its cards are hidden', () => {
 
 test('the screen is still coach-only, and the gates are unchanged', () => {
   assert.match(settings, /if \(!isCoach\(\)\) \{ el\.innerHTML = ''; return; \}/);
-  assert.equal(settings.split("canI('manage_teams')").length - 1, 1, 'Club Admin link keeps its gate');
+  // ONE manage_teams gate: it now guards the whole Club settings card (the
+  // Club Admin link inside it included), matching the server's write gate.
+  assert.equal(settings.split("canI('manage_teams')").length - 1, 1, 'Club settings card (and its Club Admin link) keeps one gate');
+  assert.match(settings, /const cardClub\s*=\s*clubPermsKnown && canI\('manage_teams'\) \? `[\s\S]*?Club settings[\s\S]*?<\/div>` : '';/, 'the gate wraps the whole card, once permissions are known');
   assert.equal(settings.split("canI('reports')").length - 1, 1, 'Production health keeps its gate');
   // The cards keep their OWN diagnostics gates, untouched (4, as before the
   // restructure); _diagOn is derived once on top of them, and is used only to

@@ -10,6 +10,7 @@ import { resolveVariables } from './_variables.js';
 import { setCors, vapidContact, vapidKeyStatus, notificationUrl } from './_http.js';
 import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
 import { loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers, requireSession } from './_identityStore.js';
+import { availabilityReminderKind } from './_reminderKind.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -232,10 +233,19 @@ export default async function handler(req, res) {
 
   // Respect per-user notification preferences (Settings). Users with no
   // stored preferences are unaffected — opt-out only.
+  // An availability reminder is classified by what it is ABOUT — read from the
+  // club's fixtures and training slots, never from the id's shape — so Match
+  // and Training reminders each govern their own kind (_reminderKind.js).
   const prefMap = await loadNotificationPreferenceMap();
   if (Object.keys(prefMap).length) {
+    let kind = '';
+    if (type === 'availability' || type === 'availability-reminder') {
+      const named = Array.isArray(req.body?.sessionIds) && req.body.sessionIds.length ? req.body.sessionIds
+        : (typeof req.body?.sessionId === 'string' ? [req.body.sessionId] : []);
+      kind = await availabilityReminderKind(teamId, { sessionIds: named.filter(id => typeof id === 'string'), declaredKind: req.body?.reminderKind });
+    }
     subscriptions = subscriptions.filter(item =>
-      notificationAllowed(prefMap, item.userId, { type, sessionId }));
+      notificationAllowed(prefMap, item.userId, { type, sessionId, kind }));
   }
 
   if (!subscriptions.length) {

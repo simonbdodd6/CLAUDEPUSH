@@ -14,6 +14,7 @@ import { setCors, readSecret, vapidContact, notificationUrl } from './_http.js';
 import { OBSOLETE_LEGACY_ACCOUNT_IDS, loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers, loadTeams } from './_identityStore.js';
 import { OBSOLETE_DM_PARTICIPANT_IDS } from './chat.js';
 import { templatesForClub } from './templates.js';
+import { availabilityReminderKind } from './_reminderKind.js';
 
 const DAY_MAP = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
   sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
@@ -306,12 +307,14 @@ export async function runWeeklyAvailabilityCheck({
       debug.reminder = d;
       teamReport.sessions.reminder = { result: 'skipped', reason: decision.reason };
     } else {
-      // One reminder → all active members (club-scoped). Gated only by the master
-      // push toggle; tapping it opens the Availability page to set the whole week.
+      // One reminder → all active members (club-scoped); tapping it opens the
+      // Availability page to set the whole week. It is about the WHOLE week, so
+      // it honours the master push toggle and is withheld only from someone
+      // who has turned off both Match and Training reminders.
       let targets = subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, team.id));
       const waPrefs = await loadNotificationPreferenceMap();
       if (Object.keys(waPrefs).length) {
-        targets = targets.filter(item => waPrefs[item.userId]?.pushEnabled !== false);
+        targets = targets.filter(item => notificationAllowed(waPrefs, item.userId, { type: 'availability', kind: 'week' }));
       }
       const title = `${club?.clubName || "CoachEasier"} — Availability`;
       const body = 'Hi {{first_name}}! Please set your availability for this week in CoachEasier.';
@@ -452,7 +455,9 @@ export default async function handler(req, res) {
     }
     const reminderPrefs = await loadNotificationPreferenceMap();
     const targets = owing
-      .filter(item => notificationAllowed(reminderPrefs, item.userId, { type: 'availability', sessionId: 'game' }));
+      // "this week's sessions and match": the whole week, not a match — the
+      // `game` id below names no occurrence (see availabilityActions).
+      .filter(item => notificationAllowed(reminderPrefs, item.userId, { type: 'availability', kind: 'week' }));
     const title = 'Availability reminder';
     const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in CoachEasier. - {{coach_name}}";
     const outcomes = await Promise.allSettled(targets.map(({ subscription, label }) =>
@@ -547,8 +552,13 @@ export default async function handler(req, res) {
     const notificationType = template.category === 'availability' ? 'availability' : 'message';
     const schedulePrefs = await loadNotificationPreferenceMap();
     if (Object.keys(schedulePrefs).length) {
+      // A schedule naming an occurrence is classified from the club's records;
+      // one naming nothing is about the whole week.
+      const kind = notificationType === 'availability'
+        ? await availabilityReminderKind(schedule.teamId, { sessionIds: schedule.sessionId ? [String(schedule.sessionId)] : [] })
+        : '';
       targetSubscribers = targetSubscribers.filter(item =>
-        notificationAllowed(schedulePrefs, item.userId, { type: notificationType, sessionId: schedule.sessionId || 'game' }));
+        notificationAllowed(schedulePrefs, item.userId, { type: notificationType, sessionId: schedule.sessionId || 'game', kind }));
     }
     const delivery = await Promise.allSettled(targetSubscribers.map(({ subscription, label }) => {
       const context = { label, coachName: schedule.coachName || 'Coach' };
