@@ -47565,7 +47565,13 @@
             onclick="document.getElementById('invite-modal')?.remove();window.history.replaceState({},'','/')">Cancel</button>
         </div>`;
       document.body.appendChild(el);
-      setTimeout(() => document.getElementById(isGroup ? 'invite-first-input' : 'invite-name-input')?.focus(), 80);
+      // The delayed autofocus must never take focus from a field the person has
+      // already moved into: it fires late on a busy page, and a focus change
+      // between a click and a keystroke sends the typing into the wrong field.
+      setTimeout(() => {
+        if (el.contains(document.activeElement)) return;
+        document.getElementById(isGroup ? 'invite-first-input' : 'invite-name-input')?.focus();
+      }, 80);
     }
 
     // confirmDifferentPerson: the claimer answered the possible_duplicate_player
