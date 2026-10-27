@@ -53,6 +53,33 @@ export async function templatesForClub(teamId) {
   return DEFAULT_TEMPLATES.map(template => ({ ...template, createdAt: new Date().toISOString() }));
 }
 
+/**
+ * The templates ONE club has actually STORED — by the same ownership rule as
+ * templatesForClub (its own list; the flat legacy lists for the default club
+ * only), but without the built-in defaults a club that saved nothing is shown.
+ * Those are product text, not club data, and carry a fresh timestamp. Used by
+ * the club data export. Pure read.
+ */
+export async function storedTemplatesForClub(teamId) {
+  const own = await kvGet(templatesKeyFor(teamId));
+  if (Array.isArray(own) && own.length) return own;
+  if (String(teamId) === DEFAULT_TEAM.id) {
+    const current = await kvGet(TEMPLATES_KEY);
+    if (Array.isArray(current) && current.length) return current;
+    const legacy = await kvGet(LEGACY_TEMPLATES_KEY);
+    if (Array.isArray(legacy) && legacy.length) return legacy;
+  }
+  return [];
+}
+
+/** The keys storedTemplatesForClub may read, in its order — for the club data
+ *  export's raw-shape check (a present list must be a list). */
+export function storedTemplateKeysForClub(teamId) {
+  return String(teamId) === DEFAULT_TEAM.id
+    ? [templatesKeyFor(teamId), TEMPLATES_KEY, LEGACY_TEMPLATES_KEY]
+    : [templatesKeyFor(teamId)];
+}
+
 export default async function handler(req, res) {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
