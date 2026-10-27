@@ -1,10 +1,20 @@
 # Club data export — `coacheasier.club-data-export.v1`
 
-**Status:** Steps 1–2. The pure mapper (`api/_clubDataExport.js`), the source
-reader (`api/_clubDataExportSource.js`) and the endpoint
-`GET /api/publish?resource=club-data-export` exist, with their tests
-(`test/club-data-export.test.js`, `test/club-data-export-endpoint.test.js`).
-**The Settings export button stays hidden** until Step 3 is reviewed.
+**Status:** Steps 1–3. The pure mapper (`api/_clubDataExport.js`), the source
+reader (`api/_clubDataExportSource.js`), the endpoint
+`GET /api/publish?resource=club-data-export` and the Settings card exist,
+with their tests (`test/club-data-export.test.js`,
+`test/club-data-export-endpoint.test.js`, `test/settings-club-export-card.test.js`,
+`test/settings-club-export-browser.test.js`).
+
+**In Settings:** a "Club data export" card in General, shown only to the
+memberships the endpoint allows — the page's `canExportClubData` is built from
+its existing mirrors of the server's `isClubOwner` and `effectiveAccessScope`,
+and a test runs both rules over the same memberships. Nothing shows before the
+session has answered. The Download button fetches the endpoint and saves the
+response under the server's filename; a refusal's message is shown as-is and
+nothing is saved. The former Danger-zone button, which assembled a file in the
+browser from five ordinary reads (carrying live invite tokens), is gone.
 
 ## Purpose
 

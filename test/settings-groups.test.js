@@ -88,7 +88,9 @@ test('every card is placed in exactly one group', () => {
 test('the groups are the intended ones, in a sensible order', () => {
   assert.deepEqual(Object.keys(GROUPS), ['General', 'Personal', 'Appearance', 'Notifications',
     'Platform', 'Support & diagnostics', 'Account', 'Danger zone']);
-  assert.deepEqual(GROUPS['General'], ['cardClub', 'cardTraining', 'cardStructure']);
+  // cardExport joined General when the club data export moved out of the
+  // hidden Danger zone onto the server endpoint (test/settings-club-export-card.test.js).
+  assert.deepEqual(GROUPS['General'], ['cardClub', 'cardTraining', 'cardStructure', 'cardExport']);
   assert.deepEqual(GROUPS['Personal'], ['cardAccount']);
   assert.deepEqual(GROUPS['Appearance'], ['cardAppearance']);
   assert.deepEqual(GROUPS['Notifications'], ['cardNotifications']);

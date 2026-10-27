@@ -26451,6 +26451,21 @@
       // <!-- Club structure: groups and teams (RC4.7 Phase C) -->
       const cardStructure     = (typeof renderClubStructureCard === 'function' ? renderClubStructureCard() : '');
       // <!-- Platform provisioning — platform administrators only -->
+      // <!-- Club data export (coacheasier.club-data-export.v1) -->
+      // The server allows the club OWNER or a club-wide CLUB ADMIN only
+      // (api/publish.js mayExportClubData). The card follows that same rule,
+      // read from the stored membership the session sent (_myMembership), so
+      // nobody is shown a button the server would refuse, and nothing shows
+      // before the session has answered. typeof-guarded like the other
+      // cross-module helpers, for the isolated render harnesses.
+      const canExport = typeof canExportClubData === 'function' && typeof _myMembership !== 'undefined'
+        && canExportClubData(_myMembership);
+      const cardExport        = canExport ? `
+          <div class="card">
+            <h2 style="margin-bottom:4px">Club data export</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:12px">Download a copy of your club's records — members, fixtures, training, availability and settings — as one JSON file. Medical records, messages and unpublished plans are not included. Only the club owner and club administrators can do this, and each download is recorded.</p>
+            <button class="btn" type="button" onclick="settingsExportClub(this)" style="min-height:44px;font-size:13px">Download club data (JSON)</button>
+          </div>` : '';
       const cardPlatform      = (typeof renderPlatformAdminCard === 'function' ? renderPlatformAdminCard() : '');
       const cardSupport       = `
           <!-- Support — always visible so beta coaches can reach a human -->
@@ -26510,7 +26525,6 @@
           <div class="card${_betaUI ? " beta-hidden" : ""}" style="border-color:rgba(248,113,113,0.35)">
             <h2 style="margin-bottom:4px;color:#f87171">Danger zone</h2>
             <div style="display:grid;gap:8px;margin-top:10px">
-              <button class="btn" type="button" onclick="settingsExportClub(this)" style="min-height:40px;font-size:13px">Export club data (JSON)</button>
               <button class="btn" type="button" onclick="settingsDeleteClub()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete club setup data…</button>
               ${(typeof _diagnosticsOn === 'function' && _diagnosticsOn()) ? `<button class="btn" type="button" onclick="settingsCleanTestData()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete test data…</button>` : ''}
             </div>
@@ -26568,7 +26582,7 @@
 
           ${_betaUI ? "" : renderFeatureDiscovery()}
 
-          ${setGroup('General', [cardClub, cardTraining, cardStructure])}
+          ${setGroup('General', [cardClub, cardTraining, cardStructure, cardExport])}
           ${setGroup('Personal', [cardAccount])}
           ${setGroup('Appearance', [cardAppearance])}
           ${setGroup('Notifications', [cardNotifications])}
@@ -27118,33 +27132,51 @@
       finally { if (btn) { btn.disabled = false; btn.textContent = '↺ Force sync now'; } renderSettings(); }
     }
 
+    /**
+     * May this membership export the club's data? Mirrors the server's
+     * mayExportClubData (api/publish.js): the club owner, or the `admin` role
+     * with club-wide scope in effect — built from the two mirrors the page
+     * already keeps, clubSetupFounder (= isClubOwner) and memberScope
+     * (= effectiveAccessScope). Display only: the server decides.
+     */
+    function canExportClubData(member) {
+      if (!member || member.status !== 'active') return false;
+      if (clubSetupFounder(member)) return true;
+      return String(member.role || '').toLowerCase() === 'admin' && memberScope(member).clubWide === true;
+    }
+
+    /**
+     * Download the club data export (coacheasier.club-data-export.v1). The
+     * SERVER builds the file — GET /api/publish?resource=club-data-export —
+     * from the club's own records, behind its own owner/admin gate; this
+     * device only saves what it is handed. (The export used to be stitched
+     * together here from five ordinary reads, which carried live invite
+     * tokens and only the current group's sessions.) A refusal — not allowed,
+     * too many downloads, too large, storage down — arrives as JSON with a
+     * user-facing message, shown as-is; nothing partial is ever saved.
+     */
     async function settingsExportClub(btn) {
-      if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+      const label = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Preparing export…'; }
       try {
-        const [identity, invites, club, published, roster] = await Promise.all([
-          fetch('/api/identity').then(r => r.ok ? r.json() : null),
-          fetch('/api/invite').then(r => r.ok ? r.json() : null),
-          fetch('/api/publish?resource=club').then(r => r.ok ? r.json() : null),
-          fetch('/api/publish?type=all' + (trainingGroupParam() ? `&group=${encodeURIComponent(trainingGroupParam())}` : '')).then(r => r.ok ? r.json() : null),
-          fetch('/api/roster').then(r => r.ok ? r.json() : null),
-        ]);
-        const payload = {
-          exportedAt: new Date().toISOString(),
-          club: club?.club || null,
-          members: identity ? { users: identity.users, team_members: identity.team_members, player_profiles: identity.player_profiles } : null,
-          invites: invites?.invites || [],
-          published: published ? { sessions: published.sessions, squad: published.squad } : null,
-          roster: roster?.players || [],
-          localState: { schedule: state.schedule, matchCentre: state.matchCentre, fixtures: state.fixtures },
-        };
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const res = await fetch('/api/publish?resource=club-data-export', { cache: 'no-store' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          showToast(data.error || `The export was refused (HTTP ${res.status}). Nothing was downloaded.`);
+          return;
+        }
+        const blob = await res.blob();
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const named = /filename="([^"]+)"/.exec(disposition);
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `${(state.clubName || 'club').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-export-${new Date().toISOString().slice(0, 10)}.json`;
+        a.download = named ? named[1] : `coacheasier-club-data-${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
-        showToast('Club data exported ✓');
-      } catch(e) { showToast('Export failed: ' + (e?.message || 'network')); }
-      finally { if (btn) { btn.disabled = false; btn.textContent = 'Export club data (JSON)'; } }
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+        showToast('Club data downloaded ✓');
+      } catch (e) {
+        showToast('Could not download the club data — check your connection and try again.');
+      } finally { if (btn) { btn.disabled = false; btn.textContent = label || 'Download club data (JSON)'; } }
     }
 
     async function settingsDeleteClub() {
