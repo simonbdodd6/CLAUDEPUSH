@@ -50,6 +50,8 @@ const cleanDevelopmentCategory = value =>
   DEVELOPMENT_CATEGORIES.includes(value) ? value : DEFAULT_DEVELOPMENT_CATEGORY;
 
 const structureKey = clubId => key(`structure:${clubId}`);
+/** The stored record's key — exported for the club data export's raw-shape check only. */
+export { structureKey };
 
 const cleanName = (value, fallback) =>
   String(value ?? '').trim().slice(0, 80) || fallback;

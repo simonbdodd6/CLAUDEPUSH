@@ -1,9 +1,10 @@
 # Club data export — `coacheasier.club-data-export.v1`
 
-**Status:** Step 1 only. The pure mapper (`api/_clubDataExport.js`) and its tests
-(`test/club-data-export.test.js`) exist. **There is no endpoint yet**, and the
-Settings export button stays hidden until the endpoint and its authorisation
-are implemented, tested and reviewed.
+**Status:** Steps 1–2. The pure mapper (`api/_clubDataExport.js`), the source
+reader (`api/_clubDataExportSource.js`) and the endpoint
+`GET /api/publish?resource=club-data-export` exist, with their tests
+(`test/club-data-export.test.js`, `test/club-data-export-endpoint.test.js`).
+**The Settings export button stays hidden** until Step 3 is reviewed.
 
 ## Purpose
 
@@ -27,17 +28,72 @@ export's design rules but none of its code.
 - **No authorisation.** The mapper does not check, imply or record that its
   caller may export the club.
 
-## Requirements on the future endpoint (Step 2, not implemented)
+## The endpoint — `GET /api/publish?resource=club-data-export`
 
-1. **Owner / club administrator only**, enforced server-side. `CLUB_EXPORTS`,
-   `MANAGE_TEAMS` or covering every group are **not** sufficient on their own
-   (the group-scoped Coach and Manager profiles hold `CLUB_EXPORTS`).
-2. **The club is the session's** (`tenantTeamId`), never a request parameter.
-3. **Read every section through the club's own readers**, so legacy merge and
-   ownership rules apply, and pass `users` filtered to this club's members.
-4. **Atomic:** any storage error fails the whole export (no partial file).
-5. Audit the export and rate-limit it; `Cache-Control: no-store`; attachment
-   download.
+Served by the existing `publish` function (the deployment holds 12 of 12
+functions). Any other method → **405**.
+
+1. **Who.** An active session (**401** otherwise) whose membership is the
+   **club owner** (`isClubOwner`) or a **club admin**: the `admin` role, which
+   must also be club-wide in effect. Everyone else → **403**
+   `club_export_not_allowed`, never an empty export. `CLUB_EXPORTS`,
+   `MANAGE_TEAMS`, `DANGER_ZONE`, a Full-access profile, covering every group,
+   and the Director of Rugby role are each **not** sufficient.
+2. **Which club.** `tenantTeamId(session)`. `clubId` / `teamId` in the query
+   are ignored.
+3. **Reads** (`api/_clubDataExportSource.js`), all through the product's own
+   club-aware readers, read-only:
+   - identity arrays read raw and filtered to this club (the healing
+     `listIdentityState` is not used, so an export never writes);
+   - invites via `listClubInvites` (own list + pre-namespace records naming
+     the club);
+   - roster via the club's own record, with the rows the roster read
+     withholds (a staff member's row, a row tied to another club's account)
+     withheld here too;
+   - training per structure group: the **stored** schedule only (a derived
+     default is not club data), sessions **published to players** (the player
+     audience's snapshot; coach-audience plans and unpublished sessions are not
+     exported; `focus` is the snapshot's `theme`), attendance as the product
+     reads it (`migrateAttendanceDoc`);
+   - squads: every sheet under the club's `publish:<club>:fixture:*:squad`
+     keys (with or without a side) plus the legacy unlinked slot; a sheet whose
+     own fixture/side differs from its key is refused;
+   - availability per group via `loadAllGroupAvailability`; a legacy bare
+     string answer reads as `{ response: <string>, reason: '', respondedAt:
+     null }` (the established rule); any other non-object answer is refused;
+   - templates the club has **stored** (`storedTemplatesForClub`), never the
+     built-in defaults.
+4. **Atomic.** Storage unavailable → **503** `storage_unavailable`; a record
+   that is malformed or cannot be shown to be this club's → **500**
+   `club_export_data_invalid` with a generic message (which record failed is
+   logged server-side only); nothing partial is sent. Because the product
+   readers treat a present-but-malformed record as absent, the export first
+   reads the same keys raw, and reads availability in the reader's opt-in
+   `strict` mode. A missing record keeps the readers' normal behaviour; a
+   present record of the wrong shape refuses the export:
+   - structure — both `groups` and `teams` present, as lists of records;
+   - club record — `fixtures`, when present, a list of records (the reader
+     would otherwise read "no fixtures", or invent a fixture with a random id
+     for a non-object entry);
+   - the club and legacy invite lists, and the stored template lists — lists;
+   - per group: the training store (and the initial group's legacy store) — a
+     record; the attendance register — a record whose `sessions` is a record
+     of records; the schedule, by the reader's precedence (the group's record,
+     else for the initial group the legacy club-wide record) — a record with a
+     `slots` list.
+5. **Size.** Serialised exports over **4,000,000 bytes** → **413**
+   `club_export_too_large`, never truncated (Vercel Functions cap responses at
+   4.5 MB — vercel.com/docs/functions/limitations).
+6. **Rate and audit.** 5 exports per user per club per hour (**429**
+   `club_export_rate_limited`, with an export-specific message and
+   `Retry-After`; a storage outage in the limiter is **503**
+   `storage_unavailable`). Each export is audited (`club_data_export`: club,
+   user, IP, bytes, counts — no club data) **before** it is sent, with
+   `auditLog(..., { required: true })`: a busy audit log is **503**
+   `audit_unavailable` and nothing is sent.
+7. **Response.** `Content-Type: application/json; charset=utf-8`,
+   `Content-Disposition: attachment; filename="coacheasier-club-data-<club>-<date>.json"`,
+   `Cache-Control: no-store`.
 
 ## Input (all keys required; an empty club passes empty arrays/objects)
 

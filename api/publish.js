@@ -17,7 +17,7 @@
 //   → coach/admin only; clears the named store
 
 import { kvGet, kvSet, kvDel, kvLpush, kvLrange, kvScanKeys } from './_kv.js';
-import { key, APP_PREFIX, LEGACY_PREFIX } from './_keys.js';
+import { key, APP_PREFIX, LEGACY_PREFIX, invitesKey, legacyInvitesKey } from './_keys.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
 import { DEFAULT_TEAM, loadTeamMembers, loadUsers,
@@ -45,7 +45,7 @@ import {
   createSelfGeneratedProgramme, OCCUPYING_STATUSES,
 } from './_performanceStore.js';
 import { loadTeams, setTenantClubName } from './_identityStore.js';
-import { canonicalRole, isStaffRole } from './_permissions.js';
+import { canonicalRole, isStaffRole, isClubOwner } from './_permissions.js';
 import { gateRestrictionSignal, authoringProfileUsable, missingAuthoringInputs }
   from '../performance/domain/authoring-profile.js';
 // SC9.37 — the athlete's own programme is generated HERE, on the server, from
@@ -62,7 +62,13 @@ import { publishProgrammeVersion, snapshotForProgrammeAssignment }
   from '../performance/domain/programme-versioning.js';
 import { load, save } from './_lib.js';
 import { createHash } from 'node:crypto';
-import { auditLog, requestIp } from './_security.js';
+import { auditLog, requestIp, enforceRateLimit } from './_security.js';
+import { buildClubDataExport, ClubDataExportError } from './_clubDataExport.js';
+import { collectClubDataExportInput, ClubDataExportScopeError } from './_clubDataExportSource.js';
+import { loadAllGroupAvailability } from './_availabilityStore.js';
+import { listClubInvites } from './_inviteStore.js';
+import { storedTemplatesForClub, storedTemplateKeysForClub } from './templates.js';
+import { structureKey } from './_structureStore.js';
 import { findDuplicate } from '../src/fixture-import.js';
 import { runWeeklyAvailabilityCheck } from './cron.js';
 
@@ -2939,6 +2945,245 @@ async function availabilityCheckHandler(req, res) {
   return res.status(200).json({ ok: true, report, weeklyAvailability: club?.weeklyAvailability || null });
 }
 
+// ── Club data export (coacheasier.club-data-export.v1, Step 2) ─────────────
+// GET /api/publish?resource=club-data-export — one club's administration data
+// as a JSON download. Schema: docs/club-data-export-v1.md.
+//
+// WHO: the club OWNER (isClubOwner) or a CLUB ADMIN — the `admin` role, which
+// the model keeps whole-club (invite.js refuses a scoped admin) and which must
+// also be club-wide in effect here. Deliberately NOT a capability check:
+// CLUB_EXPORTS is held by group-scoped Coach and Manager profiles, and a
+// Full-access head coach or a Director of Rugby is not a club admin.
+// WHICH CLUB: the session's, never a parameter. HOW: read everything, map
+// through the allow-lists, and only then send — any failure sends nothing.
+//
+// The response is capped below Vercel's documented 4.5 MB Function response
+// limit (vercel.com/docs/functions/limitations) — a larger export is refused
+// whole (413), never truncated.
+export const CLUB_DATA_EXPORT_MAX_BYTES = 4_000_000;
+const CLUB_DATA_EXPORT_RATE = { limit: 5, windowMs: 60 * 60 * 1000 };
+
+/** Owner, or a club-wide club admin. Decided from the stored membership alone. */
+export function mayExportClubData(member) {
+  if (!member || member.status !== 'active') return false;
+  if (isClubOwner(member)) return true;
+  return canonicalRole(member) === 'admin' && effectiveAccessScope(member).clubWide === true;
+}
+
+/** Every published squad sheet stored under this club's own keys. */
+async function listPublishedClubSquads(teamId) {
+  const prefix = key(`publish:${teamId}:fixture:`);
+  const keys = (await kvScanKeys(`${prefix}*:squad`)).filter(k => k.startsWith(prefix)).sort();
+  const out = [];
+  const seenFixtures = new Set();
+  for (const k of keys) {
+    // publish:<club>:fixture:<fx>:squad  |  publish:<club>:fixture:<fx>:side:<side>:squad
+    const m = /^([^:]+):squad$|^([^:]+):side:([^:]+):squad$/.exec(k.slice(prefix.length));
+    if (!m) continue;                       // not a squad sheet (drafts, coach sheets…)
+    const fixtureId = decodeURIComponent(m[1] || m[2]);
+    const sideId = m[3] ? decodeURIComponent(m[3]) : '';
+    const squad = await kvGet(k);
+    if (squad === null || squad === undefined) continue;   // retired between scan and read
+    out.push({ fixtureId, sideId, squad });
+    seenFixtures.add(fixtureId);
+  }
+  // The pre-fixture club-wide slot. A legacy record naming a fixture that has
+  // its own fixture-scoped sheet is the same publication's older copy.
+  const legacy = await readScoped(squadKey(teamId), 'publish:squad', teamId);
+  if (legacy && !(legacy.fixtureId && seenFixtures.has(String(legacy.fixtureId)))) {
+    out.push({ fixtureId: String(legacy.fixtureId || ''), sideId: String(legacy.sideId || ''), squad: legacy });
+  }
+  return out;
+}
+
+// ── Raw-shape checks (export only) ───────────────────────────────────────
+// The product readers treat a record that is PRESENT but malformed as absent
+// (kvGet hands back the raw string when stored JSON will not parse; the
+// readers then synthesise, default or skip). Everywhere else that keeps the
+// app running; in an export it would produce a file that silently lacks data.
+// So, before the readers run, the same keys are read raw: a missing key keeps
+// the reader's normal behaviour, a present value of the wrong shape refuses
+// the whole export. A storage outage still surfaces as STORAGE_UNAVAILABLE.
+const presentAs = (value, shape) => value === null || value === undefined
+  || (shape === 'list' ? Array.isArray(value)
+    : value !== null && typeof value === 'object' && !Array.isArray(value));
+async function requireStoredShape(storageKey, shape, section) {
+  const value = await kvGet(storageKey);
+  if (!presentAs(value, shape)) throw new ClubDataExportScopeError(section, `the stored record is not a ${shape}`);
+  return value;
+}
+const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** A STORED structure record must carry both groups and teams, as lists of records. */
+async function assertStructureRecord(teamId) {
+  const s = await requireStoredShape(structureKey(teamId), 'record', 'structure');
+  if (s === null || s === undefined) return;
+  for (const [field, needs] of [['groups', ['id']], ['teams', ['id', 'groupId']]]) {
+    // Missing is malformed here: the reader would turn it into an empty list,
+    // and a stored club with no groups exports no training or availability.
+    if (!Array.isArray(s[field])) throw new ClubDataExportScopeError('structure', `${field} is missing or not a list`);
+    if (s[field].some(e => !isPlainObject(e) || needs.some(f => !e[f]))) {
+      throw new ClubDataExportScopeError('structure', `a stored ${field.slice(0, -1)} is malformed`);
+    }
+  }
+}
+
+/** The club record: its fixture list, when stored, is a list of records.
+ *  readClubFixtures would read a non-list as no fixtures, and sanitiseFixtureRecord
+ *  would turn a non-object entry into an invented fixture with a random id. */
+async function assertClubRecord(teamId) {
+  const club = await requireStoredShape(clubKey(teamId), 'record', 'club');
+  if (club === null || club === undefined || club.fixtures === undefined) return;
+  if (!Array.isArray(club.fixtures)) throw new ClubDataExportScopeError('fixtures', 'the stored fixture list is not a list');
+  if (club.fixtures.some(fx => !isPlainObject(fx))) throw new ClubDataExportScopeError('fixtures', 'a stored fixture is not a record');
+}
+
+/** The club's invite list, the shared pre-namespace list, and its stored template lists. */
+async function assertClubLists(teamId) {
+  await requireStoredShape(invitesKey(teamId), 'list', 'invites');
+  await requireStoredShape(legacyInvitesKey(), 'list', 'invites');
+  for (const k of storedTemplateKeysForClub(teamId)) await requireStoredShape(k, 'list', 'templates');
+}
+
+/** One group's training publication store (and, for the initial group, the legacy club-wide store) and its register. */
+async function assertGroupRecords(teamId, groupId) {
+  await requireStoredShape(trainingGroupStoreKey(teamId, groupId), 'record', `training.${groupId}.sessions`);
+  if (String(groupId) === INITIAL_GROUP_ID) await requireStoredShape(trainingKey(teamId), 'record', `training.${groupId}.sessions`);
+  const register = await requireStoredShape(attendanceKey(teamId, groupId), 'record', `training.${groupId}.attendance`);
+  if (register && register.sessions !== undefined) {
+    if (!isPlainObject(register.sessions)) {
+      throw new ClubDataExportScopeError(`training.${groupId}.attendance`, 'sessions is not a record');
+    }
+    // sanitiseAttendanceSession would turn a non-object entry into an empty register.
+    if (Object.values(register.sessions).some(entry => !isPlainObject(entry))) {
+      throw new ClubDataExportScopeError(`training.${groupId}.attendance`, 'a stored register entry is not a record');
+    }
+  }
+  // The schedule, by readTrainingSchedule's own precedence: the group's record
+  // when one is stored; otherwise, for the initial group only, the legacy
+  // club-wide record. Present means an object with a `slots` list — anything
+  // else the reader would read as "no schedule" and seed or empty instead.
+  const scheduleShape = async (k) => {
+    const rec = await requireStoredShape(k, 'record', `training.${groupId}.schedule`);
+    if (rec !== null && rec !== undefined && !Array.isArray(rec.slots)) {
+      throw new ClubDataExportScopeError(`training.${groupId}.schedule`, 'the stored schedule has no slots list');
+    }
+    return rec;
+  };
+  const own = await scheduleShape(trainingScheduleGroupKey(teamId, groupId));
+  if ((own === null || own === undefined) && String(groupId) === INITIAL_GROUP_ID) await scheduleShape(trainingScheduleKey(teamId));
+}
+
+const clubDataExportReaders = {
+  assertStructureRecord,
+  assertClubRecord,
+  assertClubLists,
+  assertGroupRecords,
+  loadStructure: teamId => loadClubStructure(teamId),
+  readClubFixtures: teamId => readClubFixtures(teamId),
+  loadUsers: () => loadUsers(),
+  loadTeamMembers: () => loadTeamMembers(),
+  loadPlayerProfiles: () => loadPlayerProfiles(),
+  listClubInvites: teamId => listClubInvites(teamId),
+  readRoster: teamId => readScoped(rosterKey(teamId), 'roster', teamId),
+  withholdNonPlayerRows: args => withholdNonPlayerRows(args),
+  readTrainingSchedule: (teamId, groupId) => readTrainingSchedule(teamId, groupId),
+  readGroupTrainingStore: (teamId, groupId) => readGroupTrainingStore(teamId, groupId),
+  // The register as the product reads it: legacy bare-id records moved onto
+  // their dated occurrence ids by the stored slot table (pure, no write).
+  readAttendance: async (teamId, groupId) => {
+    const slots = ((await readTrainingSchedule(teamId, groupId)).record || {}).slots || [];
+    return migrateAttendanceDoc(sanitiseAttendanceDoc(await kvGet(attendanceKey(teamId, groupId))), slots);
+  },
+  listPublishedSquads: teamId => listPublishedClubSquads(teamId),
+  // strict: a selected record that is present but not an object refuses the export.
+  loadAllGroupAvailability: (teamId, groupId) => loadAllGroupAvailability(teamId, groupId, { strict: true }),
+  storedTemplates: teamId => storedTemplatesForClub(teamId),
+};
+
+async function clubDataExportHandler(req, res) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET, OPTIONS');
+    return res.status(405).json({ ok: false, error: 'Method not allowed. The club data export is read-only.' });
+  }
+  let session;
+  try {
+    session = await requireTenantSession(req);
+  } catch (error) {
+    return sendAuthError(res, error);
+  }
+  const clubId = String(session.teamId || '');
+  if (!clubId || !mayExportClubData(session.teamMember)) {
+    return res.status(403).json({ ok: false, code: 'club_export_not_allowed',
+      error: 'Only the club owner or a club administrator can export club data.' });
+  }
+  try {
+    await enforceRateLimit('club_data_export', `${session.user.id}:${clubId}`, CLUB_DATA_EXPORT_RATE);
+  } catch (error) {
+    // The limiter reads and writes storage: an outage there is not "too many".
+    if (error?.code === 'STORAGE_UNAVAILABLE') {
+      return res.status(503).json({ ok: false, code: 'storage_unavailable', error: 'Storage temporarily unavailable — nothing was exported. Try again shortly.' });
+    }
+    if (error?.retryAfter) res.setHeader('Retry-After', String(error.retryAfter));
+    // The shared limiter's own message is written for sign-in attempts.
+    const minutes = error?.retryAfter ? Math.max(1, Math.ceil(Number(error.retryAfter) / 60)) : 60;
+    return res.status(error?.status || 429).json({ ok: false, code: 'club_export_rate_limited',
+      error: `You have exported this club's data ${CLUB_DATA_EXPORT_RATE.limit} times in the last hour. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.` });
+  }
+
+  let doc;
+  try {
+    const input = await collectClubDataExportInput(clubId, clubDataExportReaders);
+    doc = buildClubDataExport({ ...input, clubId, exportedAt: new Date().toISOString(), exportedBy: String(session.user.id) });
+  } catch (error) {
+    if (error?.code === 'STORAGE_UNAVAILABLE') {
+      return res.status(503).json({ ok: false, code: 'storage_unavailable', error: 'Storage temporarily unavailable — nothing was exported. Try again shortly.' });
+    }
+    if (error instanceof ClubDataExportError || error instanceof ClubDataExportScopeError
+        || error?.code === 'STORED_RECORD_MALFORMED') {
+      // Which record failed stays in the server log; the client is told only
+      // that the export was refused (a path can carry record keys and user ids).
+      console.error(`[club-data-export] refused (club ${clubId}):`, error.message);
+      return res.status(500).json({ ok: false, code: 'club_export_data_invalid',
+        error: 'Some of this club\'s stored data could not be exported safely, so nothing was exported.' });
+    }
+    console.error('[club-data-export] failed:', error);
+    return res.status(500).json({ ok: false, code: 'club_export_failed', error: 'The club data export failed — nothing was exported.' });
+  }
+
+  const body = JSON.stringify(doc);
+  const bytes = Buffer.byteLength(body, 'utf8');
+  if (bytes > CLUB_DATA_EXPORT_MAX_BYTES) {
+    return res.status(413).json({ ok: false, code: 'club_export_too_large', bytes, limit: CLUB_DATA_EXPORT_MAX_BYTES,
+      error: 'This club\'s data is too large to export in one file. Nothing was exported.' });
+  }
+
+  // Recorded before anything leaves: an export that cannot be audited is not
+  // sent. `required` makes a busy audit log an error here, where the default
+  // would drop the entry and carry on.
+  try {
+    await auditLog('club_data_export', { teamId: clubId, userId: String(session.user.id), ip: requestIp(req), bytes, counts: doc.counts },
+      { required: true });
+  } catch (error) {
+    if (error?.code === 'busy') {
+      return res.status(503).json({ ok: false, code: 'audit_unavailable', error: 'The export could not be recorded just now, so nothing was exported. Try again shortly.' });
+    }
+    if (error?.code === 'STORAGE_UNAVAILABLE') {
+      return res.status(503).json({ ok: false, code: 'storage_unavailable', error: 'Storage temporarily unavailable — nothing was exported. Try again shortly.' });
+    }
+    console.error('[club-data-export] audit failed:', error);
+    return res.status(500).json({ ok: false, code: 'club_export_failed', error: 'The club data export failed — nothing was exported.' });
+  }
+
+  const safeClub = clubId.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'club';
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="coacheasier-club-data-${safeClub}-${doc.exportedAt.slice(0, 10)}.json"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.status(200);
+  return res.end(body);
+}
+
 // ── Match-day teams sub-resource ──────────────────────────────────────────
 // The MINIMAL team metadata a Match Centre coach needs in order to know which
 // side they are selecting for: id, name and group of the ACTIVE teams inside
@@ -3542,6 +3787,7 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'medical') return medicalHandler(req, res);
   if (String(req.query?.resource || '') === 'performance') return performanceHandler(req, res);
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
+  if (String(req.query?.resource || '') === 'club-data-export') return clubDataExportHandler(req, res);
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
   if (String(req.query?.resource || '') === 'appearance-adjustments') return appearanceAdjustmentsHandler(req, res);
   if (String(req.query?.resource || '') === 'season-sheets') return seasonSheetsHandler(req, res);

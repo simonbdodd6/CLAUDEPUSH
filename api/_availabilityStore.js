@@ -110,8 +110,23 @@ export async function withAvailabilityWriteLock(clubId, groupId, sessionId, fn) 
   });
 }
 
+// STRICT MODE (opt-in; the club data export only). By default a record that is
+// present but is not an object is skipped, exactly as before. With
+// `{ strict: true }` a record THIS read selects — judged only after the usual
+// key rules have chosen it, so another club's record can never be held against
+// this one — that is present but not a plain object throws
+// STORED_RECORD_MALFORMED instead of quietly going missing.
+function malformedRecord(k) {
+  const error = new Error(`stored availability record is malformed: ${k}`);
+  error.code = 'STORED_RECORD_MALFORMED';
+  error.section = 'availability';
+  return error;
+}
+const presentButNotRecord = store => store !== null && store !== undefined
+  && (typeof store !== 'object' || Array.isArray(store));
+
 /** Read every availability record for ONE group, keyed by sessionId. */
-export async function loadAllGroupAvailability(clubId, groupId) {
+export async function loadAllGroupAvailability(clubId, groupId, { strict = false } = {}) {
   const club = normalizeTeamId(clubId);
   const group = String(groupId || '');
   const bySession = {};
@@ -121,8 +136,9 @@ export async function loadAllGroupAvailability(clubId, groupId) {
   const stores = await Promise.all(keys.map(k => kvGet(k)));
   keys.forEach((k, i) => {
     const store = stores[i];
-    if (!store || typeof store !== 'object') return;
     const sessionId = k.slice(marker.length);
+    if (strict && sessionId && presentButNotRecord(store)) throw malformedRecord(k);
+    if (!store || typeof store !== 'object') return;
     if (sessionId) bySession[sessionId] = store;
   });
 
@@ -130,7 +146,7 @@ export async function loadAllGroupAvailability(clubId, groupId) {
 
   // Initial group: fill gaps from the club-scoped (and, transitively for the
   // default club, flat legacy) records. Group-scoped answers always win.
-  const legacy = await loadAllAvailability(club);
+  const legacy = await loadAllAvailability(club, { strict });
   for (const [sessionId, store] of Object.entries(legacy)) {
     // Skip our own group-scoped suffixes surfacing through the club scan.
     if (sessionId.startsWith('group:')) continue;
@@ -158,7 +174,7 @@ export async function loadAllGroupAvailability(clubId, groupId) {
 
 /** Read every availability record for ONE team, keyed by sessionId.
  *  Team-scoped keys win; flat legacy keys fill gaps for the default team only. */
-export async function loadAllAvailability(teamId) {
+export async function loadAllAvailability(teamId, { strict = false } = {}) {
   const scopedTeam = normalizeTeamId(teamId);
   const bySession = {};
 
@@ -167,13 +183,14 @@ export async function loadAllAvailability(teamId) {
   const scopedStores = await Promise.all(scopedKeys.map(k => kvGet(k)));
   scopedKeys.forEach((k, i) => {
     const store = scopedStores[i];
-    if (!store || typeof store !== 'object') return;
     const sessionId = k.slice(scopedMarker.length);
     // Session IDs cannot contain ':' — a colon here means an RC4.7
     // group-scoped key (availability:<club>:group:<groupId>:<session>)
     // surfacing through the club-level scan. Those belong to the group
     // reader, never to this club-level view.
     if (!sessionId || sessionId.includes(':')) return;
+    if (strict && presentButNotRecord(store)) throw malformedRecord(k);
+    if (!store || typeof store !== 'object') return;
     bySession[sessionId] = store;
   });
 
@@ -186,11 +203,12 @@ export async function loadAllAvailability(teamId) {
     const stores = await Promise.all(keys.map(k => kvGet(k)));
     keys.forEach((k, i) => {
       const store = stores[i];
-      if (!store || typeof store !== 'object') return;
       const sessionId = k.slice(marker.length);
       // A ':' in the suffix means this is some team's SCOPED key (session IDs
       // cannot contain ':'), never flat legacy data — skip it here.
       if (!sessionId || sessionId.includes(':')) return;
+      if (strict && presentButNotRecord(store)) throw malformedRecord(k);
+      if (!store || typeof store !== 'object') return;
       if (bySession[sessionId]) return; // scoped (then app-prefix) wins
       bySession[sessionId] = store;
     });

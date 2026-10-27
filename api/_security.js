@@ -38,7 +38,11 @@ export async function enforceRateLimit(scope, identifier, { limit = 5, windowMs 
   return { remaining: Math.max(0, limit - current.count), resetAt: current.resetAt };
 }
 
-export async function auditLog(event, details = {}) {
+// `required: true` is for a caller whose action must NOT go ahead unrecorded
+// (the club data export audits BEFORE it sends): a busy log then throws the
+// lock's 'busy' error instead of being dropped. Every other caller audits an
+// action that has already committed and keeps the drop-with-a-note default.
+export async function auditLog(event, details = {}, { required = false } = {}) {
   const entry = {
     id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     event,
@@ -57,7 +61,7 @@ export async function auditLog(event, details = {}) {
       await kvSet(AUDIT_KEY, next);
     }, { ttlSeconds: 5, waitMs: 3000 });
   } catch (error) {
-    if (error?.code !== 'busy') throw error;
+    if (error?.code !== 'busy' || required) throw error;
     console.error(`[audit] entry not recorded (log busy): ${event}`);
   }
   return entry;
