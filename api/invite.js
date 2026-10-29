@@ -21,7 +21,7 @@ import { listClubInvites, appendClubInvite, findInviteByToken, persistInvite,
          MAX_INVITES_PER_CLUB } from './_inviteStore.js';
 import { key } from './_keys.js';
 import { setCors } from './_http.js';
-import { DEFAULT_TEAM, clubInviteVerificationState, emailVerificationRequiredError } from './_identityStore.js';
+import { DEFAULT_TEAM, clubInviteVerificationState, emailVerificationRequiredError, tenantClubName } from './_identityStore.js';
 import { inviteEmail, sendTransactionalEmail } from './_email.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantPermission, can, PERM } from './_tenant.js';
@@ -65,6 +65,30 @@ function inviteExpired(invite = {}) {
 
 function inviteTeamId(invite = {}) {
   return String(invite.teamId || DEFAULT_TEAM.id);
+}
+
+/**
+ * The club name an invitation speaks for — in the email, on re-send and on
+ * the claim screen. The club-config record's name (what Settings shows) wins;
+ * then the TENANT record's name, which exists from the moment a club is
+ * provisioned and is canonical (api/_identityStore.js setTenantClubName). A
+ * brand-new club has no config record by design, and the old fallback named
+ * the legacy default club instead — so every invitation a club sent before
+ * its first-run setup was titled with another club's name. Only the legacy
+ * default tenant may still answer its historical name; any other club with
+ * neither record answers '' so the email says "your club" and the claim
+ * screen says nothing, rather than naming a club it is not for. Nothing here
+ * reads the request: a name in the body or the invitee's own name is never
+ * the club's.
+ */
+async function inviteClubName(teamId) {
+  const id = String(teamId || DEFAULT_TEAM.id);
+  const clubConfig = (await kvGet(key(`club:${id}`))) || null;
+  const configured = String(clubConfig?.clubName || '').trim();
+  if (configured) return configured;
+  const tenant = await tenantClubName(id);
+  if (tenant) return tenant;
+  return id === DEFAULT_TEAM.id ? DEFAULT_TEAM.name : '';
 }
 
 // ── RC4.7 Phase C — scoped invites ──────────────────────────────────────────
@@ -264,14 +288,13 @@ export default async function handler(req, res) {
       if (inviteExpired(invite)) {
         return res.status(410).json({ valid: false, error: 'This invite link has expired' });
       }
-      const clubConfig = (await kvGet(key(`club:${inviteTeamId(invite)}`))) || null;
       return res.status(200).json({
         valid:     true,
         token:     invite.token,
         role:      invite.role,
         status:    invite.status,
         group:     invite.kind === 'group',
-        teamName:  clubConfig?.clubName || '',
+        teamName:  await inviteClubName(inviteTeamId(invite)),
         // Where this invite lands the claimer — display label only, no ids.
         scope:     await inviteScopeNames(invite),
         expiresAt: invite.expiresAt || null,
@@ -440,10 +463,9 @@ export default async function handler(req, res) {
     const url = inviteUrl(req, token);
     let emailDelivery = { ok: true, sent: false, skipped: true, reason: email ? 'email_not_requested' : 'missing_recipient' };
     if (sendEmail !== false && email?.trim()) {
-      // Club name comes from the coach's first-run setup; fall back to the
-      // structural team record so old deployments keep working.
-      const clubConfig = (await kvGet(key(`club:${session.teamId}`))) || null;
-      const teamName = clubConfig?.clubName || DEFAULT_TEAM.name;
+      // Club name from the first-run setup, else the tenant record — never
+      // another club's (inviteClubName).
+      const teamName = await inviteClubName(session.teamId);
       const message = inviteEmail({ name: invite.name, teamName, url });
       // THE INVITE IS ALREADY PERSISTED AND VALID. sendTransactionalEmail
       // THROWS when the provider rejects a send (e.g. an unverified sender
@@ -517,8 +539,7 @@ export default async function handler(req, res) {
       } catch (error) {
         return sendAuthError(res, error);
       }
-      const clubConfig = (await kvGet(key(`club:${session.teamId}`))) || null;
-      const teamName = clubConfig?.clubName || DEFAULT_TEAM.name;
+      const teamName = await inviteClubName(session.teamId);
       const url = inviteUrl(req, invite.token);
       const message = inviteEmail({ name: invite.name, teamName, url });
       // Same contract as creation: a rejected send is reported, never thrown.

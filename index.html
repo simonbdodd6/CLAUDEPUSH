@@ -7027,7 +7027,7 @@
       },
       clubLogo: "",
       clubColours: null,
-      teamCode: "TEAM",
+      teamCode: "",
       currentTemplateName: "",
       templateCardCollapsed: false,
       _editingScheduleId: null,
@@ -7734,6 +7734,11 @@
       next.notification = ""; // never restore stale notification across sessions
       next.clubName = input.clubName ?? "";
       next.teamName = input.teamName ?? "";
+      // The team code is the SERVER's (it arrives on the session payload, for
+      // staff who may manage players). A device that saved the old "TEAM"
+      // placeholder reads back EMPTY — never a word that looks like a code.
+      next.teamCode = (typeof input.teamCode === 'string' && input.teamCode.trim().toUpperCase() !== 'TEAM')
+        ? input.teamCode.trim().toUpperCase() : "";
       next.seasonName = input.seasonName ?? "";
       next.seasonStart = input.seasonStart ?? "";
       next.seasonEnd = input.seasonEnd ?? "";
@@ -14244,7 +14249,8 @@
 
     function copyTeamInviteMessage() {
       const club = state.clubName || 'our team';
-      const code = state.teamCode || 'TEAM';
+      const code = state.teamCode;
+      if (!code) return showToast('Team code not available yet — reload the app and try again');
       const url  = window.location.origin;
       navigator.clipboard?.writeText(
         `Join ${club} on CoachEasier! Open ${url} — tap Join squad and enter code: ${code}`
@@ -15759,19 +15765,52 @@
       return changed;
     }
 
+    /**
+     * The server's answer to each pending request (a refusal, a note), kept by
+     * request id and rendered beside the row — a toast alone disappears before
+     * anyone reads why an approval did not happen.
+     */
+    let _identityRequestNotes = {};
+
+    /**
+     * The groups THIS approver may place a player in: the server's operational
+     * answer for staff (every active group for club-wide staff, their own for a
+     * scoped coach), falling back to the club structure when the session has
+     * not answered yet. With several, the inbox asks; the server refuses an
+     * unplaced approval in a multi-group club (approveJoinRequest), so this is
+     * the same question asked a step earlier.
+     */
+    function approvableGroups() {
+      const mine = typeof operationalGroups === 'function' ? (operationalGroups() || []) : [];
+      if (mine.length) return mine;
+      return typeof activePlayerGroups === 'function' ? (activePlayerGroups() || []) : [];
+    }
+
     function identityRequestsHtml() {
       if (_identityRequestsLoading) return `<p class="muted" style="font-size:13px">Loading join requests...</p>`;
       if (!_identityPendingRequests.length) return `<p class="muted" style="font-size:13px">No pending join requests.</p>`;
+      const groups = approvableGroups();
       return `<div style="display:grid;gap:8px">
         ${_identityPendingRequests.map(request => {
           const user = request.user || {};
           const name = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || 'Unknown player';
+          const current = String(request.playerGroupId || '');
+          const note = _identityRequestNotes[request.id] || '';
+          // One group: the server places the player there itself. Several: ask.
+          const picker = groups.length > 1 ? `
+              <select id="approve-group-${esc(request.id)}" aria-label="Group for ${esc(name)}"
+                style="min-height:30px;font-size:12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);padding:0 8px;max-width:160px">
+                <option value="">Choose a group…</option>
+                ${groups.map(g => `<option value="${esc(g.id)}" ${g.id === current ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}
+              </select>` : '';
           return `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:10px;background:var(--panel-2)">
             <div>
               <strong style="font-size:13px">${esc(name)}</strong>
               <div class="muted" style="font-size:11px">${esc(user.email || '')} · ${esc(request.team?.name || state.clubName || 'CoachEasier')}</div>
+              ${note ? `<div style="font-size:11.5px;color:#f87171;margin-top:4px">${esc(note)}</div>` : ''}
             </div>
-            <div style="display:flex;gap:6px">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+              ${picker}
               <button class="btn primary" type="button" style="min-height:30px;font-size:12px;padding:0 10px" onclick="approveIdentityRequest('${request.id}')">Approve</button>
               <button class="btn ghost" type="button" style="min-height:30px;font-size:12px;padding:0 10px;color:var(--red)" onclick="rejectIdentityRequest('${request.id}')">Reject</button>
             </div>
@@ -15812,13 +15851,25 @@
     }
 
     async function approveIdentityRequest(memberId) {
+      // The group chosen for this player, when the inbox asked. The server
+      // places the player itself in a one-group club and refuses an unplaced
+      // approval in a multi-group club, so an empty choice stops here.
+      const picker = document.getElementById(`approve-group-${memberId}`);
+      const groupId = picker ? String(picker.value || '').trim() : '';
+      if (picker && !groupId) {
+        _identityRequestNotes[memberId] = 'Choose which group this player will play in';
+        renderIdentityRequestsPanel();
+        return showToast('Choose which group this player will play in');
+      }
       try {
         const data = await fetch('/api/identity', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'approve', memberId, approvedBy: currentUser()?.id || state.currentUserId || 'system' }),
+          body: JSON.stringify({ action: 'approve', memberId, ...(groupId ? { groupId } : {}),
+            approvedBy: currentUser()?.id || state.currentUserId || 'system' }),
         }).then(r => r.json());
         if (!data.ok) throw new Error(data.error || 'Could not approve request');
+        delete _identityRequestNotes[memberId];
         // Role guard: never inject a coach/admin/medical identity into the player
         // roster (applyApprovedIdentityLocally pushes a state.players record). Approved
         // STAFF go into state.users with their role, like the login path; only players
@@ -15841,6 +15892,9 @@
         render();
         showToast(approvedIsStaff ? 'Staff member approved' : 'Player approved and added to roster');
       } catch(e) {
+        // The reason stays on the row until the next decision on it.
+        _identityRequestNotes[memberId] = e.message || 'Could not approve request';
+        renderIdentityRequestsPanel();
         showToast(e.message || 'Could not approve request');
       }
     }
@@ -21565,24 +21619,25 @@
                   </button>
                 </div>`}
 
-                <!-- Fallback: team code for bulk sharing -->
+                <!-- Fallback: team code for bulk sharing. The code is the
+                     SERVER's — it arrives on the session payload for staff who
+                     may manage players (api/_identityStore.js staffTeamCode) and
+                     is never typed, edited or invented on this device. -->
                 <details style="margin-top:18px">
                   <summary style="font-size:12px;font-weight:700;color:var(--faint);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
                     <span>▶</span> Also share a general team code (no-name signup)
                   </summary>
                   <div style="margin-top:10px;background:rgba(var(--accent-rgb), 0.06);border:1px solid rgba(var(--accent-rgb), 0.15);border-radius:10px;padding:14px 16px">
-                    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
-                    <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${esc(state.teamCode||'TEAM')}</div>
+                    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">For bulk invites — players enter this code and their own name, then wait for your approval in Pending joins.</p>
+                    ${state.teamCode ? `
+                    <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${esc(state.teamCode)}</div>
                     <div style="font-size:12px;color:var(--faint);margin-bottom:10px">${window.location.hostname}</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
                       <button class="btn" type="button" style="font-size:12px" onclick="copyTeamInviteMessage()">
                         Copy message
                       </button>
-                      <button class="btn" type="button" style="font-size:12px"
-                        onclick="const c=prompt('Set team code:',state.teamCode||'TEAM');if(c?.trim()){state.teamCode=c.trim().toUpperCase();saveState();render();}">
-                        Change code
-                      </button>
-                    </div>
+                    </div>` : `
+                    <p class="join-code-unavailable" style="font-size:13px;color:var(--muted);margin:0">Team code not available on this device yet — it arrives with your sign-in. Reload the app, or ask a club administrator for the code.</p>`}
                   </div>
                 </details>
               </div>
@@ -28024,7 +28079,7 @@
             The tier this club starts on. Administrative choice — no billing is taken here, and the
             server records exactly what is chosen.</p>
           <button class="btn primary" id="pa-create-btn" style="margin-top:12px;font-size:13px" onclick="platformProvisionClub()">Create club</button>
-          <div id="pa-result" style="margin-top:10px"></div>
+          <div id="pa-result" style="margin-top:10px">${platformProvisionResultHtml()}</div>
         </div>
         ${renderPlatformClubsCard()}
         ${renderFounderRepairsCard()}
@@ -28275,6 +28330,7 @@
     function renderPlatformClubsCard() {
       if (_myPlatformRole !== 'platform_admin') return '';
       if (!_platformClubs.loaded && !_platformClubs.loading) loadPlatformClubs();
+      if (!_platformFounders.loaded && !_platformFounders.loading) loadPlatformFounders();
       const inp = 'min-height:38px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:13px;box-sizing:border-box';
       const rows = _platformClubs.rows;
       const body = !_platformClubs.loaded
@@ -28305,16 +28361,81 @@
                       <button class="btn primary" type="button" style="font-size:12px;padding:6px 12px"
                         onclick="platformChangeClubPlan('${esc(c.id)}','${esc(c.name)}')">Confirm plan change</button>
                     </div>` : ''}
+                  ${platformFounderBlockHtml(c)}
                 </div>`;
               }).join('');
       return `
         <div class="card" style="margin-top:14px">
           <h2 style="margin-bottom:4px">Existing clubs</h2>
           <p class="muted" style="font-size:12.5px;margin:0 0 12px">
-            Every CoachEasier club and the plan it is on. Changing a plan changes what the club can
-            use — it takes no payment and touches nothing else about the club.</p>
+            Every CoachEasier club, the plan it is on, and where its founder stands. Changing a plan
+            changes what the club can use — it takes no payment and touches nothing else about the club.
+            A founder invitation can be copied while it is live, or reissued if it was lost, mistyped or
+            has expired; reissuing stops the previous link working.</p>
           ${body}
         </div>`;
+    }
+
+    /** Dates on the platform cards: short and local, never a raw timestamp. */
+    function platformDate(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    /**
+     * One club's FOUNDER line: the server's classification (pending / claimed /
+     * expired / revoked / none), the founder's address and the dates; a copy
+     * action only while the link is live, a reissue action only while nobody
+     * owns the club. The per-club result or error below it is kept until the
+     * administrator signs out — a toast alone is not a record.
+     */
+    function platformFounderBlockHtml(c) {
+      const f = (_platformFounders.rows || []).find(r => r.teamId === c.id) || null;
+      const result = _platformFounderResult[c.id] || null;
+      const editing = _platformFounderEditing === c.id;
+      let line = '', actions = '';
+      if (!_platformFounders.loaded) line = 'Founder: loading…';
+      else if (_platformFounders.error) line = `Founder: could not load — ${esc(_platformFounders.error)}`;
+      else if (!f) line = 'Founder: unknown';
+      else {
+        const who = f.email ? ` · ${esc(f.email)}` : '';
+        if (f.status === 'pending')       line = `Founder invitation <strong>pending</strong>${who} · expires ${esc(platformDate(f.expiresAt))}`;
+        else if (f.status === 'expired')  line = `Founder invitation <strong style="color:var(--amber)">expired</strong> ${esc(platformDate(f.expiresAt))}${who} — no live link`;
+        else if (f.status === 'revoked')  line = `Founder invitation <strong style="color:var(--amber)">revoked</strong>${who} — no live link`;
+        else if (f.status === 'claimed')  line = `Founder <strong style="color:var(--green)">claimed</strong>${f.claimedAt ? ' ' + esc(platformDate(f.claimedAt)) : ''}${who}`;
+        else                              line = 'No founder invitation — this club was not created by provisioning';
+        const btn = (label, onclick) =>
+          `<button class="btn ghost" type="button" style="font-size:11.5px;padding:5px 10px" onclick="${onclick}">${label}</button>`;
+        if (f.canCopyLink) actions += btn('Copy founder link', `platformFounderLink('${esc(c.id)}','${esc(c.name)}')`);
+        if (f.canReissue)  actions += btn(editing ? 'Cancel' : 'Reissue invitation…', `platformToggleFounderEditor('${esc(c.id)}')`);
+      }
+      const editor = editing && f ? `
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+                    <input id="pf-email-${esc(c.id)}" type="email" autocapitalize="none" value="${esc(f.email || '')}" placeholder="founder@club.example"
+                      style="flex:1;min-width:200px;min-height:36px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--ink);padding:0 10px;font-size:13px">
+                    <button class="btn primary" type="button" style="font-size:12px;padding:6px 12px"
+                      onclick="platformReissueFounder('${esc(c.id)}','${esc(c.name)}')">Confirm reissue</button>
+                    <p class="muted" style="font-size:11.5px;margin:0;flex-basis:100%">The current founder link stops working the moment a new one is issued. Correct the address first if it was mistyped.</p>
+                  </div>` : '';
+      const panel = !result ? '' : result.kind === 'error' ? `
+                  <p style="font-size:12.5px;margin:8px 0 0;color:#f87171">${esc(result.message)}</p>` : `
+                  <div style="margin-top:8px;border:1.5px solid #16a34a;border-radius:10px;padding:10px;background:rgba(22,163,74,0.06)">
+                    <div style="font-size:12.5px"><strong>✓ ${esc(result.message)}</strong></div>
+                    ${result.inviteUrl ? `
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+                      <input value="${esc(result.inviteUrl)}" readonly id="pf-link-${esc(c.id)}" onfocus="this.select()"
+                        style="flex:1;min-width:0;font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--ink)">
+                      <button class="btn primary" type="button" style="white-space:nowrap;padding:0 12px;min-height:36px"
+                        onclick="navigator.clipboard?.writeText(document.getElementById('pf-link-${esc(c.id)}').value).then(()=>showToast('Founder link copied ✓'))">Copy</button>
+                    </div>
+                    <div class="muted" style="font-size:11.5px;margin-top:4px">Send this to ${esc(result.email || 'the founder')}${result.expiresAt ? ` · expires ${esc(platformDate(result.expiresAt))}` : ''}. It stays here until you sign out.</div>` : ''}
+                  </div>`;
+      return `
+                  <div class="muted" style="font-size:11.5px;margin-top:6px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
+                    <span>${line}</span>
+                    <span style="display:flex;gap:6px;flex-wrap:wrap">${actions}</span>
+                  </div>${editor}${panel}`;
     }
 
     function platformTogglePlanEditor(clubId) {
@@ -28352,6 +28473,96 @@
           : `${clubName} moved to ${planLabelFor(data.club?.plan)} ✓`);
         render();
       } catch (e) { showToast(e.message || 'Could not change the plan'); }
+    }
+
+    // ── PLATFORM ADMIN: founder invitations ─────────────────────────────────
+    // A provisioned club's founder link is shown ONCE, at provisioning, and no
+    // email is sent. Here the SERVER says where each club's founder stands,
+    // hands the current link out only while it is live, and rotates it on
+    // request (revoking the previous link first). This card computes no status
+    // and sees no token except inside the link it is asked to copy. Results
+    // and errors are kept per club and rendered, so nothing rests on a toast.
+    let _platformFounders = { loaded: false, loading: false, error: null, rows: [] };
+    let _platformFounderEditing = '';          // club id whose reissue editor is open
+    let _platformFounderResult = {};         // club id → { kind: 'ok'|'error', message, inviteUrl?, email?, expiresAt? }
+
+    async function loadPlatformFounders(force = false) {
+      if (_platformFounders.loading) return;
+      if (_platformFounders.loaded && !force) return;
+      _platformFounders.loading = true;
+      try {
+        const res = await fetch('/api/identity?action=platform_founder_invites');
+        const data = await res.json().catch(() => ({}));
+        _platformFounders = res.ok && data.ok !== false
+          ? { loaded: true, loading: false, error: null, rows: data.founders || [] }
+          : { loaded: true, loading: false, error: data.error || 'Could not load', rows: [] };
+      } catch {
+        _platformFounders = { loaded: true, loading: false, error: 'offline', rows: [] };
+      }
+      render();
+    }
+
+    function platformToggleFounderEditor(clubId) {
+      _platformFounderEditing = _platformFounderEditing === clubId ? '' : clubId;
+      render();
+    }
+
+    /** The CURRENT founder link — the server hands it out only while it is live. */
+    async function platformFounderLink(clubId, clubName) {
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'founder_invite_link', teamId: clubId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not fetch the founder link');
+        _platformFounderResult[clubId] = { kind: 'ok', message: `Current founder link for ${clubName}`,
+          inviteUrl: data.inviteUrl, email: data.email, expiresAt: data.expiresAt };
+        try { await navigator.clipboard?.writeText(data.inviteUrl); showToast('Founder link copied ✓'); }
+        catch { showToast('Founder link ready — copy it below'); }
+      } catch (e) {
+        _platformFounderResult[clubId] = { kind: 'error', message: e.message || 'Could not fetch the founder link' };
+        loadPlatformFounders(true);           // the state may have moved on (claimed, expired)
+      }
+      render();
+    }
+
+    /** Rotate the founder link, optionally to a corrected address. Confirmed first. */
+    async function platformReissueFounder(clubId, clubName) {
+      const current = (_platformFounders.rows || []).find(r => r.teamId === clubId) || null;
+      const typed = (document.getElementById(`pf-email-${clubId}`)?.value || '').trim();
+      const email = typed || current?.email || '';
+      if (!email) {
+        _platformFounderResult[clubId] = { kind: 'error', message: "Enter the founder's email address first" };
+        render();
+        return;
+      }
+      const ok = await ceConfirm(`Reissue the founder invitation for ${clubName}?`,
+        `A new claim link is created for ${email} and the current founder link stops working immediately. `
+        + `Nothing else about the club changes: no members, settings or other invitations.`,
+        { confirmLabel: 'Reissue invitation' });
+      if (!ok) return;
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          // The club, and the address only when it was changed — the server
+          // keeps the previous founder otherwise.
+          body: JSON.stringify({ action: 'reissue_founder_invite', teamId: clubId,
+            ...(typed && typed !== (current?.email || '') ? { adminEmail: typed } : {}) }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not reissue the invitation');
+        if (Array.isArray(data.founders)) _platformFounders = { loaded: true, loading: false, error: null, rows: data.founders };
+        _platformFounderEditing = '';
+        _platformFounderResult[clubId] = { kind: 'ok',
+          message: `New founder link for ${clubName} — the previous link is revoked`,
+          inviteUrl: data.inviteUrl, email: data.email, expiresAt: data.expiresAt };
+        showToast(`Founder invitation reissued for ${clubName} ✓`);
+      } catch (e) {
+        _platformFounderResult[clubId] = { kind: 'error', message: e.message || 'Could not reissue the invitation' };
+        loadPlatformFounders(true);
+      }
+      render();
     }
 
     // ── PLATFORM ADMIN: who else holds platform authority ───────────────────
@@ -28468,6 +28679,31 @@
       } catch (e) { showToast(e.message || 'Could not remove them'); }
     }
 
+    // The provisioning result is STATE rendered by the card: the founder link
+    // it carries is shown by the server exactly once, so it must survive every
+    // re-render of Settings until the administrator signs out. Errors persist the
+    // same way, beside the form that produced them.
+    let _platformProvisionResult = null;       // { team, adminEmail, inviteUrl } | { error }
+    function platformProvisionResultHtml() {
+      const r = _platformProvisionResult;
+      if (!r) return '';
+      if (r.error) return `<p style="font-size:12.5px;margin:0;color:#f87171">${esc(r.error)}</p>`;
+      return `
+          <div style="border:1.5px solid #16a34a;border-radius:11px;padding:12px;background:rgba(22,163,74,0.06)">
+            <strong style="font-size:13px">✓ ${esc(r.team?.name || 'Club')} created</strong>
+            <div class="muted" style="font-size:11.5px;margin:4px 0 8px">Club id: ${esc(r.team?.id || '')} ·
+              Plan: <strong>${esc(planLabelFor(r.team?.plan))}</strong> ·
+              send this invitation to ${esc(r.adminEmail || 'the founder')}:</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input value="${esc(r.inviteUrl || '')}" readonly id="pa-invite-link" onfocus="this.select()"
+                style="flex:1;min-width:0;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink)">
+              <button class="btn primary" type="button" style="white-space:nowrap;padding:0 14px;min-height:38px"
+                onclick="navigator.clipboard.writeText(document.getElementById('pa-invite-link').value).then(()=>showToast('Invite link copied ✓'))">Copy</button>
+            </div>
+            <div class="muted" style="font-size:11.5px;margin-top:6px">Lost it? The link can be copied again or reissued from Existing clubs below while it is pending.</div>
+          </div>`;
+    }
+
     async function platformProvisionClub() {
       const name = document.getElementById('pa-club-name')?.value.trim();
       const email = document.getElementById('pa-admin-email')?.value.trim();
@@ -28483,22 +28719,17 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not create the club');
-        const out = document.getElementById('pa-result');
-        if (out) out.innerHTML = `
-          <div style="border:1.5px solid #16a34a;border-radius:11px;padding:12px;background:rgba(22,163,74,0.06)">
-            <strong style="font-size:13px">✓ ${esc(data.team.name)} created</strong>
-            <div class="muted" style="font-size:11.5px;margin:4px 0 8px">Club id: ${esc(data.team.id)} ·
-              Plan: <strong>${esc(planLabelFor(data.team?.plan))}</strong> ·
-              send this invitation to ${esc(data.adminEmail)}:</div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input value="${esc(data.inviteUrl)}" readonly id="pa-invite-link" onfocus="this.select()"
-                style="flex:1;min-width:0;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink)">
-              <button class="btn primary" type="button" style="white-space:nowrap;padding:0 14px;min-height:38px"
-                onclick="navigator.clipboard.writeText(document.getElementById('pa-invite-link').value).then(()=>showToast('Invite link copied ✓'))">Copy</button>
-            </div>
-          </div>`;
+        _platformProvisionResult = { team: data.team, adminEmail: data.adminEmail, inviteUrl: data.inviteUrl };
         showToast(`${data.team.name} created ✓`);
+        // The new club appears in Existing clubs with its founder PENDING.
+        loadPlatformClubs(true);
+        loadPlatformFounders(true);
+        render();
       } catch (e) {
+        // Kept beside the form (the typed values survive — no full render).
+        _platformProvisionResult = { error: e.message || 'Could not create the club' };
+        const out = document.getElementById('pa-result');
+        if (out) out.innerHTML = platformProvisionResultHtml();
         showToast(e.message || 'Could not create the club');
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Create club'; }
@@ -45001,6 +45232,13 @@
       _platformClubs = { loaded: false, loading: false, error: null, rows: [] };
       _platformPlanEditing = '';
       _founderRepairs = { loaded: false, loading: false, error: null, rows: [] };
+      // The founder list, an open reissue editor, and the per-club and
+      // provisioning RESULTS — the last two carry a founder claim link — are
+      // platform-administrator state too: forgotten with the identity.
+      _platformFounders = { loaded: false, loading: false, error: null, rows: [] };
+      _platformFounderEditing = '';
+      _platformFounderResult = {};
+      _platformProvisionResult = null;
       _inviteMigration = { busy: false, error: null, report: null, completed: false };
       // The operational context belongs to the PERSON, not the device. Left
       // behind, the next identity renders the previous one's group until the
@@ -45762,6 +46000,16 @@
         }
       }
       if (Array.isArray(d?.memberships)) _myMemberships = d.memberships;
+      // The club's team code — the SERVER's value, present only for staff who
+      // may manage players and only for the session's own club. A payload for
+      // a signed-in account that carries none (a player, a medic) clears
+      // whatever this device held, so Members can never show a code the
+      // server did not vouch for.
+      if (d?.user?.id !== undefined) {
+        const code = typeof d.teamCode === 'string' ? d.teamCode.trim().toUpperCase() : '';
+        // (typeof-guarded: several suites extract this function on its own.)
+        if (state.teamCode !== code) { state.teamCode = code; if (typeof saveState === 'function') saveState('Team code synced'); }
+      }
       if (d?.teamPlan       !== undefined) state.teamPlan       = d.teamPlan;
       if (d?.teamPlanStatus !== undefined) state.teamPlanStatus = d.teamPlanStatus;
       if (d?.trialEndsAt    !== undefined) state.trialEndsAt    = d.trialEndsAt;
@@ -46483,6 +46731,7 @@
       state.fixtures = [];
       state.fixturesSyncedAt = '';   // the next club's list is not known until its server answers (Build 107)
       state.clubName = ''; state.teamName = ''; state.seasonName = '';
+      state.teamCode = '';   // the next club's code arrives with its session payload
       state.clubLogo = ''; state.clubColours = null;
       state.matchCentre = structuredClone(defaultState.matchCentre);
       // The team sheet is team-scoped too — a leftover draft would both leak
@@ -47683,8 +47932,12 @@
 
         if (String(state.currentUserId || '') !== String(data.user.id)) resetIdentityScopedState();
         state.currentUserId = data.user.id;
-        state.activeView = isStaffRole ? 'coach' : 'player';
-        if (isStaffRole) {
+        // claimedIsStaff — the classification computed above. This once read
+        // the isStaffRole FUNCTION itself (always truthy), so every claimer,
+        // players included, took the staff branch and only showSection()
+        // later put them back; their own player setup and loader never ran.
+        state.activeView = claimedIsStaff ? 'coach' : 'player';
+        if (claimedIsStaff) {
           state.activeCoachSection = state.activeCoachSection || 'overview';
           state.selectedChatId = state.selectedChatId || 'squad';
         } else {
@@ -47699,7 +47952,7 @@
         _inviteToken = null; _inviteData = null;
         render();
         loadMedicalFromServer().catch(() => {});   // no-ops without medical_access
-        if (isStaffRole) {
+        if (claimedIsStaff) {
           loadRosterFromServer().catch(() => {});
           loadCoachDraft().catch(() => {});
         } else {

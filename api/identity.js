@@ -16,6 +16,9 @@ import {
   changeClubPlan,
   listFounderOwnershipRepairs,
   repairFounderOwnership,
+  listFounderInvites,
+  founderInviteLink,
+  reissueFounderInvite,
   createEmailVerificationToken,
   destroyAllSessionsForUser,
   requireSession,
@@ -394,6 +397,21 @@ function rateIdentity(req, value = '') {
   return `${requestIp(req)}:${String(value || '').trim().toLowerCase()}`;
 }
 
+/**
+ * THE BASE OF A FOUNDER'S CLAIM LINK. The configured application URL first —
+ * the same authority every emailed link uses (api/_email.js appBaseUrl) — so
+ * a request's Host header can never steer where a platform administrator's
+ * copied link points. Only without APP_URL does the forwarded host stand in,
+ * as provision_club has always done; with neither, a relative link.
+ */
+function founderInviteUrl(req, token) {
+  const configured = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
+  const host = req.headers?.['x-forwarded-host'] || req.headers?.host;
+  const proto = req.headers?.['x-forwarded-proto'] || 'https';
+  const base = configured || (host ? `${proto}://${host}` : '');
+  return `${base}/?inv=${encodeURIComponent(token)}`;
+}
+
 export default async function handler(req, res) {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -432,6 +450,16 @@ export default async function handler(req, res) {
           return res.status(403).json({ ok: false, error: 'Platform administrators only' });
         }
         return res.status(200).json({ ok: true, repairs: await listFounderOwnershipRepairs() });
+      }
+      // Where every club's FOUNDER stands: pending / claimed / expired /
+      // revoked / none, with the founder's address and the dates. Platform
+      // administrators only; never a token.
+      if (req.query?.action === 'platform_founder_invites') {
+        const viewer = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(viewer?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        return res.status(200).json({ ok: true, founders: await listFounderInvites() });
       }
       const tenant = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
       if (req.query?.teamId) assertSameTenant(tenant, req.query.teamId);
@@ -664,6 +692,48 @@ export default async function handler(req, res) {
           founderUserId: result.founderUserId,
           repairs: await listFounderOwnershipRepairs() });
       }
+      // The club's CURRENT founder link, only while it is live. A copy of a
+      // claim credential is audited (never the token itself). The body names
+      // a club and nothing else.
+      if (action === 'founder_invite_link') {
+        const actor = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(actor?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        await enforceRateLimit(action, requestIp(req), { limit: 60, windowMs: 60 * 60 * 1000 });
+        const result = await founderInviteLink({ teamId: req.body?.teamId });
+        await auditLog('founder_invite_link_viewed', {
+          teamId_club: result.teamId, clubName: result.clubName,
+          changedBy: actor.user.id, ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, teamId: result.teamId, clubName: result.clubName,
+          email: result.email, expiresAt: result.expiresAt,
+          inviteUrl: founderInviteUrl(req, result.token) });
+      }
+      // Rotate a club's founder link: every live founder invitation is revoked
+      // first, then one new link is minted (optionally to a corrected address).
+      // The club is re-derived server-side; a club that already has an owner is
+      // refused (see reissueFounderInvite).
+      if (action === 'reissue_founder_invite') {
+        const actor = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(actor?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        await enforceRateLimit(action, requestIp(req), { limit: 20, windowMs: 60 * 60 * 1000 });
+        const result = await reissueFounderInvite({
+          teamId: req.body?.teamId, adminEmail: req.body?.adminEmail, actorUserId: actor.user.id });
+        await auditLog('founder_invite_reissued', {
+          teamId_club: result.team.id, clubName: result.team.name,
+          email: result.invite.email, previousEmail: result.previousEmail,
+          revoked: result.revoked, expiresAt: result.invite.expiresAt,
+          changedBy: actor.user.id, ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, teamId: result.team.id, clubName: result.team.name,
+          email: result.invite.email, previousEmail: result.previousEmail,
+          expiresAt: result.invite.expiresAt, revoked: result.revoked,
+          inviteUrl: founderInviteUrl(req, result.invite.token),
+          founders: await listFounderInvites() });
+      }
       if (action === 'claim_invite') {
         // SECURITY: throttle claims (mirrors login) so the invite-claim path can't
         // be scripted for account-takeover / enumeration attempts.
@@ -752,7 +822,19 @@ export default async function handler(req, res) {
         // Mirrors remove_member — approve/reject were the one player action the
         // group gate was never applied to. Club-wide callers are unaffected.
         await assertJoinDecisionAuthority(session, req.body?.memberId);
-        const result = await approveJoinRequest(req.body?.memberId, session.user.id, session.teamId);
+        // The group the approver places the player in (optional; required by
+        // the store when the club has several). A group-scoped caller may only
+        // name a group they operate — the same reach as every other player
+        // action; club-wide callers may name any active group of their club.
+        // The store validates that the group exists here and is active.
+        const groupId = req.body?.groupId;
+        if (typeof groupId === 'string' && groupId.trim()) {
+          const { operable, coversClub } = await callerGroupAuthority(session);
+          if (!coversClub && !operable.has(groupId.trim())) {
+            return res.status(403).json({ ok: false, error: 'You can only place a player in a group you operate' });
+          }
+        }
+        const result = await approveJoinRequest(req.body?.memberId, session.user.id, session.teamId, { groupId });
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'reject') {

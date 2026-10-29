@@ -141,11 +141,20 @@ test('WRITE — a U18 coach may NOT approve a groupless (club-admin) pending req
   assert.equal(memberStatus('m-pend-lost'), 'pending');
 });
 
-test('WRITE — a club-wide admin may approve the groupless pending request', async () => {
+test('WRITE — a club-wide admin may approve the groupless pending request, naming the group it joins', async () => {
   await seed();
-  const r = await call('u-admin', { method: 'POST', body: { action: 'approve', memberId: 'm-pend-lost' } });
+  const r = await call('u-admin', { method: 'POST', body: { action: 'approve', memberId: 'm-pend-lost', groupId: SEN } });
   assert.equal(r.code, 200, JSON.stringify(r.body));
   assert.equal(memberStatus('m-pend-lost'), 'active');
+  assert.equal(JSON.parse(kv.get('app:identity:team_members')).find(m => m.id === 'm-pend-lost').playerGroupId, SEN, 'placed where the admin said');
+});
+
+test('WRITE — with two groups, approving the groupless request WITHOUT naming a group is refused (400 group_required) and changes nothing', async () => {
+  await seed();
+  const r = await call('u-admin', { method: 'POST', body: { action: 'approve', memberId: 'm-pend-lost' } });
+  assert.equal(r.code, 400, JSON.stringify(r.body));
+  assert.equal(r.body.code, 'group_required');
+  assert.equal(memberStatus('m-pend-lost'), 'pending', 'the server never guesses a group');
 });
 
 // ── WRITE gate: reject ───────────────────────────────────────────────────────
