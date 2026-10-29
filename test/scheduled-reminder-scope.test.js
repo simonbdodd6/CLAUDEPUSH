@@ -146,7 +146,7 @@ async function makeClub(label, { seniors = [], u18 = [] } = {}) {
     const [key_, name] = entry.includes('=') ? entry.split('=') : [entry.split(' ')[0], entry];
     const [f, l] = name.split(' ');
     const p = await S.createJoinRequest({ teamCode: code, firstName: f, lastName: l, email: `p${n++}.${label.toLowerCase()}@rs.test`, password: PW });
-    await S.approveJoinRequest(p.teamMember.id, club.user.id, club.team.id);
+    await S.approveJoinRequest(p.teamMember.id, club.user.id, club.team.id, { groupId: gid });
     c.people[key_] = { ...p, name, gid };
   }
   const members = await S.loadTeamMembers();
@@ -378,7 +378,7 @@ test('ELIGIBILITY. staff are not players; notification preferences still apply; 
   const second = await makeClub('Eligible2', { seniors: ['Una Other'] });
   const both = await S.createJoinRequest({ teamCode: second.code, firstName: 'Stu', lastName: 'Four', email: 'p1.eligible@rs.test', password: PW });
   assert.equal(both.user.id, c.people.Stu.user.id, 'the same account');
-  await S.approveJoinRequest(both.teamMember.id, second.club.user.id, second.teamId);
+  await S.approveJoinRequest(both.teamMember.id, second.club.user.id, second.teamId, { groupId: second.SEN });
   const roll = await S.loadTeamMembers();
   for (const m of roll) if (m.teamId === second.teamId && m.userId === both.user.id) m.playerGroupId = second.SEN;
   await S.withIdentityLock(() => S.saveTeamMembers(roll));

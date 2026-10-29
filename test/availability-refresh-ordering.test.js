@@ -353,7 +353,7 @@ test('browser: an older board reply released after a newer one never regresses t
     const { group: U18 } = await ST.createGroup(club.team.id, { name: 'U18', developmentCategory: 'youth_u18' });
     const teamCode = (await S.loadStoredTeams()).find(x => x.id === club.team.id).teamCode;
     const p1 = await S.createJoinRequest({ teamCode, firstName: 'Ugo', lastName: 'Uno', email: 'ugo@order.test', password: PW });
-    await S.approveJoinRequest(p1.teamMember.id, club.user.id, club.team.id);
+    await S.approveJoinRequest(p1.teamMember.id, club.user.id, club.team.id, { groupId: U18.id });
     const members = await S.loadTeamMembers();
     for (const m of members) if (m.teamId === club.team.id && m.userId === p1.user.id) m.playerGroupId = U18.id;
     await S.withIdentityLock(() => S.saveTeamMembers(members));

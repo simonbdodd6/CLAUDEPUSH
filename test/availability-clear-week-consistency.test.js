@@ -105,7 +105,7 @@ async function u18Club(label) {
   const players = [];
   for (const [first, last] of [['Ugo', 'Uno'], ['Dua', 'Dos']]) {
     const p = await S.createJoinRequest({ teamCode, firstName: first, lastName: last, email: `${first.toLowerCase()}.${label.toLowerCase()}@cw.test`, password: PW });
-    await S.approveJoinRequest(p.teamMember.id, club.user.id, club.team.id);
+    await S.approveJoinRequest(p.teamMember.id, club.user.id, club.team.id, { groupId: U18.id });
     players.push(p);
   }
   const members = await S.loadTeamMembers();

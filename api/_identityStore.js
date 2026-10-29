@@ -1150,7 +1150,56 @@ function assertPendingJoinRequest(member, verb) {
   }
 }
 
-export async function approveJoinRequest(memberId, approvedBy = 'coach-demo', expectedTeamId = null) {
+/**
+ * WHERE AN APPROVED PLAYER PLAYS — decided at approval, with the club as it
+ * stands, never left for someone to notice later.
+ *
+ * A team-code join names no group. Approval used to activate the membership
+ * and stop: with one group the legacy read-time rule placed the player anyway;
+ * with several the player resolved to NO group and vanished from every squad
+ * surface until an admin found the "not in any group" card. The rule here is
+ * the one the player-invite path already applies (api/invite.js
+ * resolvePlayerGroupForInvite, claimInvite's several-groups guard):
+ *
+ *   a named group        → must exist in THIS club and be active (404 / 400);
+ *   none named           → the record's own group when it still resolves;
+ *                          else the club's single active group;
+ *                          else, with several, REFUSE (400 group_required) —
+ *                          the approver chooses, the server never guesses;
+ *                          and with none active, refuse (400 no_active_group).
+ *
+ * Who may name which group is the route's question (api/identity.js approve:
+ * a group-scoped caller may only name a group they operate). Nothing here is
+ * written; the caller stamps the answer and saves once.
+ */
+async function approvedPlayerGroup(member, requested) {
+  if (requested !== undefined && requested !== null && typeof requested !== 'string') {
+    const e = new Error('The group must be named by its id'); e.status = 400; e.code = 'group_invalid'; throw e;
+  }
+  const structure = await loadClubStructure(member.teamId);
+  const wanted = String(requested || '').trim();
+  if (wanted) {
+    const group = groupById(structure, wanted);
+    if (!group) { const e = new Error('Unknown group for this club'); e.status = 404; e.code = 'unknown_group'; throw e; }
+    if (group.status !== 'active') {
+      const e = new Error(`"${group.name}" is archived — players cannot be placed in it`);
+      e.status = 400; e.code = 'group_archived'; throw e;
+    }
+    return group.id;
+  }
+  const own = groupById(structure, String(member.playerGroupId || '').trim());
+  if (own && own.status === 'active') return own.id;
+  const live = activeGroups(structure);
+  if (live.length === 1) return live[0].id;
+  if (live.length === 0) {
+    const e = new Error('This club has no active group to place the player in — restore or create one first');
+    e.status = 400; e.code = 'no_active_group'; throw e;
+  }
+  const e = new Error('Choose which group this player will play in');
+  e.status = 400; e.code = 'group_required'; throw e;
+}
+
+export async function approveJoinRequest(memberId, approvedBy = 'coach-demo', expectedTeamId = null, { groupId } = {}) {
   const [users, members, profiles] = await Promise.all([
     loadUsers(),
     loadTeamMembers(),
@@ -1173,6 +1222,11 @@ export async function approveJoinRequest(memberId, approvedBy = 'coach-demo', ex
     const error = new Error('User not found');
     error.status = 404;
     throw error;
+  }
+  // A PLAYER is placed before anything is written: a refusal here leaves the
+  // request exactly as it was. Staff requests carry no player group.
+  if (canonicalRole(member) === 'player') {
+    member.playerGroupId = await approvedPlayerGroup(member, groupId);
   }
 
   member.status = 'active';
@@ -1244,6 +1298,23 @@ async function operationalContextFor(member) {
   return { player: shape('player'), staff: shape('staff') };
 }
 
+/**
+ * THE CLUB'S TEAM CODE, to the people who act on it. The code players type to
+ * join lives on the tenant record and was never sent to a client: Members
+ * showed a device-local placeholder and a coach could "change" it locally, so
+ * the code shared could be one the server had never minted. It travels here —
+ * on the session and login payloads — for the SESSION's own club only, and
+ * only to staff who may manage players (they approve the join requests the
+ * code produces). ABSENT, not blank, for everyone else, so a client can tell
+ * "not entitled" from "no code". Nothing in a request chooses the club.
+ */
+function staffTeamCode(member, team) {
+  if (!member || member.status !== 'active' || !team) return {};
+  if (!new Set(permissionsFor(member)).has(PERM.MANAGE_PLAYERS)) return {};
+  const code = String(team.teamCode || '').trim().toUpperCase();
+  return code ? { teamCode: code } : {};
+}
+
 async function withIdentityComputed(result, member) {
   const [members, teams] = await Promise.all([loadTeamMembers(), loadTeams()]);
   const memberships = members
@@ -1256,8 +1327,10 @@ async function withIdentityComputed(result, member) {
       canonicalRole: canonicalRole(item),
       current: item.teamId === member?.teamId,
     }));
+  const team = teams.find(t => t.id === member?.teamId) || null;
   return { ...result, permissions: [...permissionsFor(member)], memberships,
-           operational: await operationalContextFor(member) };
+           operational: await operationalContextFor(member),
+           ...staffTeamCode(member, team) };
 }
 
 export async function loginUser(input = {}) {
@@ -2070,6 +2143,7 @@ export async function resolveSession(token = '') {
     teamPlanStatus,
     trialEndsAt: teamTrialEndsAt,
     ...(selfServiceVerification ? { selfServiceVerification } : {}),
+    ...staffTeamCode(member, currentTeam),
   };
 }
 
@@ -2146,6 +2220,20 @@ export async function setTenantClubName(teamId, clubName) {
   team.name = name;
   await saveTeams(teams);
   return { changed: true, teamId: id, name };
+}
+
+/**
+ * THE CLUB'S NAME AS THE TENANT RECORD HOLDS IT — the counterpart read to the
+ * writer above, for callers that speak for a club before it has saved any
+ * club-config record (a provisioned club's first invitations, the claim
+ * screen). Read-only: a club with no team record answers '' and nothing is
+ * invented, so a caller can tell "unknown" from a name.
+ */
+export async function tenantClubName(teamId) {
+  const id = String(teamId || '').trim();
+  if (!id) return '';
+  const team = (await loadTeams()).find(t => String(t.id) === id);
+  return String(team?.name || '').trim();
 }
 
 export async function switchTeam(token = '', targetTeamId = '') {
@@ -2735,6 +2823,237 @@ export async function repairFounderOwnership({ teamId, actorUserId } = {}) {
   return { unchanged: false, teamId: id, clubName: team.name || team.id, founderUserId: found.userId };
 }
 
+/** How long a founder's claim link lives — provisioning and reissue alike. */
+const FOUNDER_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * The founder invitation record, exactly as provisioning has always minted
+ * it. ONE builder for provisionClub and reissueFounderInvite, so a reissued
+ * link carries precisely the markers the claim path reads (applyFounderOwnership
+ * needs both `founderInvite` and `createdBy`) and the same expiry.
+ *
+ * THE FOUNDER MARKER. Self-service clubs stamp their creator as the club
+ * owner directly (createClub); a provisioned club has no member at all until
+ * this invite is claimed, so ownership has to travel on the invite.
+ * Server-authored on both ends: nothing in a request body can set it, because
+ * /api/invite builds its own record and never copies this field. Claiming it
+ * is what makes the first administrator the OWNER — see applyFounderOwnership.
+ */
+function buildFounderInvite({ teamId, email, name = '' }) {
+  return {
+    token:      randomBytes(24).toString('base64url'),
+    name:       String(name || '').trim().slice(0, 80),
+    role:       'coach',
+    staffLevel: 'head',
+    scope:      { clubWide: true },
+    email,
+    status:     'pending',
+    teamId,
+    createdAt:  nowIso(),
+    expiresAt:  new Date(Date.now() + FOUNDER_INVITE_TTL_MS).toISOString(),
+    createdBy:  PLATFORM_PROVISIONING_ACTOR,
+    founderInvite: true,
+    acceptedAt: null,
+  };
+}
+
+/**
+ * A club's provisioning-authored invitations. The marker is `createdBy` — the
+ * same evidence resolveProvisionedFounder reads — so a club provisioned before
+ * the `founderInvite` flag existed is classified too.
+ */
+function founderInvitesOf(invites, teamId) {
+  const id = String(teamId || '');
+  return (Array.isArray(invites) ? invites : []).filter(i =>
+    i && String(i.teamId || '') === id && String(i.createdBy || '') === PLATFORM_PROVISIONING_ACTOR);
+}
+
+const founderInviteExpired = (invite, now) =>
+  Boolean(invite?.expiresAt) && new Date(invite.expiresAt).getTime() <= now;
+
+/**
+ * The founder record that currently SPEAKS for the club: a live pending link
+ * before an expired one, before a revoked one; newest first within a rank.
+ * Ranked rather than merely dated, because a revoke and its replacement can
+ * share a timestamp.
+ */
+function currentFounderInvite(founder, now) {
+  const rank = i => {
+    const status = String(i.status || '');
+    if (status === 'pending') return founderInviteExpired(i, now) ? 1 : 0;
+    if (status === 'expired') return 1;
+    if (status === 'revoked') return 2;
+    return 3;
+  };
+  return [...founder].sort((a, b) => rank(a) - rank(b)
+    || String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0] || null;
+}
+
+/**
+ * WHERE A CLUB'S FOUNDER STANDS — read from stored evidence, never guessed,
+ * and never carrying a token.
+ *
+ *   claimed  a provisioning invitation was accepted, or the club has an active
+ *            owner by any route (self-service, repair). Nothing to reissue.
+ *   pending  a live founder link exists: it may be copied or rotated.
+ *   expired  the latest founder link is past its 14 days. Expiry is lazy in
+ *            storage (the record still says 'pending' until a claim trips it),
+ *            so it is computed here from `expiresAt`.
+ *   revoked  the latest founder link was revoked and nothing replaced it.
+ *   none     no provisioning invitation exists and nobody owns the club — a
+ *            legacy or hand-made tenant; there is no founder link to rotate.
+ *
+ * `canReissue` is true only while nobody owns the club and a provisioning
+ * record exists to rotate. `canCopyLink` is true only while a link is live.
+ */
+export function founderInviteStatus(teamId, { invites = [], members = [], users = [], now = Date.now() } = {}) {
+  const id = String(teamId || '');
+  const active = (members || []).filter(m => String(m.teamId) === id && m.status === 'active');
+  const owner = active.find(isClubOwner) || null;
+  const ownerExists = Boolean(owner);
+  const founder = founderInvitesOf(invites, id);
+  const accepted = founder.find(i => String(i.status || '') === 'accepted') || null;
+  const base = { ownerExists, email: null, invitedAt: null, expiresAt: null, claimedAt: null, revokedAt: null,
+                 canReissue: false, canCopyLink: false, reason: null };
+  if (accepted || ownerExists) {
+    const ownerUser = owner ? (users || []).find(u => String(u.id) === String(owner.userId)) : null;
+    return { ...base, status: 'claimed',
+      email: accepted?.email || ownerUser?.email || null,
+      invitedAt: accepted?.createdAt || null,
+      claimedAt: accepted?.acceptedAt || owner?.approvedAt || owner?.joinedAt || null,
+      reason: accepted ? null : 'owner_without_provisioning' };
+  }
+  const latest = currentFounderInvite(founder, now);
+  if (!latest) return { ...base, status: 'none', reason: 'not_provisioned' };
+  const common = { ...base, email: latest.email || null, invitedAt: latest.createdAt || null,
+                   expiresAt: latest.expiresAt || null, canReissue: true };
+  const status = String(latest.status || '');
+  if (status === 'revoked') return { ...common, status: 'revoked', revokedAt: latest.revokedAt || null };
+  if (status === 'expired' || founderInviteExpired(latest, now)) return { ...common, status: 'expired' };
+  if (status === 'pending') return { ...common, status: 'pending', canCopyLink: true };
+  return { ...common, status: 'expired', reason: `unexpected_status:${status}` };
+}
+
+/**
+ * Every club's founder standing, for a platform administrator. The narrowest
+ * projection that lets Nick act: the club, the state, the founder's address
+ * and the dates. No token, no member, no content.
+ */
+export async function listFounderInvites() {
+  const [teams, invites, members, users] = await Promise.all([
+    loadStoredTeams(), loadInvites(), loadTeamMembers(), loadUsers(),
+  ]);
+  return teams.map(t => ({
+    teamId: t.id, clubName: t.name || t.id,
+    ...founderInviteStatus(t.id, { invites, members, users }),
+  })).sort((a, b) => a.clubName.localeCompare(b.clubName));
+}
+
+/** The club, its own invitations and its founder standing — or 400/404. */
+async function founderContext(teamId) {
+  const id = String(teamId || '').trim();
+  if (!id) { const e = new Error('A club is required'); e.status = 400; throw e; }
+  const team = (await loadStoredTeams()).find(t => String(t.id) === id);
+  if (!team) { const e = new Error('Unknown club'); e.status = 404; throw e; }
+  const [invites, members, users] = await Promise.all([listClubInvites(id), loadTeamMembers(), loadUsers()]);
+  return { id, team, invites, members, users, status: founderInviteStatus(id, { invites, members, users }) };
+}
+
+/**
+ * The CURRENT founder link — only while it is live. A claimed, expired or
+ * revoked founder token is never handed out again: it is either spent or
+ * dead, and the way forward is a reissue.
+ */
+export async function founderInviteLink({ teamId } = {}) {
+  const { id, team, invites, status } = await founderContext(teamId);
+  const now = Date.now();
+  const live = status.status === 'pending'
+    ? founderInvitesOf(invites, id).find(i => String(i.status || '') === 'pending' && !founderInviteExpired(i, now))
+    : null;
+  if (!live) {
+    const why = {
+      claimed: 'has already been claimed — the club has its owner',
+      expired: 'has expired — reissue it to get a new link',
+      revoked: 'was revoked — reissue it to get a new link',
+      none:    'does not exist — this club was not created by platform provisioning',
+    }[status.status] || 'is not pending';
+    const e = new Error(`The founder invitation ${why}`);
+    e.status = 409; e.code = 'founder_invite_not_pending'; throw e;
+  }
+  return { teamId: id, clubName: team.name || team.id, token: live.token, email: live.email || '', expiresAt: live.expiresAt || null };
+}
+
+/**
+ * Replace a club's founder link.
+ *
+ * The caller names a CLUB (and, optionally, a corrected founder address) and
+ * nothing else. The club is read from the tenant list, ownership from the
+ * membership list, the previous link from the club's own invitation list.
+ *
+ * Refused when the club already has an owner (there is nothing to found), when
+ * it was never provisioned (no founder record to rotate), and when a founder
+ * invitation was already accepted without producing an owner (that is the
+ * historical repair, not a reissue). Validated BEFORE anything is written.
+ *
+ * ORDER MATTERS. Every live founder link is revoked FIRST and persisted, then
+ * the new one is minted and stored. A failure between the two leaves NO live
+ * link rather than two — the listing then reads `revoked` with canReissue, and
+ * a retry recovers. The whole function runs under the identity lock
+ * (lockedIdentityWriter), so no concurrent writer can interleave.
+ *
+ * Writes only the invitation list of the one club: no team record, no
+ * membership, no account.
+ */
+export async function reissueFounderInvite({ teamId, adminEmail, actorUserId } = {}) {
+  const { id, team, invites, status } = await founderContext(teamId);
+  const supplied = adminEmail === undefined || adminEmail === null || String(adminEmail).trim() === '';
+  const override = supplied ? '' : normalizeEmail(adminEmail);
+  if (override && !EMAIL_RE.test(override)) {
+    const e = new Error('A valid founder email address is required'); e.status = 400; throw e;
+  }
+  if (status.ownerExists) {
+    const e = new Error('That club already has an owner — there is no founder invitation to reissue');
+    e.status = 409; e.code = 'owner_exists'; throw e;
+  }
+  const founder = founderInvitesOf(invites, id);
+  if (!founder.length) {
+    const e = new Error('This club was not created by platform provisioning, so it has no founder invitation to reissue');
+    e.status = 400; e.code = 'not_provisioned'; throw e;
+  }
+  if (founder.some(i => String(i.status || '') === 'accepted')) {
+    const e = new Error("That club's founder invitation was already claimed but the club has no owner — use Repair ownership instead");
+    e.status = 409; e.code = 'founder_claimed'; throw e;
+  }
+  const previous = currentFounderInvite(founder, Date.now());
+  const email = override || normalizeEmail(previous.email || '');
+  if (!EMAIL_RE.test(email)) {
+    const e = new Error('The previous founder invitation carries no usable address — supply the founder email');
+    e.status = 400; throw e;
+  }
+
+  // 1. Revoke every live founder link, each in the home it lives in.
+  const revokedAt = nowIso();
+  let revoked = 0;
+  for (const inv of founder) {
+    if (!['pending', 'open'].includes(String(inv.status || ''))) continue;
+    const located = await findInviteByToken(inv.token);
+    if (!located) continue;
+    located.invite.status = 'revoked';
+    located.invite.revokedAt = revokedAt;
+    located.invite.revokedBy = String(actorUserId || '') || PLATFORM_PROVISIONING_ACTOR;
+    located.invite.revokedReason = 'reissued';
+    await persistInvite(located);
+    revoked++;
+  }
+  // 2. Mint the replacement — only now, with nothing else live.
+  const invite = buildFounderInvite({ teamId: id, email, name: previous.name || '' });
+  invite.reissuedAt = revokedAt;
+  invite.reissuedBy = String(actorUserId || '');
+  invite.replacesRef = `inv-${String(previous.token || '').slice(-8)}`;   // the same 8-char reference the audit trail uses
+  await appendClubInvite(id, invite);
+  return { team: { id, name: team.name || team.id }, invite, revoked, previousEmail: previous.email || null };
+}
+
 /**
  * Provision a NEW customer club: an isolated tenant plus a single-use
  * head-coach invitation for its first administrator. Unlike createClub (the
@@ -2809,29 +3128,10 @@ export async function provisionClub({ clubName, adminEmail, adminName = '', firs
   // First-admin invitation, tenant-scoped to the NEW club, with an EXPLICIT
   // club-wide scope: the claim stamps it via the existing scoped-invite
   // machinery, so the first administrator is unambiguously club-wide from
-  // the moment they join — no reliance on legacy scope derivation.
-  const invite = {
-    token:      randomBytes(24).toString('base64url'),
-    name:       String(adminName || '').trim().slice(0, 80),
-    role:       'coach',
-    staffLevel: 'head',
-    scope:      { clubWide: true },
-    email:      normalized,
-    status:     'pending',
-    teamId,
-    createdAt:  nowIso(),
-    expiresAt:  new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-    createdBy:  PLATFORM_PROVISIONING_ACTOR,
-    // THE FOUNDER MARKER. Self-service clubs stamp their creator as the club
-    // owner directly (createClub below); a provisioned club has no member at
-    // all until this invite is claimed, so ownership has to travel on the
-    // invite. Server-authored on both ends: nothing in a request body can set
-    // it, because /api/invite builds its own record and never copies this
-    // field. Claiming it is what makes the first administrator the OWNER —
-    // see applyFounderOwnership.
-    founderInvite: true,
-    acceptedAt: null,
-  };
+  // the moment they join — no reliance on legacy scope derivation. Built by
+  // the same builder a reissue uses (buildFounderInvite), so the two can
+  // never drift apart.
+  const invite = buildFounderInvite({ teamId, email: normalized, name: adminName });
   await appendClubInvite(teamId, invite);
   return { team, invite };
 }
@@ -3867,6 +4167,7 @@ rejectJoinRequest = lockedIdentityWriter(rejectJoinRequest);
 removeScopedGrant = lockedIdentityWriter(removeScopedGrant);
 removeTeamMember = lockedIdentityWriter(removeTeamMember);
 repairFounderOwnership = lockedIdentityWriter(repairFounderOwnership);
+reissueFounderInvite = lockedIdentityWriter(reissueFounderInvite);
 resetPasswordWithToken = lockedIdentityWriter(resetPasswordWithToken);
 restoreTeamMember = lockedIdentityWriter(restoreTeamMember);
 revokePlatformAdmin = lockedIdentityWriter(revokePlatformAdmin);

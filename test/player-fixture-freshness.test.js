@@ -370,11 +370,14 @@ async function makeClub(label, players) {
     const [f, l] = p.name.split(' ');
     const email = `${p.key.toLowerCase()}.${label.toLowerCase()}@ff.test`;
     const made = await S.createJoinRequest({ teamCode: code, firstName: f, lastName: l, email, password: PW });
-    await S.approveJoinRequest(made.teamMember.id, club.user.id, teamId);
-    c.people[p.key] = { ...made, name: p.name, email, gid: p.group === 'U18' ? U18 : p.group === 'SEN' ? SEN : '' };
+    const gid = p.group === 'U18' ? U18 : p.group === 'SEN' ? SEN : '';
+    // Approval places the player (two groups here, so the approver names one);
+    // a person meant to stay GROUPLESS is un-placed below, deliberately.
+    await S.approveJoinRequest(made.teamMember.id, club.user.id, teamId, { groupId: gid || SEN });
+    c.people[p.key] = { ...made, name: p.name, email, gid };
   }
   const members = await S.loadTeamMembers();
-  for (const m of members) { const who = Object.values(c.people).find(p => p.user.id === m.userId); if (who && m.teamId === teamId && who.gid) m.playerGroupId = who.gid; }
+  for (const m of members) { const who = Object.values(c.people).find(p => p.user.id === m.userId); if (who && m.teamId === teamId) { if (who.gid) m.playerGroupId = who.gid; else delete m.playerGroupId; } }
   await S.withIdentityLock(() => S.saveTeamMembers(members));
   for (const p of Object.values(c.people)) p.session = await S.createSession({ userId: p.user.id, teamId, role: 'player' });
   c.coach = await S.createSession({ userId: club.user.id, teamId, role: 'coach' });

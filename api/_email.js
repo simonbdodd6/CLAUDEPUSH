@@ -94,15 +94,32 @@ export async function sendTransactionalEmail({ to, subject, html, text, purpose 
   return { ok: true, sent: true, provider: 'resend', id: payload.id || null };
 }
 
-export function inviteEmail({ name, teamName = 'Boitsfort RFC', url } = {}) {
+/**
+ * TEXT PLACED INSIDE AN HTML EMAIL BODY — entity-escaped so a value can only
+ * ever read as text, never as an element or an attribute. The club name and
+ * the invitee's name are typed by club staff: bounded but not checked for
+ * markup (provisionClub, createClub, the Settings save, invite creation). The
+ * claim screen already escapes them (index.html, esc()); this is the same wall
+ * for the email. Subjects and plain-text bodies are not HTML and keep the
+ * value verbatim.
+ */
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => HTML_ESCAPES[ch]);
+}
+
+export function inviteEmail({ name, teamName = '', url } = {}) {
   const safeName = String(name || 'Player');
+  // The invitation names the club it is for. With no name known it says
+  // "your club" — never another club's name as a default.
+  const club = String(teamName || '').trim() || 'your club';
   return {
-    subject: `You're invited to join ${teamName} on CoachEasier`,
-    text: `Hi ${safeName},\n\nYou've been invited to join ${teamName} on CoachEasier.\n\nClaim your account here:\n${url}\n\nThis link expires soon and can only be used once.`,
+    subject: `You're invited to join ${club} on CoachEasier`,
+    text: `Hi ${safeName},\n\nYou've been invited to join ${club} on CoachEasier.\n\nClaim your account here:\n${url}\n\nThis link expires soon and can only be used once.`,
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a">
-        <h2>You're invited to join ${teamName}</h2>
-        <p>Hi ${safeName},</p>
+        <h2>You're invited to join ${escapeHtml(club)}</h2>
+        <p>Hi ${escapeHtml(safeName)},</p>
         <p>Your coach has invited you to create your CoachEasier account.</p>
         <p><a href="${url}" style="display:inline-block;background:#8F6B2A;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Claim account</a></p>
         <p style="color:#64748b;font-size:13px">This link expires soon and can only be used once.</p>

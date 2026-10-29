@@ -154,7 +154,7 @@ async function makeClub(label, { seniors = [], u18 = [] } = {}) {
   for (const [gid, names] of [[SEN, seniors], [U18, u18]]) for (const n of names) {
     const [f, l] = n.split(' ');
     const p = await S.createJoinRequest({ teamCode: code, firstName: f, lastName: l, email: `${f.toLowerCase()}.${label.toLowerCase()}@ci.test`, password: PW });
-    await S.approveJoinRequest(p.teamMember.id, club.user.id, club.team.id);
+    await S.approveJoinRequest(p.teamMember.id, club.user.id, club.team.id, { groupId: gid });
     people[f] = { ...p, name: n, gid };
   }
   const members = await S.loadTeamMembers();
@@ -200,7 +200,7 @@ test('SERVER identity. a display name is never an identity: two same-named playe
   // a second Alex Smith, different account
   const code = (await S.loadStoredTeams()).find(t => t.id === c.teamId).teamCode;
   const twin = await S.createJoinRequest({ teamCode: code, firstName: 'Alex', lastName: 'Smith', email: 'alex2.twins@ci.test', password: PW });
-  await S.approveJoinRequest(twin.teamMember.id, c.club.user.id, c.teamId);
+  await S.approveJoinRequest(twin.teamMember.id, c.club.user.id, c.teamId, { groupId: c.SEN });
   const members = await S.loadTeamMembers();
   for (const m of members) if (m.teamId === c.teamId && m.userId === twin.user.id) m.playerGroupId = c.SEN;
   await S.withIdentityLock(() => S.saveTeamMembers(members));
