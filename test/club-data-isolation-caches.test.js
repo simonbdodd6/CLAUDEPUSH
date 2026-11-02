@@ -179,6 +179,7 @@ function sandbox(cfg = {}) {
     ${fn('clubStateOwned')}
     ${fn('adoptClubContext')}
     ${fn('resetTeamScopedState')}
+    ${fn('forgetClubCaches')}
     ${fn('resetClubScopedState')}
     ${fn('availabilityStopLive')}
     ${fn('resetIdentityScopedState')}

@@ -7189,12 +7189,16 @@
     // authenticated identity answer lands). Declared beside `state` so no
     // hoisted caller can hit its temporal dead zone. See clubStateOwned().
     let _clubContextId = '';
-    // Counts club transitions (CD-110). A loader whose reply can only be
-    // judged on arrival captures it when the request leaves and discards the
-    // reply if a transition ran meanwhile: that reply describes the club
-    // being left, and the latch it would set would hold that club's content
-    // under the next one for the rest of the page (ensureMatchCentreTeams,
-    // loadAttendance). Bumped by resetClubScopedState.
+    // Counts club AND identity transitions (CD-110, widened by CD-111). A
+    // loader whose reply can only be judged on arrival captures it when the
+    // request leaves and discards the reply if a transition ran meanwhile:
+    // that reply describes a context that has ended — the club being left, or
+    // the account that signed out — and what it would set would stand under
+    // the next one for the rest of the page (ensureMatchCentreTeams,
+    // loadAttendance, chatFetchConversations, chatFetchMessages,
+    // loadCoachDraftsList, loadMedicalFromServer, and the session check
+    // itself). Bumped by forgetClubCaches (every club transition and every
+    // sign-out) and by resetIdentityScopedState.
     let _clubEpoch = 0;
 
     // ─── TOAST ────────────────────────────────────────────────────────────────
@@ -12756,10 +12760,14 @@
       const now = Date.now();
       if (now - _coachDraftsFetchedAt < 12000) return;   // self-throttle (avoid refetch per render)
       _coachDraftsFetchedAt = now;
+      // The context this read is made in (CD-111): a reply landing after a club
+      // change or a sign-out is the context being left's, not this one's.
+      const epoch = typeof _clubEpoch !== 'undefined' ? _clubEpoch : 0;
       try {
         const res = await fetch('/api/publish?type=drafts');
         if (!res.ok) return;
         const { drafts } = await res.json();
+        if (typeof _clubEpoch !== 'undefined' && epoch !== _clubEpoch) return;
         _coachDraftsList = Array.isArray(drafts) ? drafts : [];
         render();
       } catch (e) { console.warn('[loadCoachDraftsList]', e); }
@@ -13938,9 +13946,15 @@
       // read that left before any club was proven (boot) speaks for the
       // cookie's club and is kept.
       const forClub = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
+      // …and the context (CD-111): a sign-out leaves the club id in place (the
+      // club's data stays on the device) but ends the context, so a caseload
+      // reply landing after it must not be adopted — nor persisted — on a
+      // signed-out device, or inherited by the next person on it.
+      const epoch = typeof _clubEpoch !== 'undefined' ? _clubEpoch : 0;
       try {
         const res = await fetch('/api/publish?resource=medical'
           + (gid ? `&group=${encodeURIComponent(gid)}` : ''));
+        if (typeof _clubEpoch !== 'undefined' && epoch !== _clubEpoch) return;
         const nowClub = String((typeof _clubContextId !== 'undefined' && _clubContextId) || '');
         if (forClub && nowClub !== forClub) return;   // the next club's own read is already on its way
         const nowGid = state.activeView !== 'player' ? (state.operationalGroupId || '') : '';
@@ -14767,6 +14781,7 @@
         }
         _serverSessionReadyFor = data.user.id;
         _serverAuthState = 'authed';
+        if (typeof logoutPendingSet === 'function') logoutPendingSet(false);   // a NEW session: no old logout is owed (CD-111)
         adoptIdentityPayload(data);
         authTab = 'closed';
         saveState('Logged in');
@@ -15405,6 +15420,7 @@
         }
         _serverSessionReadyFor = userId;
         _serverAuthState = 'authed';
+        if (typeof logoutPendingSet === 'function') logoutPendingSet(false);   // a NEW session (CD-111)
         adoptIdentityPayload(data);
         if (String(state.currentUserId || '') !== String(userId)) resetIdentityScopedState();
         state.currentUserId = userId;
@@ -15837,9 +15853,13 @@
       if (!panel || _identityRequestsLoading) return;
       _identityRequestsLoading = true;
       renderIdentityRequestsPanel();
+      // The context this read is made in (CD-111): requester names and
+      // addresses for a context that has since ended are not adopted.
+      const epoch = typeof _clubEpoch !== 'undefined' ? _clubEpoch : 0;
       try {
         await ensureServerSessionForCurrentUser();
         const data = await fetch('/api/identity').then(r => r.json());
+        if (typeof _clubEpoch !== 'undefined' && epoch !== _clubEpoch) return;
         if (!data.ok) throw new Error(data.error || 'Could not load join requests');
         const rosterChanged = syncIdentityStateToLocalRoster(data);
         _identityPendingRequests = data.pending || [];
@@ -22894,6 +22914,7 @@
         if (d.logoDataUrl) state.clubLogo = d.logoDataUrl;
         _serverSessionReadyFor = data.user.id;
         _serverAuthState = 'authed';
+        if (typeof logoutPendingSet === 'function') logoutPendingSet(false);   // a NEW session (CD-111)
         _welcomeDismissed = true;
         try { sessionStorage.setItem('ce-setup-skipped', '1'); } catch {}
         saveState('Club created');
@@ -24099,6 +24120,7 @@
           return;
         }
         const data = await res.json();
+        if (_left()) return;   // the body arrived after the context ended (CD-111)
         // The key a player aggregates on is the SERVER'S answer. Without one,
         // identity is unresolved — and unresolved must read as unavailable,
         // never as an empty register.
@@ -27291,7 +27313,15 @@
 
     async function settingsSignOut() {
       if (!(await ceConfirm('Sign out on this device?', 'Your club data stays saved locally — log back in any time.', { confirmLabel: 'Sign out' }))) return;
-      try { await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
+      // THE DEVICE SIGNS OUT FIRST (CD-111). This used to await the server's
+      // logout reply before touching anything local, so for the whole round
+      // trip — seconds on a poor connection, for ever on a stalled one — the
+      // person who had just confirmed "Sign out" was still looking at their
+      // authenticated app, and a session check already in flight could adopt
+      // their account again when its reply landed. The local session now ends
+      // synchronously here; the server is told at the end (deliverLogout), and
+      // a logout it does not confirm is remembered and finished before any
+      // session is adopted again.
       // Clear identity state so the next page load does not flash coach UI.
       // Club data (players, schedule, clubName) is intentionally kept per the
       // sign-out confirmation text: "Your club data stays saved locally."
@@ -27301,6 +27331,10 @@
       // account on this browser must not inherit their preview selection,
       // legacy inbox or unread badge. Club data stays, as promised above.
       resetIdentityScopedState();
+      // The founder's verify-email reminder was raised for THIS person, their
+      // address in it (CD-111); it stayed on the signed-out page. Taken down.
+      if (typeof _verifyNotice !== 'undefined') _verifyNotice = null;
+      if (typeof renderVerifyEmailBanner === 'function') { try { renderVerifyEmailBanner(); } catch {} }
       _myPermissions = null;
       _myMemberships = [];
       _myMembership = null;
@@ -27314,6 +27348,11 @@
                      clubWideStaff: [], loaded: false, loading: false, attempted: false, failed: false };
       // A retry booked for the account signing out must not fire (Build 126).
       if (typeof adminRetryCancel === 'function') adminRetryCancel();
+      // The club's in-memory caches — the register, the sides, the drafts, the
+      // answers, the threads (CD-110's list) — go too, and the club epoch
+      // advances so a reply still out for the account that left is discarded
+      // on arrival (CD-111). The club's persisted data stays, as promised.
+      if (typeof forgetClubCaches === 'function') forgetClubCaches();
       // The front door was dismissed earlier in this page session; sign-out must
       // bring it back, or the shell would be blanked with no way forward.
       _welcomeDismissed = false;
@@ -27333,6 +27372,10 @@
       render();
       renderAuthBanner();
       showToast('Signed out');
+      // Then the server. The local session is already over whatever it says;
+      // a logout it does not confirm is remembered and retried at the next
+      // boot (checkServerSession) and on reconnect (the online listener).
+      if (typeof deliverLogout === 'function') await deliverLogout();
     }
 
     // Player account menu — header button on the player portal. Shows the signed-in
@@ -38331,10 +38374,15 @@
     async function chatFetchMessages(convId, since = 0) {
       if (typeof _serverAuthState !== 'undefined' && _serverAuthState === 'anon') return [];  // signed out
       if (chatIsUnresolvedPlaceholder(convId)) return [];
+      // 'squad' and 'coaching' exist in every club under the same id (CD-111):
+      // a history or poll reply for the club being left must not become the
+      // next club's thread. Discarded if the context ended while it was out.
+      const epoch = typeof _clubEpoch !== 'undefined' ? _clubEpoch : 0;
       try {
         const me = chatMe();
         const url = `/api/chat?action=messages&convId=${encodeURIComponent(convId)}&since=${since}&userId=${encodeURIComponent(me.id)}`;
         const data = await fetch(url).then(r => r.json());
+        if (typeof _clubEpoch !== 'undefined' && epoch !== _clubEpoch) return [];
         if (data.ok) {
           const fetched = data.messages || [];
           if (chatIsCoachDirectConversation(convId)) {
@@ -38505,17 +38553,27 @@
       // signed-out tab issuing 401s after logout. No session, no request.
       if (typeof _serverAuthState !== 'undefined' && _serverAuthState === 'anon') return;
       const me = chatMe();
+      // The context this request is made in (CD-111): the club in force and the
+      // account. The same owner switching clubs keeps their identity, so a
+      // latch keyed on the identity alone let Club B's first render JOIN the
+      // request still out for Club A — Club B issued none of its own, and Club
+      // A's reply became Club B's list. The latch is keyed on the epoch as
+      // well, and a reply whose context has ended is discarded on arrival:
+      // neither the list nor the badge is this club's.
+      const epoch = typeof _clubEpoch !== 'undefined' ? _clubEpoch : 0;
+      const _left = () => typeof _clubEpoch !== 'undefined' && epoch !== _clubEpoch;
       // In-flight sharing. A render-driven caller joins the request already
-      // out for this identity instead of starting another. A caller that has
-      // just CHANGED something (created a group, marked a thread read) passes
-      // force: the answer it needs post-dates any request already in flight.
-      // Guarded with typeof so sandboxes that extract this function alone
-      // keep working without the latch.
+      // out for this identity AND context instead of starting another. A
+      // caller that has just CHANGED something (created a group, marked a
+      // thread read) passes force: the answer it needs post-dates any request
+      // already in flight. Guarded with typeof so sandboxes that extract this
+      // function alone keep working without the latch.
       const inFlight = typeof _chatConversationsInFlight !== 'undefined' ? _chatConversationsInFlight : null;
-      if (!force && inFlight && inFlight.id === me.id) return inFlight.promise;
+      if (!force && inFlight && inFlight.id === me.id && inFlight.epoch === epoch) return inFlight.promise;
       const promise = (async () => {
       try {
         const data = await fetch(`/api/chat?action=conversations&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
+        if (_left()) return;
         if (data.ok) {
           // Server-returned conversations are authoritative. _filterCanonicalConversations
           // already keeps any DM the current user participates in, so we must NOT re-filter
@@ -38538,12 +38596,13 @@
           chatSetUnreadTotal(0);
         }
       } catch (e) {
+        if (_left()) return;   // a failure for a context that has ended says nothing about this one
         // Network failure / offline: same guarantee — do not leave a frozen stale badge.
         _chatConversations = (_chatConversations || []).map(c => ({ ...c, unread: 0 }));
         chatSetUnreadTotal(0);
       }
       })();
-      const latch = { id: me.id, promise };
+      const latch = { id: me.id, epoch, promise };
       if (typeof _chatConversationsInFlight !== 'undefined') _chatConversationsInFlight = latch;
       try { return await promise; }
       finally {
@@ -42909,9 +42968,15 @@
       if (_perfAssign.loading) return _perfAssign;
       if (_perfAssign.loaded && !force) return _perfAssign;
       _perfAssign.loading = true;
+      // The context this read is made in (CD-111): a reply landing after a
+      // sign-out or a club change carries the departed context's athletes and
+      // the caller's own profile, which perfAdoptServerProfile would PERSIST.
+      // Discarded; the store it would fill has already been replaced.
+      const epoch = typeof _clubEpoch !== 'undefined' ? _clubEpoch : 0;
       try {
         const res = await fetch('/api/publish?resource=performance');
         const data = await res.json().catch(() => ({}));
+        if (typeof _clubEpoch !== 'undefined' && epoch !== _clubEpoch) return _perfAssign;
         if (res.status === 402) {
           // Not entitled is a DIFFERENT answer from "no programmes", and is
           // reported as itself rather than as an empty list.
@@ -45087,12 +45152,17 @@
     // and reloads to a clean first-run.
     async function clearDeviceState() {
       if (!(await ceConfirm('Clear this device?', 'Logs out and removes all CoachEasier data stored on this device. Server data — players, messages, availability — is untouched; you can log straight back in.', { confirmLabel: 'Log out & clear', danger: true }))) return;
-      try { await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
+      // The server first — and remembered if it could not confirm (CD-111): the
+      // wipe below removes the marker with everything else, so it is set again
+      // afterwards and the next boot finishes the logout instead of restoring
+      // the account from the cookie the browser still holds.
+      const delivered = typeof deliverLogout === 'function' ? await deliverLogout() : false;
       try {
         Object.keys(window.localStorage)
           .filter(k => k.startsWith('coach-eye') || k.startsWith('_push'))
           .forEach(k => window.localStorage.removeItem(k));
       } catch {}
+      if (!delivered && typeof logoutPendingSet === 'function') logoutPendingSet(true);
       window.location.replace('/');
     }
 
@@ -45104,6 +45174,16 @@
      * it is club-scoped, and sign-out promises to keep it.
      */
     function resetIdentityScopedState() {
+      // The identity leaving ends the context every guarded loader captured
+      // (CD-111): a reply still out for them — their session check included —
+      // is discarded on arrival rather than adopted for whoever comes next.
+      if (typeof _clubEpoch !== 'undefined') _clubEpoch++;
+      // The two reads whose discard branch keeps its latch (the Match Centre
+      // sides) or its throttle (the drafts list) are released with it, so the
+      // next person's first render reads them rather than waiting for a club
+      // transition to release them.
+      if (typeof _mcTeamsAttempted !== 'undefined') _mcTeamsAttempted = false;
+      if (typeof _coachDraftsFetchedAt !== 'undefined') _coachDraftsFetchedAt = 0;
       // An unsent availability answer belongs to the account that chose it. It
       // is kept (Build 101) — stamped with that account and club, it is shown
       // to and sent by NO other account or club (availabilityPendingFor and
@@ -45242,12 +45322,52 @@
       return anon || !String((typeof state !== 'undefined' && state && state.currentUserId) || '').trim();
     }
 
+    // ─── SIGN-OUT DELIVERY (CD-111) ──────────────────────────────────────────
+    // The device signs out FIRST; the server is told afterwards. A logout the
+    // server did not confirm — offline, a 5xx, a lost reply — is remembered
+    // here and finished before any session is adopted again, so a refresh
+    // after a failed sign-out cannot restore the account from the cookie the
+    // browser still holds. Every path that creates a NEW session clears it:
+    // retrying the old logout then would destroy the new session instead.
+    // The key starts with 'coach-eye' so "clear this device" wipes it with
+    // everything else — clearDeviceState sets it again after the wipe when
+    // its own logout was not confirmed.
+    function logoutPending() {
+      try { return typeof localStorage !== 'undefined' && localStorage.getItem('coach-eye-logout-pending') === '1'; }
+      catch { return false; }
+    }
+    function logoutPendingSet(on) {
+      try {
+        if (typeof localStorage === 'undefined') return;
+        if (on) localStorage.setItem('coach-eye-logout-pending', '1');
+        else localStorage.removeItem('coach-eye-logout-pending');
+      } catch {}
+    }
+    /** Tell the server. Resolves true only when it confirmed; otherwise the logout stays owed. */
+    async function deliverLogout() {
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
+        if (res && res.ok) { logoutPendingSet(false); return true; }
+      } catch {}
+      logoutPendingSet(true);
+      return false;
+    }
+
     // Empty every authenticated section. Queried live rather than from a fixed
     // id list, so a section added later cannot silently keep painting the last
     // account's data after sign-out.
     function clearAuthenticatedSections() {
       document.querySelectorAll('.section').forEach(el => { el.innerHTML = ''; });
       try { _chatShellRendered = null; } catch {}
+      // The topbar is authenticated chrome too (CD-111): over the emptied page
+      // it kept reading "Coach dashboard · Settings", and the group switcher
+      // kept the last club's groups. Neutral until a session paints them.
+      const title = document.getElementById('pageTitle');
+      if (title) title.textContent = 'Log in to continue';
+      const eyebrow = document.getElementById('eyebrow');
+      if (eyebrow) eyebrow.textContent = 'Not signed in';
+      const switcher = document.getElementById('opGroupSwitcher');
+      if (switcher) { switcher.innerHTML = ''; if (switcher.dataset) delete switcher.dataset.ceSwitcher; }
     }
     // Identity & Permissions: computed server-side (single source of truth in
     // api/_permissions.js) and delivered on every session/login response.
@@ -46646,6 +46766,22 @@
       if (typeof _playerAvailKnown !== 'undefined') _playerAvailKnown = false;
       if (typeof _availConfirmedAt !== 'undefined') _availConfirmedAt = {};
       if (typeof _availReasonOpenByKey !== 'undefined') _availReasonOpenByKey = {};   // session keys are per club
+      // Every in-memory club cache, and the context — shared with sign-out (CD-111).
+      if (typeof forgetClubCaches === 'function') forgetClubCaches();
+    }
+
+    /**
+     * EVERY IN-MEMORY CLUB CACHE, FORGOTTEN — AND THE CONTEXT ENDED (CD-110's
+     * list, shared since CD-111). Called by resetClubScopedState (a club
+     * transition), by settingsSignOut and by the other-tab sign-out (nobody is
+     * in the club any more). Sign-out used to leave all of this behind: the
+     * register, the sides, the drafts, the answers and the chat latch were
+     * inherited by the next person to log in on the device, and a reply still
+     * out for the account that left was applied when it landed. The club's
+     * PERSISTED data is not touched here — that is resetTeamScopedState's,
+     * and sign-out keeps it as its confirmation promises.
+     */
+    function forgetClubCaches() {
       // ─── CD-110 — caches the transition had not reached ───────────────────
       // Replies of requests already out for the club being left are discarded
       // on arrival (see _clubEpoch).
@@ -46692,6 +46828,11 @@
       // poll replaced them. Forgotten here as well — poller stopped, badge
       // zeroed — and the next club's list is fetched afresh.
       if (typeof chatStopPolling === 'function') chatStopPolling();
+      // …and the conversations request still out (CD-111): it was made for the
+      // context being left, and the next club's first render must start its
+      // own rather than join it. (chatFetchConversations keys its latch on the
+      // epoch as well; this covers sandboxes that extract it without the latch.)
+      if (typeof _chatConversationsInFlight !== 'undefined') _chatConversationsInFlight = null;
       if (typeof _chatConversations !== 'undefined') _chatConversations = [];
       if (typeof _chatConversationsLoaded !== 'undefined') _chatConversationsLoaded = false;
       if (typeof _chatMessages !== 'undefined') _chatMessages = {};
@@ -46797,14 +46938,29 @@
       // answer lands. renderAuthBanner/renderNav below are not enough: they do
       // not paint the sections.
       const wasSignedOut = sessionSignedOut();
+      // The context this check is made in (CD-111). A sign-out or a club change
+      // while the request is out ends it, and the reply — a 200 for the account
+      // that just left, say — is discarded on arrival instead of adopted.
+      const epoch = typeof _clubEpoch !== 'undefined' ? _clubEpoch : 0;
+      const _left = () => typeof _clubEpoch !== 'undefined' && epoch !== _clubEpoch;
+      // A sign-out this device could not deliver is finished FIRST (CD-111): the
+      // browser may still hold a live cookie for the account that signed out,
+      // and asking for "the session" would simply restore it. Until the server
+      // confirms that logout, no session is asked for, let alone adopted.
+      if (typeof logoutPending === 'function' && logoutPending()) {
+        const delivered = typeof deliverLogout === 'function' ? await deliverLogout() : false;
+        if (!delivered || _left()) { renderAuthBanner(); renderNav(); return; }
+      }
       try {
         // no-store is load-bearing, not hygiene: the session answer carries no
         // cache directive, so a Back/Forward navigation replayed a CACHED 200
         // and the device re-authenticated itself from the browser cache after
         // the real session had already ended. Always ask the server.
         const res = await fetch('/api/identity?action=session', { cache: 'no-store' });
+        if (_left()) return;   // made for a context that has ended: adopt nothing, refuse nothing
         if (res.ok) {
           const d = await res.json();
+          if (_left()) return;
           _serverAuthState = 'authed';
           adoptIdentityPayload(d);
           // Hydrate local identity from server session so a page reload
@@ -47423,6 +47579,14 @@
         _welcomeDismissed = false;
         if (typeof chatStopPolling === 'function') { try { chatStopPolling(); } catch {} }
         if (typeof availabilityStopLive === 'function') { try { availabilityStopLive(); } catch {} }   // Build 129
+        // …and this tab's own identity and club caches go with it (CD-111) — the
+        // same forgetting the signing-out tab did, so nothing of the account
+        // that left can be painted or adopted here either.
+        if (typeof resetIdentityScopedState === 'function') { try { resetIdentityScopedState(); } catch {} }
+        if (typeof forgetClubCaches === 'function') { try { forgetClubCaches(); } catch {} }
+        if (typeof _verifyNotice !== 'undefined') _verifyNotice = null;
+        if (typeof renderVerifyEmailBanner === 'function') { try { renderVerifyEmailBanner(); } catch {} }
+        _myPermissions = null; _myMemberships = []; _myMembership = null; _serverSessionReadyFor = '';
       }
       const el = document.getElementById("saveStatus");
       if (el) el.textContent = `Synced newer browser tab · rev ${incomingRev}`;
@@ -47958,6 +48122,7 @@
           state.selectedMessagePlayerId = data.user.id;
           state.selectedChatId = 'coach';
         }
+        if (typeof logoutPendingSet === 'function') logoutPendingSet(false);   // the claim created a NEW session (CD-111)
         saveState('Invite claimed');
         document.getElementById('invite-modal')?.remove();
         window.history.replaceState({}, '', '/');
@@ -48576,6 +48741,9 @@
     // Connectivity came back: send what we could not send. The browser fires
     // this once per transition, so it is a signal, not a loop.
     window.addEventListener('online', () => { availabilityFlushPending().catch(() => {}); });
+    // …and a sign-out the server could not confirm while offline is delivered
+    // now, so its session ends as soon as the device can say so (CD-111).
+    window.addEventListener('online', () => { if (typeof logoutPending === 'function' && logoutPending() && typeof deliverLogout === 'function') deliverLogout().catch(() => {}); });
     // The 2.5s thread poll (chatStartPolling) had no visibility gate of its own,
     // unlike bgPollUnread above, whose chatBackgroundPollAllowed() checks
     // document.hidden. A tab left open on Messages therefore kept issuing its
