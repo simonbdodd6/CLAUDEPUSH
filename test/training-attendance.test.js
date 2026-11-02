@@ -260,7 +260,12 @@ test('a failed read is recorded, and never becomes an empty season', () => {
   // unchanged and is what is asserted: a non-ok response clears the document to
   // null (unknown) and stamps the failed group — it never fabricates a record.
   assert.match(load, /if \(!res\.ok\) \{[\s\S]*?_attendance = null; _attendanceFailed = gid;/);
-  assert.match(load, /catch \{ _attendance = null; _attendanceFailed = gid;/);
+  // CD-110: a failure that lands AFTER a club transition is the club being
+  // left's, not this club's — it is discarded (`_left()`), so the same
+  // invariant now sits behind that one guard. Pinned behaviourally in
+  // test/club-data-isolation-caches.test.js (current club: recorded; club
+  // since left: nothing recorded).
+  assert.match(load, /catch \{ if \(!_left\(\)\) \{ _attendance = null; _attendanceFailed = gid;/);
   assert.match(load, /_attendanceFailed = null;/, 'a success clears it');
   assert.ok(!/_attendance = \{ sessions: \{\} \}/.test(load.replace(/denied: true[^\n]*/g, '')),
     'a failure must never be turned into an empty attendance document');

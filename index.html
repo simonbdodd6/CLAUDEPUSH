@@ -7191,6 +7191,13 @@
     // authenticated identity answer lands). Declared beside `state` so no
     // hoisted caller can hit its temporal dead zone. See clubStateOwned().
     let _clubContextId = '';
+    // Counts club transitions (CD-110). A loader whose reply can only be
+    // judged on arrival captures it when the request leaves and discards the
+    // reply if a transition ran meanwhile: that reply describes the club
+    // being left, and the latch it would set would hold that club's content
+    // under the next one for the rest of the page (ensureMatchCentreTeams,
+    // loadAttendance). Bumped by resetClubScopedState.
+    let _clubEpoch = 0;
 
     // ─── TOAST ────────────────────────────────────────────────────────────────
     let toastTimer = null;
@@ -12135,9 +12142,13 @@
     function ensureMatchCentreTeams() {
       if (_mcTeams || _mcTeamsAttempted || typeof fetch !== 'function') return;
       _mcTeamsAttempted = true;
+      const epoch = typeof _clubEpoch !== 'undefined' ? _clubEpoch : 0;   // the club this read is FOR (CD-110)
       fetch('/api/publish?resource=matchday-teams')
         .then(r => (r && r.ok) ? r.json() : null)
         .then(d => {
+          // A reply for a club this device has since left names THAT club's
+          // teams: neither adopted nor allowed to touch the next club's latch.
+          if (typeof _clubEpoch !== 'undefined' && epoch !== _clubEpoch) return;
           if (d && d.ok) { _mcTeams = { groups: d.groups || [], teams: d.teams || [] }; render(); return; }
           // A FAILED FETCH MUST NOT LATCH (same fix as loadTrainingSchedule):
           // one cold-start 500 left the side selector missing and the sheet
@@ -22001,10 +22012,13 @@
     // typing. Saved through the existing update_profile identity action.
     let _myDetails = null;
     async function loadMyDetails() {
+      const who = String(state.currentUserId || '');   // whose details this read is FOR (CD-110)
       try {
         const res = await fetch('/api/identity?action=session', { cache: 'no-store' });
         if (!res.ok) return;
         const d = await res.json();
+        // Another account signed in meanwhile: these are the previous person's.
+        if (String(state.currentUserId || '') !== who) return;
         _myDetails = d.playerProfile?.details || {};
         _myDetails._loaded = true;
         renderPlayerWeek();
@@ -24063,6 +24077,10 @@
       const scope = attendanceReadScope();
       if (scope === 'none') { _attendance = { denied: true, sessions: {} }; _attendanceGroup = gid; return; }
       _attendanceLoading = true;
+      // The club this read is FOR (CD-110): a reply — or a failure — landing
+      // after a club transition is the club being left's, not this club's.
+      const epoch = typeof _clubEpoch !== 'undefined' ? _clubEpoch : 0;
+      const _left = () => typeof _clubEpoch !== 'undefined' && epoch !== _clubEpoch;
       // The register as it reads right now. A forced reload (a mark, a poll,
       // re-entering the section) usually comes back byte-identical, and
       // repainting on an identical answer re-runs every section renderer.
@@ -24076,6 +24094,7 @@
         // membership, server-side, so there is no parameter here to tamper with.
         const res = await fetch('/api/publish?resource=attendance'
           + (scope === 'group' && gid ? '&group=' + encodeURIComponent(gid) : ''));
+        if (_left()) return;
         if (!res.ok) {
           _attendance = null; _attendanceFailed = gid;
           _attendanceReason = await res.json().then(d => String(d?.error || '')).catch(() => '');
@@ -24102,7 +24121,7 @@
         _attendanceFailed = null;
         _attendanceReason = '';
         if (_attChanged()) render();
-      } catch { _attendance = null; _attendanceFailed = gid; _attendanceReason = ''; }
+      } catch { if (!_left()) { _attendance = null; _attendanceFailed = gid; _attendanceReason = ''; } }
       finally { _attendanceLoading = false; }
     }
 
@@ -45240,6 +45259,15 @@
       _platformFounderResult = {};
       _platformProvisionResult = null;
       _inviteMigration = { busy: false, error: null, report: null, completed: false };
+      // The person's own details card and their notification preferences are
+      // cached from the session answer (CD-110). Neither was forgotten with the
+      // identity, so the next account on a shared device was shown — and could
+      // save — the previous person's phone, emergency contact, height and
+      // weight, and saw their reminder toggles. Settings' load latch is
+      // released with them so the next person's preferences are read.
+      if (typeof _myDetails !== 'undefined') _myDetails = null;
+      if (typeof _settingsPrefs !== 'undefined') _settingsPrefs = null;
+      if (typeof _settingsVersion !== 'undefined') _settingsVersion = null;
       // The operational context belongs to the PERSON, not the device. Left
       // behind, the next identity renders the previous one's group until the
       // session payload lands — the window in which a U18 player could still
@@ -46702,6 +46730,72 @@
       if (typeof _playerAvailKnown !== 'undefined') _playerAvailKnown = false;
       if (typeof _availConfirmedAt !== 'undefined') _availConfirmedAt = {};
       if (typeof _availReasonOpenByKey !== 'undefined') _availReasonOpenByKey = {};   // session keys are per club
+      // ─── CD-110 — caches the transition had not reached ───────────────────
+      // Replies of requests already out for the club being left are discarded
+      // on arrival (see _clubEpoch).
+      if (typeof _clubEpoch !== 'undefined') _clubEpoch++;
+      // Match Centre sides are LATCHED on a truthy list (ensureMatchCentreTeams
+      // never refetches while one is held), so the club being left kept
+      // supplying the next club's sides for the rest of the page. The
+      // opposition sheet, the coach publication and the other coaches' drafts
+      // list are that club's fixtures' too (player names included), and their
+      // throttles must not carry them over. Released: the next club's are read.
+      if (typeof _mcTeams !== 'undefined') _mcTeams = null;
+      if (typeof _mcTeamsAttempted !== 'undefined') _mcTeamsAttempted = false;
+      if (typeof _mcOtherSide !== 'undefined') _mcOtherSide = null;
+      if (typeof _mcOtherSideResolvedKey !== 'undefined') _mcOtherSideResolvedKey = '';
+      if (typeof _mcOtherSideFetchedAt !== 'undefined') _mcOtherSideFetchedAt = 0;
+      if (typeof _mcCoachPublication !== 'undefined') _mcCoachPublication = null;
+      if (typeof _mcCoachPubFetchedAt !== 'undefined') _mcCoachPubFetchedAt = 0;
+      if (typeof _coachDraftsList !== 'undefined') _coachDraftsList = null;
+      if (typeof _coachDraftsFetchedAt !== 'undefined') _coachDraftsFetchedAt = 0;
+      // The attendance register and the resolved availability map are keyed by
+      // GROUP id, and grp_initial is every club's first group: the next club's
+      // same-named group read as "already loaded", so this club's register and
+      // answers were painted under it — and the Members / Recent activity
+      // latches then skipped the next club's fetch as already known. Forgotten,
+      // with the Availability panels' cycle re-armed instead of waiting out its
+      // window, and the schedules markup it would have repainted dropped.
+      if (typeof _attendance !== 'undefined') _attendance = null;
+      if (typeof _attendanceGroup !== 'undefined') _attendanceGroup = null;
+      if (typeof _attendanceFailed !== 'undefined') _attendanceFailed = null;
+      if (typeof _attendanceReason !== 'undefined') _attendanceReason = '';
+      if (typeof _attendanceSelfKey !== 'undefined') _attendanceSelfKey = '';
+      if (typeof _attendanceLoading !== 'undefined') _attendanceLoading = false;   // a read out for the club being left no longer blocks this club's
+      if (typeof _resolvedAvailability !== 'undefined') _resolvedAvailability = {};
+      if (typeof _resolvedAvailabilityGroup !== 'undefined') _resolvedAvailabilityGroup = null;
+      if (typeof _availLastSync !== 'undefined') _availLastSync = null;
+      if (typeof _membersAvailFetchedFor !== 'undefined') _membersAvailFetchedFor = null;
+      if (typeof _activityFetchedFor !== 'undefined') _activityFetchedFor = null;
+      if (typeof _liveMessagingLoadedAt !== 'undefined') _liveMessagingLoadedAt = 0;
+      if (typeof _liveSchedulesHtml !== 'undefined') _liveSchedulesHtml = '';
+      if (typeof _liveSchedulesLoadedAt !== 'undefined') _liveSchedulesLoadedAt = 0;
+      // Conversations are the CLUB's. The identity reset forgets them when the
+      // PERSON changes, but the same owner switching clubs kept the club being
+      // left's thread list, thread bodies and selected thread until the next
+      // poll replaced them. Forgotten here as well — poller stopped, badge
+      // zeroed — and the next club's list is fetched afresh.
+      if (typeof chatStopPolling === 'function') chatStopPolling();
+      if (typeof _chatConversations !== 'undefined') _chatConversations = [];
+      if (typeof _chatConversationsLoaded !== 'undefined') _chatConversationsLoaded = false;
+      if (typeof _chatMessages !== 'undefined') _chatMessages = {};
+      if (typeof _chatLastPoll !== 'undefined') _chatLastPoll = {};
+      if (typeof _chatHistoryLoadedAt !== 'undefined') _chatHistoryLoadedAt = {};
+      if (typeof _chatFeedPaintedFor !== 'undefined') _chatFeedPaintedFor = null;
+      if (typeof chatSetUnreadTotal === 'function') chatSetUnreadTotal(0);
+      // Performance assignments, the authoring draft and the pending join
+      // requests are the club's as well: served per club (session tenant) but
+      // latched on `loaded` / only re-read while their panel is open, so the
+      // club being left's athletes, programmes, draft and requesters stood
+      // under the next club. The same literals the group change uses.
+      if (typeof _perfAssign !== 'undefined') _perfAssign = { loaded: false, loading: false, error: null, capacity: null,
+                                                               athletes: [], programmes: [], assignments: [], entitlement: null, selfService: null };
+      if (typeof _perfAuthor !== 'undefined') _perfAuthor = { step: null, athleteUserId: null, draft: null, provenance: null, athleteProfile: null,
+                                                               programmeId: null, weeks: 4, ack: false, busy: false, error: null,
+                                                               startDate: null, intent: 'assign', assignProgrammeId: null };
+      if (typeof _identityPendingRequests !== 'undefined') _identityPendingRequests = [];
+      // A player's own details are read from THIS club's profile.
+      if (typeof _myDetails !== 'undefined') _myDetails = null;
     }
 
     /** Re-read everything club-scoped from the server after a transition. */
@@ -46775,6 +46869,8 @@
       state.users = (state.users || []).filter(u => u && (
         String(u.id) === _me
         || (!u._staff && !(u.role === 'player' && u.playerId))));
+      // The selected thread was a conversation of the club being left (CD-110).
+      state.selectedChatId = null;
       saveState('Team switched');
     }
 
