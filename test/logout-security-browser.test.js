@@ -178,6 +178,7 @@ test('browser: sign-out ends the local session at once, discards a stale session
     assert.notEqual(s.pageTitle, 'Settings', 'the topbar no longer names the authenticated screen'); assert.notEqual(s.eyebrow, 'Coach dashboard');
     assert.equal(s.caches.attendance, null, 'the register is forgotten'); assert.equal(s.caches.mcTeams, null, 'the sides are forgotten'); assert.equal(s.caches.perms, null);
     assert.ok(s.caches.epoch > before.caches.epoch, 'the club epoch advanced: replies still out for the account that left are discarded');
+    assert.equal(s.pending, '1', 'the logout is remembered BEFORE the server answers (a tab closed now cannot lose it — Loop 3)');
     releaseAll('logout');
     await page.waitForTimeout(300);
     assert.equal((await shell()).pending, null, 'a confirmed logout leaves nothing to retry');
@@ -236,6 +237,27 @@ test('browser: sign-out ends the local session at once, discards a stale session
     s = await shell();
     assert.equal(s.signedOut, false, 'legitimate restore still works'); assert.equal(s.uid, C2.user.id); assert.equal(s.pending, null);
     await overrideConfirm(); await page.evaluate(() => { settingsSignOut(); }); await waitSignedOut();
+
+    // ── 6. "Log out & clear this device" with the logout reply held: local session ends at once, the device reloads signed out ──
+    await login(ownerEmail);
+    holds.logout = { queue: [] };
+    mark = holds.log.length;
+    await overrideConfirm(); await page.evaluate(() => { clearDeviceState(); });
+    await waitSignedOut();                                                     // before the server answered, before the reload
+    s = await shell();
+    assert.equal(s.uid, ''); assert.deepEqual(s.sections, [], 'the shell is gone before the server answers');
+    assert.equal(s.pending, '1', 'the logout is remembered before it left');
+    assert.ok(holds.log.slice(mark).filter(l => l.action === 'logout').length >= 1, 'the logout request reached the server');
+    // The bounded wait runs out: the device wipes, re-arms the marker and
+    // reloads. The reload's boot finishes the remembered logout FIRST — its
+    // request reaches the server (held as well) before any session is asked for.
+    await waitFor(() => holds.log.slice(mark).filter(l => l.action === 'logout').length >= 2, 20000);
+    assert.equal(holds.log.slice(mark).filter(l => /action=session/.test(l.p)).length, 0, 'no session is asked for before the logout is confirmed');
+    releaseAll('logout');                                                      // both replies: the old page's (gone) and the boot's
+    await page.waitForFunction(() => typeof _serverAuthState !== 'undefined' && _serverAuthState !== 'unknown', null, { timeout: 20000 });
+    s = await shell();
+    assert.ok(s.signedOut, 'signed out after the reload'); assert.equal(s.uid, ''); assert.equal(s.auth, 'anon', 'the server refuses the destroyed session');
+    assert.equal(s.pending, null, 'the remembered logout was finished at boot');
     assert.deepEqual(errors, [], 'no page errors');
     await ctx.close();
   } finally {

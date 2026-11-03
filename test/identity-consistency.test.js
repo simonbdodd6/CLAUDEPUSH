@@ -189,8 +189,12 @@ test('every login path and sign-out invalidates a different user\'s residue', ()
   const adoptions = src.match(/resetIdentityScopedState\(\)/g) || [];
   assert.ok(adoptions.length >= 6,
     `expected the reset wired into >=6 sites (logins, cookie adoption, sign-out); found ${adoptions.length}`);
-  assert.match(src, /if \(cur && cur !== 'coach-demo'\) resetIdentityScopedState\(\);\s*\n\s*state\.currentUserId = sid;/,
-    'the server cookie adoption is unconditional and purges the previous person');
+  // CD-110 Loop 3: the purge runs BEFORE the payload is adopted (login's order),
+  // so the loaders the adoption starts are not discarded by a later reset.
+  assert.match(src, /if \(_sid && _cur && _cur !== _sid && _cur !== 'coach-demo'\) resetIdentityScopedState\(\);[\s\S]{0,120}adoptIdentityPayload\(d\);/,
+    'the server cookie adoption purges the previous person, before adopting');
+  assert.match(src, /if \(cur !== sid\) \{\s*\n(\s*\/\/[^\n]*\n)?\s*state\.currentUserId = sid;/,
+    'and the adoption itself is unconditional');
 });
 
 test('the server cookie now wins even when a DIFFERENT local user is stored', () => {
