@@ -71,7 +71,7 @@ const PENDING_KEY = 'coach-eye-logout-pending';
 
 function sandbox(CFG = {}) {
   const calls = [], held = [];
-  const counts = { renders: 0, saves: [], toasts: [], stopLive: 0, navs: 0, hydrated: 0 };
+  const counts = { renders: 0, renderEpochs: [], saves: [], toasts: [], stopLive: 0, navs: 0, hydrated: 0 };
   // localStorage whose OWN ENUMERABLE keys are the stored keys (clearDeviceState
   // enumerates it with Object.keys), methods non-enumerable.
   const localStorage = Object.create(null);
@@ -153,6 +153,7 @@ function sandbox(CFG = {}) {
     let _resolvedAvailability = { user_p1: {} }, _resolvedAvailabilityGroup = 'grp_initial', _availLastSync = 'sync-a', _membersAvailFetchedFor = 'grp_initial', _activityFetchedFor = 'grp_initial';
     let _liveMessagingLoadedAt = 5, _liveSchedulesHtml = '<div>alpha</div>', _liveSchedulesLoadedAt = 5;
     let _rosterReadOut = true, _publishedStateLoadedAt = 0, _identityRequestsLoading = false;
+    let _logoutGen = 0, _hiddenDataChatAuthSeen = ${JSON.stringify(CFG.hiddenChatAuth === undefined ? 'authed' : CFG.hiddenChatAuth)};
     const testAccounts = [];
     const window = win, document = doc, localStorage = win.localStorage;
     // ── stubs around the functions under test ──
@@ -162,7 +163,7 @@ function sandbox(CFG = {}) {
     function renderAuthBanner() {} function renderNav() { counts.navs++; } function renderOperationalGroupSwitcher() {}
     // The real render() gate (pinned by logout-session-shell) empties the
     // authenticated sections for a signed-out device; mirrored here.
-    function render() { counts.renders++; if (sessionSignedOut()) clearAuthenticatedSections(); }
+    function render() { counts.renders++; counts.renderEpochs.push(_clubEpoch); if (sessionSignedOut()) clearAuthenticatedSections(); }
     function chatStopPolling() {} function adminRetryCancel() {} function updateNavBadge() {} function chatSetUnreadTotal(t) { _chatNavUnread = Number(t || 0); }
     function availabilityStopLive() { counts.stopLive++; _resolvedAvailability = {}; _resolvedAvailabilityGroup = null; _availLastSync = null; _liveMessagingLoadedAt = 0; }
     function esc(s) { return String(s ?? ''); }
@@ -174,7 +175,7 @@ function sandbox(CFG = {}) {
     function loadRosterFromServer() { return Promise.resolve(); } function loadClubConfigFromServer() { return Promise.resolve(); }
     function refreshPushSubscriptionMetadata() { return Promise.resolve(); }
     function adoptClubContext() { return false; } function hydrateClubFromServer() { counts.hydrated++; return Promise.resolve(); }
-    function contextResolved() { return true; } function resolveOperationalGroup() {} function ensureOwnPlayerRecord() { return false; }
+    function contextResolved() { return CFG.contextPending ? false : true; } function resolveOperationalGroup() {} function ensureOwnPlayerRecord() { return false; }
     function isStaffRole(r) { return ['coach', 'admin', 'medical'].includes(String(r || '')); }
     function landingViewFor() { return 'coach'; } function applyApprovedIdentityLocally() {}
     function friendlyAuthError(e) { return String(e && e.message || e); }
@@ -190,7 +191,7 @@ function sandbox(CFG = {}) {
       const reqBody = opts.body ? JSON.parse(opts.body) : null;
       const action = reqBody && reqBody.action || null;
       const key = method + ' ' + (action ? 'identity:' + action : url);
-      calls.push({ method, url, action, key });
+      calls.push({ method, url, action, key, keepalive: !!opts.keepalive });
       const answer = action === 'logout' ? server.logout : action === 'login' ? server.login
         : url.startsWith('/api/identity?action=session') ? server.session
         : url.startsWith('/api/publish?type=drafts') ? server.drafts
@@ -231,7 +232,7 @@ function sandbox(CFG = {}) {
     ${fn('perfLoadAssignments')}
     ${fn('loadIdentityRequests')}
     return {
-      state, calls, counts, held, server, release, settle, localStorage, win, doc, sections,
+      state, calls, counts, held, server, release, settle, localStorage, win, doc, sections, cfg: CFG,
       signOut: () => settingsSignOut(), check: () => checkServerSession(), login: () => loginIdentityAccount(),
       clearDevice: () => clearDeviceState(), clearSections: () => clearAuthenticatedSections(),
       drafts: () => loadCoachDraftsList(), attendance: f => loadAttendance(f), medical: () => loadMedicalFromServer(),
@@ -246,6 +247,7 @@ function sandbox(CFG = {}) {
                      resolved: _resolvedAvailability, chatInFlight: _chatConversationsInFlight, chatConvs: _chatConversations, chatMsgs: _chatMessages,
                      perfAssign: _perfAssign, perfAuthor: _perfAuthor, pendingRequests: _identityPendingRequests, sharedMedical: _sharedMedical,
                      mcAttempted: _mcTeamsAttempted, perfProfile: state.performanceProfile,
+                     gen: _logoutGen, hiddenChatAuth: _hiddenDataChatAuthSeen,
                      adminMembers: _adminData.members.length, myDetails: _myDetails, readyFor: _serverSessionReadyFor, welcomeDismissed: _welcomeDismissed, authTab }),
     };
   `;
@@ -445,6 +447,82 @@ test('K — "Log out & clear this device" also remembers a logout the server did
   assert.equal(s.localStorage.getItem('coach-eye-real-workflow-mvp-state-v1'), null, 'app data is wiped');
   assert.equal(s.localStorage.getItem('_pushLastSubscribed'), null); assert.equal(s.localStorage.getItem('other-app'), 'x', 'nothing else is touched');
   assert.equal(s.pending(), true, 'the unconfirmed logout survives the wipe, so the next boot finishes it instead of restoring the cookie');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Hardening (CD-110 Loop 3) — the marker leads the request; stale attempts are inert;
+// clear-device is local-first; a restore resets before it adopts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+test('N — the marker is armed BEFORE the logout request leaves, so a tab closed mid-flight cannot lose it', async () => {
+  const s = sandbox({ hold: ['POST identity:logout'] });
+  const done = s.signOut();
+  await s.settle();
+  assert.equal(s.held.length, 1, 'baseline: the logout call is out, unanswered');
+  assert.equal(s.pending(), true, 'the logout is already remembered while its request is in flight');
+  s.release(); await done;
+  assert.equal(s.pending(), false, 'and forgotten once the server confirms it');
+});
+
+test('O — the logout request asks the browser to keep it alive across the page closing', async () => {
+  const s = sandbox();
+  await s.signOut();
+  const logout = s.calls.find(c => c.action === 'logout');
+  assert.ok(logout, 'baseline: a logout was sent');
+  assert.equal(logout.keepalive, true, 'sent with keepalive, so closing the tab does not abandon it');
+});
+
+test('P — an old logout attempt is inert once a new session exists: a late failure cannot re-arm the marker, a late success cannot clear a newer one', async () => {
+  // Late FAILURE after the next person logged in.
+  let s = sandbox({ hold: ['POST identity:logout'] });
+  const d1 = s.signOut(); await s.settle(); assert.equal(s.held.length, 1);
+  await s.login();                                   // the next person's session: the marker is cleared
+  assert.equal(s.pending(), false); assert.equal(s.snap().uid, NEXT.id);
+  s.release(false); await d1;                        // the stalled logout for the previous person finally fails
+  assert.equal(s.pending(), false, 'the failure of the OLD attempt does not re-arm the marker (it would have destroyed the new session at the next boot)');
+  // Late SUCCESS after a NEWER sign-out whose own logout is still owed.
+  s = sandbox({ hold: ['POST identity:logout'] });
+  const d2 = s.signOut(); await s.settle(); assert.equal(s.held.length, 1);
+  await s.login();
+  s.cfg.hold = []; s.server.logout = { status: 503, body: { ok: false } };
+  await s.signOut();                                 // the newer sign-out: its logout is refused and remembered
+  assert.equal(s.pending(), true, 'baseline: the newer logout is owed');
+  s.release(); await d2;                             // the OLD attempt now succeeds
+  assert.equal(s.pending(), true, 'the old attempt\'s success does not clear the newer sign-out\'s marker');
+});
+
+test('Q — "Log out & clear this device" clears the local session at once, wipes within a bounded wait, and remembers an unconfirmed logout', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const s = sandbox({ hold: ['POST identity:logout'] });
+  s.localStorage.setItem('coach-eye-real-workflow-mvp-state-v1', '{}'); s.localStorage.setItem('other-app', 'x');
+  const p = s.clearDevice();
+  await s.settle();
+  assert.equal(s.held.length, 1, 'baseline: the logout call is out, unanswered');
+  assert.equal(s.signedOut(), true, 'the device is signed out before the server answers');
+  assert.ok(!authenticatedMarkupRemains(s), 'the authenticated shell is gone');
+  assert.equal(s.pending(), true, 'the logout is remembered before its request even left');
+  assert.ok(s.counts.saves.includes('Signed out'), 'the blank marker is PERSISTED at once, so a tab closed inside the wait boots signed out');
+  assert.ok(s.snap().epoch > 0, 'the club epoch advanced: a session check landing inside the wait is discarded, not repainted');
+  assert.equal(s.win.location.replaced, null, 'the reload waits, briefly, for the server');
+  t.mock.timers.tick(2000); await s.settle();
+  assert.equal(s.win.location.replaced, '/', 'the bounded wait ran out: wiped and reloaded regardless');
+  assert.equal(s.localStorage.getItem('coach-eye-real-workflow-mvp-state-v1'), null, 'app data wiped'); assert.equal(s.localStorage.getItem('other-app'), 'x');
+  assert.equal(s.pending(), true, 'the unconfirmed logout survives the wipe for the next boot to finish');
+  s.release(); await p;
+  t.mock.timers.reset();
+});
+
+test('R — a restore naming a different person than the persisted marker resets BEFORE it adopts, so nothing the adoption starts is discarded', async () => {
+  const s = sandbox({ currentUserId: 'u-other', contextPending: true,
+                      state: { users: [COACH, { id: 'u-other', role: 'coach', name: 'Other' }] },
+                      server: { session: AUTH_200(COACH, { operational: { staff: { groups: [{ id: 'grp_initial', name: 'Seniors' }], defaultGroupId: 'grp_initial' } } }) } });
+  await s.check();
+  const n = s.snap();
+  assert.equal(n.uid, COACH.id, 'the server\'s user is adopted');
+  assert.ok(s.counts.renderEpochs.length >= 1, 'baseline: the adoption repainted (operational context resolved)');
+  assert.ok(s.counts.renderEpochs.every(e => e === n.epoch), `every render the adoption ran saw the FINAL epoch (saw ${JSON.stringify(s.counts.renderEpochs)}, final ${n.epoch}): no reset follows the adoption, so what those renders start is not discarded`);
+  assert.equal(n.hiddenChatAuth, '', 'the hidden-section chat latch is released with the identity, so the restored person\'s conversations are requested at once');
+  assert.ok(s.counts.saves.includes('Server session restored'));
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

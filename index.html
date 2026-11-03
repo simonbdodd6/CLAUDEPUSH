@@ -15424,8 +15424,8 @@
         _serverSessionReadyFor = userId;
         _serverAuthState = 'authed';
         if (typeof logoutPendingSet === 'function') logoutPendingSet(false);   // a NEW session (CD-111)
+        if (String(state.currentUserId || '') !== String(userId)) resetIdentityScopedState();   // before adopting, as login does (CD-110 Loop 3)
         adoptIdentityPayload(data);
-        if (String(state.currentUserId || '') !== String(userId)) resetIdentityScopedState();
         state.currentUserId = userId;
         state.activeView = landingViewFor(data.user?.role, data.teamMember);
         if (state.activeView === 'coach') {
@@ -45236,11 +45236,27 @@
     // and reloads to a clean first-run.
     async function clearDeviceState() {
       if (!(await ceConfirm('Clear this device?', 'Logs out and removes all CoachEasier data stored on this device. Server data — players, messages, availability — is untouched; you can log straight back in.', { confirmLabel: 'Log out & clear', danger: true }))) return;
-      // The server first — and remembered if it could not confirm (CD-111): the
-      // wipe below removes the marker with everything else, so it is set again
-      // afterwards and the next boot finishes the logout instead of restoring
-      // the account from the cookie the browser still holds.
-      const delivered = typeof deliverLogout === 'function' ? await deliverLogout() : false;
+      // LOCAL FIRST (CD-110 Loop 3), the same order as settingsSignOut: this
+      // used to await the server before touching anything, so on a stalled
+      // connection the authenticated shell stayed until the fetch timed out.
+      // The local session ends now and the shell repaints signed out.
+      state.currentUserId = '';
+      _serverAuthState = 'anon';
+      // The club epoch advances and the caches go, as on Sign out: a session
+      // check landing inside the wait below is discarded rather than repainting
+      // the account. The blank marker is PERSISTED now, so a tab closed inside
+      // the wait boots signed out from storage instead of into the old shell.
+      if (typeof forgetClubCaches === 'function') forgetClubCaches();
+      if (typeof availabilityStopLive === 'function') availabilityStopLive();
+      saveState('Signed out');
+      try { render(); } catch {}
+      // Then the server, with a request that survives the reload below, waited
+      // for only briefly. The wipe removes the marker with everything else, so
+      // a logout not confirmed in time is remembered again afterwards and the
+      // next boot finishes it instead of restoring the account from the cookie
+      // the browser still holds.
+      const delivery = typeof deliverLogout === 'function' ? deliverLogout() : Promise.resolve(false);
+      const delivered = await Promise.race([delivery, new Promise(resolve => setTimeout(() => resolve(false), 2000))]);
       try {
         Object.keys(window.localStorage)
           .filter(k => k.startsWith('coach-eye') || k.startsWith('_push'))
@@ -45268,6 +45284,11 @@
       // transition to release them.
       if (typeof _mcTeamsAttempted !== 'undefined') _mcTeamsAttempted = false;
       if (typeof _coachDraftsFetchedAt !== 'undefined') _coachDraftsFetchedAt = 0;
+      // The hidden-section conversations latch records that THIS identity's
+      // list was requested for the current auth state; released, the next
+      // identity's first render requests its own instead of waiting for the
+      // background tick (CD-110 Loop 3).
+      if (typeof _hiddenDataChatAuthSeen !== 'undefined') _hiddenDataChatAuthSeen = '';
       // An unsent availability answer belongs to the account that chose it. It
       // is kept (Build 101) — stamped with that account and club, it is shown
       // to and sent by NO other account or club (availabilityPendingFor and
@@ -45416,11 +45437,27 @@
     // The key starts with 'coach-eye' so "clear this device" wipes it with
     // everything else — clearDeviceState sets it again after the wipe when
     // its own logout was not confirmed.
+    //
+    // THE MARKER LEADS THE REQUEST (CD-110 Loop 3). Armed only after a failure
+    // was observed, a tab closed or a PWA swiped away during the round trip
+    // left no marker at all, and the next boot restored the account from the
+    // cookie (the only thing that tells a signed-out device from a fresh one
+    // with a live cookie is this marker). It is set before the request leaves,
+    // the request asks the browser to keep it alive across unload, and the
+    // server's confirmation clears it.
+    //
+    // THE GENERATION GUARD. A new session (login, claim, club creation) clears
+    // the marker and advances _logoutGen. An attempt that left under an older
+    // generation is inert from then on: failing late it does not re-arm the
+    // marker (that would have destroyed the NEW session at the next boot), and
+    // succeeding late it does not clear a NEWER sign-out's marker.
+    let _logoutGen = 0;
     function logoutPending() {
       try { return typeof localStorage !== 'undefined' && localStorage.getItem('coach-eye-logout-pending') === '1'; }
       catch { return false; }
     }
     function logoutPendingSet(on) {
+      if (!on && typeof _logoutGen !== 'undefined') _logoutGen++;
       try {
         if (typeof localStorage === 'undefined') return;
         if (on) localStorage.setItem('coach-eye-logout-pending', '1');
@@ -45429,11 +45466,15 @@
     }
     /** Tell the server. Resolves true only when it confirmed; otherwise the logout stays owed. */
     async function deliverLogout() {
-      try {
-        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
-        if (res && res.ok) { logoutPendingSet(false); return true; }
-      } catch {}
+      const gen = typeof _logoutGen !== 'undefined' ? _logoutGen : 0;
+      const current = () => typeof _logoutGen === 'undefined' || gen === _logoutGen;
       logoutPendingSet(true);
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'logout' }), keepalive: true });
+        if (res && res.ok) { if (current()) logoutPendingSet(false); return true; }
+      } catch {}
+      if (current()) logoutPendingSet(true);
       return false;
     }
 
@@ -47046,6 +47087,17 @@
           const d = await res.json();
           if (_left()) return;
           _serverAuthState = 'authed';
+          // A different person than the persisted marker names (CD-110 Loop 3):
+          // their identity-scoped state goes BEFORE the payload is adopted and
+          // before anything the adoption renders starts loading, so those
+          // loaders run in the new context instead of being discarded by the
+          // reset that used to follow them — login's order. A device with
+          // nothing persisted has nothing to drop; the dev placeholder is kept.
+          {
+            const _sid = d.user?.id ? String(d.user.id) : '';
+            const _cur = String(state.currentUserId || '');
+            if (_sid && _cur && _cur !== _sid && _cur !== 'coach-demo') resetIdentityScopedState();
+          }
           adoptIdentityPayload(d);
           // Hydrate local identity from server session so a page reload
           // restores the real authenticated user instead of the localStorage default.
@@ -47069,7 +47121,7 @@
             // cache. Club data stays.
             const cur = state.currentUserId;
             if (cur !== sid) {
-              if (cur && cur !== 'coach-demo') resetIdentityScopedState();
+              // (the previous identity's caches were dropped above, before the adoption)
               state.currentUserId = sid;
               saveState('Server session restored');
             }
