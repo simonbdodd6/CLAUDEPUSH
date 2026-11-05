@@ -178,7 +178,7 @@ test('browser: sign-out ends the local session at once, discards a stale session
     assert.notEqual(s.pageTitle, 'Settings', 'the topbar no longer names the authenticated screen'); assert.notEqual(s.eyebrow, 'Coach dashboard');
     assert.equal(s.caches.attendance, null, 'the register is forgotten'); assert.equal(s.caches.mcTeams, null, 'the sides are forgotten'); assert.equal(s.caches.perms, null);
     assert.ok(s.caches.epoch > before.caches.epoch, 'the club epoch advanced: replies still out for the account that left are discarded');
-    assert.equal(s.pending, '1', 'the logout is remembered BEFORE the server answers (a tab closed now cannot lose it — Loop 3)');
+    assert.ok(s.pending, 'the logout is remembered BEFORE the server answers (a tab closed now cannot lose it — Loop 3)');
     releaseAll('logout');
     await page.waitForTimeout(300);
     assert.equal((await shell()).pending, null, 'a confirmed logout leaves nothing to retry');
@@ -201,7 +201,7 @@ test('browser: sign-out ends the local session at once, discards a stale session
     await overrideConfirm(); await page.evaluate(() => { settingsSignOut(); }); await waitSignedOut();
     await page.waitForTimeout(300);
     s = await shell();
-    assert.equal(s.uid, ''); assert.equal(s.pending, '1', 'the unconfirmed logout is remembered on the device');
+    assert.equal(s.uid, ''); assert.ok(s.pending, 'the unconfirmed logout is remembered on the device');
     let mark = holds.log.length;
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitFor(() => holds.log.slice(mark).some(l => l.action === 'logout'), 20000);   // the boot retries the logout first
@@ -209,7 +209,7 @@ test('browser: sign-out ends the local session at once, discards a stale session
     s = await shell();
     assert.ok(s.signedOut, 'still signed out after the refresh'); assert.equal(s.uid, '');
     assert.equal(holds.log.slice(mark).filter(l => /action=session/.test(l.p)).length, 0, 'no session is asked for while the logout is unconfirmed (the server would have answered 200)');
-    assert.equal(s.pending, '1', 'still remembered');
+    assert.ok(s.pending, 'still remembered');
     holds.logoutStatus = null; mark = holds.log.length;
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitFor(() => holds.log.slice(mark).some(l => /action=session/.test(l.p)), 20000);
@@ -246,7 +246,7 @@ test('browser: sign-out ends the local session at once, discards a stale session
     await waitSignedOut();                                                     // before the server answered, before the reload
     s = await shell();
     assert.equal(s.uid, ''); assert.deepEqual(s.sections, [], 'the shell is gone before the server answers');
-    assert.equal(s.pending, '1', 'the logout is remembered before it left');
+    assert.ok(s.pending, 'the logout is remembered before it left');
     assert.ok(holds.log.slice(mark).filter(l => l.action === 'logout').length >= 1, 'the logout request reached the server');
     // The bounded wait runs out: the device wipes, re-arms the marker and
     // reloads. The reload's boot finishes the remembered logout FIRST — its
@@ -330,6 +330,66 @@ test('browser: a club switch with Club A\'s conversations reply in transit — C
     await page.waitForFunction(() => _chatConversationsLoaded === true, null, { timeout: 20000 });
     const afterB = await page.evaluate(() => _chatConversations.map(c => c.name || c.title || c.id));
     assert.ok(!afterB.some(n => /Charlie Only/.test(n)), 'Club B\'s list is its own');
+    assert.deepEqual(errors, [], 'no page errors');
+    await ctx.close();
+  } finally {
+    await browser.close();
+    await new Promise(r => server.close(r));
+  }
+});
+
+test('browser: two tabs — tab A\'s sign-out reply lands after tab B logged in; B stays signed in and no logout is left owed against B', async (t) => {
+  if (!chromium) return t.skip('playwright not installed');
+  let browser;
+  try { browser = await chromium.launch(); } catch { return t.skip('no browser available'); }
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const BASE = `http://127.0.0.1:${server.address().port}`;
+  const email = 'owner3.cd111@x.test';
+  const A = await S.createClub({ clubName: 'Echo Rugby Club', teamName: 'Seniors', sport: 'Rugby', name: 'Echo Owner', email, password: PW, idempotencyKey: kkey() });
+  try {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });   // one jar, one storage: two tabs
+    const pageA = await ctx.newPage(), pageB = await ctx.newPage();
+    const errors = []; pageA.on('pageerror', e => errors.push('A: ' + e.message)); pageB.on('pageerror', e => errors.push('B: ' + e.message));
+    const dismissSetup = (page) => page.evaluate(() => { try { sessionStorage.setItem('ce-setup-skipped', '1'); } catch {} document.getElementById('first-run-modal')?.remove(); });
+    const login = async (page) => {
+      await dismissSetup(page);
+      if (await page.$('#ce-welcome')) await page.click('#ce-welcome button:has-text("Log in")');
+      else await page.evaluate(() => { authTab = 'login'; renderNav(); });
+      await page.waitForSelector('#identityLoginEmail', { state: 'visible', timeout: 10000 });
+      await page.fill('#identityLoginEmail', email); await page.fill('#identityLoginPassword', PW); await page.click('#identityLoginBtn');
+      await page.waitForFunction(() => !sessionSignedOut() && _serverAuthState === 'authed' && !!state.stateTeamId, null, { timeout: 20000 });
+      await dismissSetup(page);
+    };
+    await pageA.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+    await pageA.waitForSelector('#ce-welcome', { timeout: 20000 });
+    await login(pageA);
+    const sidA = await pageA.evaluate(() => (typeof _authSessionId !== 'undefined' ? _authSessionId : null));
+    await pageB.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+    await pageB.waitForFunction(() => typeof _serverAuthState !== 'undefined' && _serverAuthState !== 'unknown', null, { timeout: 20000 });
+    // Tab A signs out; its logout reply is held in transit (the server has already acted on it).
+    holds.logout = { queue: [] };
+    await pageA.evaluate(() => { window.ceConfirm = async () => true; settingsSignOut(); });
+    await pageA.waitForFunction(() => sessionSignedOut(), null, { timeout: 10000 });
+    await waitFor(() => holds.logout.queue.length === 1, 5000);
+    const logoutReq = holds.log.filter(l => l.action === 'logout').pop();
+    assert.ok(logoutReq, 'the logout request reached the server');
+    // Tab B (signed out locally by the storage event, or still showing A) logs in again: the jar now holds the NEW session's cookie.
+    await pageB.waitForFunction(() => sessionSignedOut(), null, { timeout: 10000 }).catch(() => {});
+    await login(pageB);
+    const sidB = await pageB.evaluate(() => (typeof _authSessionId !== 'undefined' ? _authSessionId : null));
+    assert.equal(await pageB.evaluate(() => localStorage.getItem('coach-eye-logout-pending')), null, 'the login cleared the owed logout for every tab');
+    // Tab A's stale reply lands now.
+    releaseAll('logout');
+    await pageA.waitForTimeout(500);
+    // B asks the server for its session: it must still be live.
+    await pageB.evaluate(() => checkServerSession());
+    const b = await pageB.evaluate(() => ({ auth: _serverAuthState, uid: state.currentUserId, signedOut: sessionSignedOut(), pending: localStorage.getItem('coach-eye-logout-pending'), sid: (typeof _authSessionId !== 'undefined' ? _authSessionId : null) }));
+    assert.equal(b.auth, 'authed', 'tab B is still signed in after tab A\'s stale logout reply landed');
+    assert.equal(b.signedOut, false); assert.equal(b.uid, A.user.id);
+    assert.equal(b.pending, null, 'no logout is owed against the new session');
+    assert.match(String(sidA || ''), /^sess_/, 'tab A knew the id of the session it ended');
+    assert.ok(sidB && sidB !== sidA, 'tab B holds a different, newer session'); assert.equal(b.sid, sidB);
+    assert.equal(await pageA.evaluate(() => localStorage.getItem('coach-eye-logout-pending')), null, 'tab A did not re-arm the marker either');
     assert.deepEqual(errors, [], 'no page errors');
     await ctx.close();
   } finally {

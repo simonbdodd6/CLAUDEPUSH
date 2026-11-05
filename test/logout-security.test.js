@@ -153,7 +153,7 @@ function sandbox(CFG = {}) {
     let _resolvedAvailability = { user_p1: {} }, _resolvedAvailabilityGroup = 'grp_initial', _availLastSync = 'sync-a', _membersAvailFetchedFor = 'grp_initial', _activityFetchedFor = 'grp_initial';
     let _liveMessagingLoadedAt = 5, _liveSchedulesHtml = '<div>alpha</div>', _liveSchedulesLoadedAt = 5;
     let _rosterReadOut = true, _publishedStateLoadedAt = 0, _identityRequestsLoading = false;
-    let _logoutGen = 0, _hiddenDataChatAuthSeen = ${JSON.stringify(CFG.hiddenChatAuth === undefined ? 'authed' : CFG.hiddenChatAuth)};
+    let _logoutGen = 0, _authSessionId = 'sess_coach_1', _hiddenDataChatAuthSeen = ${JSON.stringify(CFG.hiddenChatAuth === undefined ? 'authed' : CFG.hiddenChatAuth)};
     const testAccounts = [];
     const window = win, document = doc, localStorage = win.localStorage;
     // ── stubs around the functions under test ──
@@ -218,7 +218,10 @@ function sandbox(CFG = {}) {
     ${fn('adoptIdentityPayload')}
     ${fn('resetIdentityScopedState')}
     ${fnOpt('forgetClubCaches')}
+    ${fnOpt('logoutGenRead')}
+    ${fnOpt('logoutGenBump')}
     ${fnOpt('logoutPending')}
+    ${fnOpt('logoutPendingAuthSessionId')}
     ${fnOpt('logoutPendingSet')}
     ${fnOpt('deliverLogout')}
     ${fn('settingsSignOut')}
@@ -442,7 +445,9 @@ test('J — a pending request cannot repopulate a signed-out device: drafts list
 test('K — "Log out & clear this device" also remembers a logout the server did not confirm, after the wipe', async () => {
   const s = sandbox({ server: { logout: 'throw' } });
   s.localStorage.setItem('coach-eye-real-workflow-mvp-state-v1', '{}'); s.localStorage.setItem('_pushLastSubscribed', '1'); s.localStorage.setItem('other-app', 'x');
+  s.localStorage.setItem('coach-eye-logout-gen', '7');
   await s.clearDevice();
+  assert.equal(s.localStorage.getItem('coach-eye-logout-gen'), '7', 'the shared logout generation survives the wipe (another tab\'s in-flight attempt must still see the current generation)');
   assert.equal(s.win.location.replaced, '/', 'the page reloads to the front door');
   assert.equal(s.localStorage.getItem('coach-eye-real-workflow-mvp-state-v1'), null, 'app data is wiped');
   assert.equal(s.localStorage.getItem('_pushLastSubscribed'), null); assert.equal(s.localStorage.getItem('other-app'), 'x', 'nothing else is touched');
