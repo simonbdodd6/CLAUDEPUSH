@@ -393,6 +393,15 @@ function publicAuthResult(result = {}) {
   return { ...result, session: safeSession };
 }
 
+// The session read hands the client the stored record. The ancestor list
+// (CD-111 lineage) is the server's business: nothing reads it on the client, so
+// it does not leave. (The record's other fields are as they were.)
+function publicSessionRead(result = {}) {
+  if (!result.session || !('lineage' in result.session)) return result;
+  const { lineage, ...safeSession } = result.session;
+  return { ...result, session: safeSession };
+}
+
 function rateIdentity(req, value = '') {
   return `${requestIp(req)}:${String(value || '').trim().toLowerCase()}`;
 }
@@ -422,7 +431,7 @@ export default async function handler(req, res) {
       if (req.query?.action === 'session') {
         const result = await resolveSessionFromRequest(req);
         if (!result) return res.status(401).json({ ok: false, error: 'No active session' });
-        return res.status(200).json({ ok: true, ...result });
+        return res.status(200).json({ ok: true, ...publicSessionRead(result) });
       }
       // Who holds platform authority. Platform administrators only — the
       // caller is resolved from their session cookie, never from the query.
@@ -802,12 +811,18 @@ export default async function handler(req, res) {
       if (action === 'session') {
         const result = await resolveSessionFromRequest(req);
         if (!result) return res.status(401).json({ ok: false, error: 'No active session' });
-        return res.status(200).json({ ok: true, ...result });
+        return res.status(200).json({ ok: true, ...publicSessionRead(result) });
       }
       if (action === 'switch_team') {
         const result = await switchTeam(sessionTokenFromRequest(req), req.body?.teamId);
         res.setHeader('Set-Cookie', sessionCookie(result.session.token));
-        return res.status(200).json({ ok: true, teamId: result.teamId });
+        // CD-111 correction. A switch ENDS the session the device held and creates
+        // a new one, so the id the client had remembered is now stale. Say which
+        // session it holds now: the id only, exactly as login does. The token
+        // reaches the browser as the cookie and nowhere else. Without this the
+        // client had to wait for a follow-up session read to learn it, and a
+        // sign-out in the meantime named a session that no longer existed.
+        return res.status(200).json({ ok: true, teamId: result.teamId, sessionId: result.session.id });
       }
       if (action === 'logout') {
         // CD-110 Loop 5. The reply used to carry `Set-Cookie: …; Max-Age=0`

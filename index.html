@@ -22920,7 +22920,7 @@
         if (typeof logoutPendingSet === 'function') logoutPendingSet(false);   // a NEW session (CD-111)
         // …whose id this device must know: Sign out names the session it ends
         // (CD-110 Loop 5). The wizard does not adopt the payload, so learn it here.
-        if (typeof _authSessionId !== 'undefined') _authSessionId = String(data.session?.id || '');
+        if (typeof authSessionAdopt === 'function') authSessionAdopt(data.session?.id || '');
         _welcomeDismissed = true;
         try { sessionStorage.setItem('ce-setup-skipped', '1'); } catch {}
         saveState('Club created');
@@ -45268,10 +45268,13 @@
         Object.keys(window.localStorage)
           // The shared logout generation stays (CD-110 Loop 5): wiping it would
           // reset it below another tab's in-memory counter, and that tab could
-          // mistake an old capture for the current generation.
-          .filter(k => (k.startsWith('coach-eye') && k !== 'coach-eye-logout-gen') || k.startsWith('_push'))
+          // mistake an old capture for the current generation. The same goes for
+          // the shared session sequence (CD-111): a reset below another tab's
+          // sequence would make that tab ignore every later session id.
+          .filter(k => (k.startsWith('coach-eye') && k !== 'coach-eye-logout-gen' && k !== 'coach-eye-auth-session') || k.startsWith('_push'))
           .forEach(k => window.localStorage.removeItem(k));
       } catch {}
+      if (typeof authSessionAdopt === 'function') authSessionAdopt('');   // the cleared device holds no session; keeps the sequence moving forward
       if (!delivered && typeof logoutPendingSet === 'function') logoutPendingSet(true, endingSession);
       window.location.replace('/');
     }
@@ -45477,6 +45480,49 @@
     // Devices with no storage fall back to page-local behaviour.
     let _logoutGen = 0;
     let _authSessionId = '';   // the id of the session this device holds (never the token)
+    // CD-111 correction. WHICH session the device holds is shared across tabs, and
+    // ordered. A club switch in one tab ends the session every other tab had
+    // remembered and starts a new one, so a tab that missed it would name a dead
+    // session at sign-out. Every adoption writes {id, seq} beside the marker; seq
+    // only ever advances (the larger of what storage and this tab have seen, plus
+    // one), and a tab takes another's id only when its seq is greater, so an older
+    // answer can never overwrite a newer one. The id is not a secret (login
+    // already answers with it); the token never goes here.
+    let _authSessionSeq = 0;
+    function authSessionStored() {
+      try {
+        if (typeof localStorage === 'undefined') return null;
+        const o = JSON.parse(localStorage.getItem('coach-eye-auth-session') || 'null');
+        return o && typeof o.id === 'string' && Number.isFinite(o.seq) ? o : null;
+      } catch { return null; }
+    }
+    function authSessionSeqRead() {
+      const mem = typeof _authSessionSeq !== 'undefined' ? _authSessionSeq : 0;
+      const s = authSessionStored();
+      return s ? Math.max(s.seq, mem) : mem;
+    }
+    /** This tab has just been told, by the server, which session the device holds. */
+    function authSessionAdopt(id) {
+      const next = authSessionSeqRead() + 1;
+      _authSessionSeq = next;
+      _authSessionId = String(id || '');
+      try { if (typeof localStorage !== 'undefined') localStorage.setItem('coach-eye-auth-session', JSON.stringify({ id: _authSessionId, seq: next })); } catch {}
+      return next;
+    }
+    /** Another tab adopted a session: take it if it is newer than anything this tab has seen. Only a tab that holds a session. */
+    function authSessionFromStorage(event) {
+      if (!event || event.key !== 'coach-eye-auth-session' || !event.newValue) return false;
+      let o = null;
+      try { o = JSON.parse(event.newValue); } catch { return false; }
+      if (!o || typeof o.id !== 'string' || !Number.isFinite(o.seq)) return false;
+      // This tab's OWN seq, not authSessionSeqRead(): by the time a storage event
+      // arrives, storage already holds the incoming value.
+      if (o.seq <= (typeof _authSessionSeq !== 'undefined' ? _authSessionSeq : 0)) return false;
+      if (typeof _serverAuthState === 'undefined' || _serverAuthState !== 'authed') return false;
+      _authSessionSeq = o.seq;
+      _authSessionId = o.id;
+      return true;
+    }
     function logoutGenRead() {
       const mem = typeof _logoutGen !== 'undefined' ? _logoutGen : 0;
       try {
@@ -45511,9 +45557,31 @@
       } catch {}
     }
     /**
-     * Tell the server, naming the session being ended. Resolves true only when
-     * it confirmed (ended, or found the cookie now belongs to a newer session);
-     * otherwise the logout stays owed.
+     * Tell the server, naming the session being ended. Resolves true when
+     * nothing is owed any more; false when the logout is still owed.
+     *
+     * The request ALWAYS names the session when this device holds an id, and it
+     * is sent ONCE. It never falls back to a request that names nothing: that is
+     * the request that, landing after another login, ends the login it was never
+     * about. What lets a stale name still work is the server (CD-111 lineage): a
+     * club switch replaces the session, and the replacement records the ids it
+     * replaced, so the id a tab remembered from before a switch still ends the
+     * login's current session — including from a remembered logout at boot.
+     *
+     * What each answer means:
+     *   ended:true, or skipped:'no-session' (a dead cookie holds nothing live)
+     *       the logout is finished; the marker is cleared.
+     *   skipped:'other-session'
+     *       the cookie's session is NOT this login or one it replaced: a
+     *       different login (this tab is a leftover from an earlier one), another
+     *       person. Nothing was ended and nothing here may end it; the owed logout
+     *       was about a session that is gone, so there is nothing left to owe.
+     *       (Keeping the marker would stop every boot asking for the session until the next login.)
+     *   anything else (no answer, a non-2xx status, a body that is not the
+     *   server's, ok:false, an unknown shape)
+     *       not confirmed: the marker stays armed, naming the same session.
+     *   An answer with neither `ended` nor `skipped` is a pre-CD-111 server's
+     *   `{ ok: true }`, which meant the session was ended.
      */
     async function deliverLogout(authSessionId = '') {
       const sid = String(authSessionId || (typeof logoutPendingAuthSessionId === 'function' ? logoutPendingAuthSessionId() : '') || '');
@@ -45524,7 +45592,13 @@
       try {
         const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'logout', ...(sid ? { authSessionId: sid } : {}) }), keepalive: true });
-        if (res && res.ok) { if (current()) logoutPendingSet(false); return true; }
+        if (res && res.ok) {
+          let d = null;
+          try { d = await res.json(); } catch { d = null; }
+          const settled = !!d && d.ok === true && (d.ended === true || d.skipped === 'no-session' || d.skipped === 'other-session'
+            || (d.ended === undefined && d.skipped === undefined));
+          if (settled) { if (current()) logoutPendingSet(false); return true; }
+        }
       } catch {}
       if (current()) logoutPendingSet(true, sid);
       return false;
@@ -46193,7 +46267,7 @@
     // payload from the user RECORD; purely a UI gate, the server re-checks.
     let _myPlatformRole = '';
 
-    function adoptIdentityPayload(d) {
+    function adoptIdentityPayload(d, opts) {
       // FIRST: the club. Every field below is adopted INTO club-scoped state
       // (operational group, membership, own player record), so a club change
       // must be settled before any of them lands. This is the chokepoint for
@@ -46204,7 +46278,16 @@
       if (adoptClubContext(d?.teamMember?.teamId)) hydrateClubFromServer().catch(() => {});
       // The id of the session this device now holds (CD-110 Loop 5): named when
       // it is ended, so a stale logout can never end a newer one. Never the token.
-      if (typeof _authSessionId !== 'undefined' && d?.session?.id) _authSessionId = String(d.session.id);
+      // CD-111 correction: a session READ made before another adoption (a club
+      // switch here or in another tab) describes a session that may already be
+      // gone, so it is not allowed to overwrite the newer one. The caller says
+      // which sequence it asked under (opts.authSeq); an answer a login, claim or
+      // club creation hands over is the newest there is and passes none.
+      if (typeof authSessionAdopt === 'function' && d?.session?.id) {
+        const asked = opts && opts.authSeq !== undefined ? opts.authSeq : null;
+        const superseded = asked !== null && authSessionSeqRead() !== asked;
+        if (!superseded && String(d.session.id) !== _authSessionId) authSessionAdopt(d.session.id);
+      }
       if (Array.isArray(d?.permissions)) _myPermissions = d.permissions;
       if (d?.user?.platformRole !== undefined) _myPlatformRole = String(d.user.platformRole || '');
       // D1b — the SERVER decides which groups this identity may operate in, in
@@ -46807,6 +46890,12 @@
           body: JSON.stringify({ action: 'switch_team', teamId }) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Could not switch team');
+        // The switch ended the session this device held and started another; the
+        // cookie the browser now holds is the new one's. Learn its id from the
+        // answer itself (CD-111): a sign-out before, or without, the session read
+        // below would otherwise name a session that no longer exists. Other tabs
+        // learn it through storage.
+        if (data.sessionId && typeof authSessionAdopt === 'function') authSessionAdopt(data.sessionId);
         // Team-scoped local state must not bleed between clubs. The session
         // answer then stamps the new club (adoptClubContext, via
         // adoptIdentityPayload) and the loaders re-hydrate from the server.
@@ -47136,6 +47225,10 @@
         // cache directive, so a Back/Forward navigation replayed a CACHED 200
         // and the device re-authenticated itself from the browser cache after
         // the real session had already ended. Always ask the server.
+        // The session sequence this read is made under (CD-111): if another
+        // adoption lands while it is out, the answer is older than what this tab
+        // now knows and must not replace the session id.
+        const authSeq = typeof authSessionSeqRead === 'function' ? authSessionSeqRead() : undefined;
         const res = await fetch('/api/identity?action=session', { cache: 'no-store' });
         if (_left()) return;   // made for a context that has ended: adopt nothing, refuse nothing
         if (res.ok) {
@@ -47153,7 +47246,7 @@
             const _cur = String(state.currentUserId || '');
             if (_sid && _cur && _cur !== _sid && _cur !== 'coach-demo') resetIdentityScopedState();
           }
-          adoptIdentityPayload(d);
+          adoptIdentityPayload(d, { authSeq });
           // Hydrate local identity from server session so a page reload
           // restores the real authenticated user instead of the localStorage default.
           if (d.user?.id) {
@@ -47754,6 +47847,9 @@
     });
 
     window.addEventListener("storage", event => {
+      // Another tab adopted a newer session (a club switch, a login): learn its id
+      // so a sign-out here names the session the device holds now (CD-111).
+      try { authSessionFromStorage(event); } catch {}
       if (event.key !== STORAGE_KEY || !event.newValue) return;
       const incoming = safeParseState(event.newValue, "storage event");
       if (!incoming) return;
@@ -48316,7 +48412,7 @@
         if (typeof logoutPendingSet === 'function') logoutPendingSet(false);   // the claim created a NEW session (CD-111)
         // …whose id this device must know: Sign out names the session it ends
         // (CD-110 Loop 5). The claim does not adopt the payload, so learn it here.
-        if (typeof _authSessionId !== 'undefined') _authSessionId = String(data.session?.id || '');
+        if (typeof authSessionAdopt === 'function') authSessionAdopt(data.session?.id || '');
         saveState('Invite claimed');
         document.getElementById('invite-modal')?.remove();
         window.history.replaceState({}, '', '/');
