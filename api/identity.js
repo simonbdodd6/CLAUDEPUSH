@@ -810,9 +810,20 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, teamId: result.teamId });
       }
       if (action === 'logout') {
-        await destroySession(sessionTokenFromRequest(req));
-        res.setHeader('Set-Cookie', clearSessionCookie());
-        return res.status(200).json({ ok: true });
+        // CD-110 Loop 5. The reply used to carry `Set-Cookie: …; Max-Age=0`
+        // unconditionally. A logout reply that lands AFTER a newer login (a
+        // stalled sign-out, a remembered-logout retry at boot or on reconnect)
+        // made the browser clear the NEW session's cookie, signing that person
+        // out at their next check. Destroying the session record is what ends
+        // a session — a dead token in the jar is refused like an expired one —
+        // so the cookie is left alone here. And the request names the session
+        // it is ending (`authSessionId`, the id the login answer exposed): when
+        // the cookie now belongs to a newer session, nothing is ended.
+        // Requests that name nothing (older clients, a CD-110 marker) end the
+        // cookie's session exactly as before.
+        const named = typeof req.body?.authSessionId === 'string' ? req.body.authSessionId.trim().slice(0, 80) : '';
+        const result = await destroySession(sessionTokenFromRequest(req), { onlyIfSessionId: named || null });
+        return res.status(200).json({ ok: true, ended: result.ended, ...(result.skipped ? { skipped: result.skipped } : {}) });
       }
       if (action === 'approve') {
         const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);

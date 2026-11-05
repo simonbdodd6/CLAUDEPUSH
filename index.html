@@ -22918,6 +22918,9 @@
         _serverSessionReadyFor = data.user.id;
         _serverAuthState = 'authed';
         if (typeof logoutPendingSet === 'function') logoutPendingSet(false);   // a NEW session (CD-111)
+        // …whose id this device must know: Sign out names the session it ends
+        // (CD-110 Loop 5). The wizard does not adopt the payload, so learn it here.
+        if (typeof _authSessionId !== 'undefined') _authSessionId = String(data.session?.id || '');
         _welcomeDismissed = true;
         try { sessionStorage.setItem('ce-setup-skipped', '1'); } catch {}
         saveState('Club created');
@@ -27329,6 +27332,9 @@
       // Club data (players, schedule, clubName) is intentionally kept per the
       // sign-out confirmation text: "Your club data stays saved locally."
       const prevId = state.currentUserId;
+      // The session being ended, captured before the identity reset forgets it
+      // (CD-110 Loop 5): the logout names it, so it can never end a newer one.
+      const endingSession = typeof _authSessionId !== 'undefined' ? _authSessionId : '';
       state.currentUserId = '';
       // Identity-scoped caches belong to the person signing out — the next
       // account on this browser must not inherit their preview selection,
@@ -27378,7 +27384,7 @@
       // Then the server. The local session is already over whatever it says;
       // a logout it does not confirm is remembered and retried at the next
       // boot (checkServerSession) and on reconnect (the online listener).
-      if (typeof deliverLogout === 'function') await deliverLogout();
+      if (typeof deliverLogout === 'function') await deliverLogout(endingSession);
     }
 
     // Player account menu — header button on the player portal. Shows the signed-in
@@ -45240,6 +45246,7 @@
       // used to await the server before touching anything, so on a stalled
       // connection the authenticated shell stayed until the fetch timed out.
       // The local session ends now and the shell repaints signed out.
+      const endingSession = typeof _authSessionId !== 'undefined' ? _authSessionId : '';   // named by the logout (CD-110 Loop 5)
       state.currentUserId = '';
       _serverAuthState = 'anon';
       // The club epoch advances and the caches go, as on Sign out: a session
@@ -45255,14 +45262,17 @@
       // a logout not confirmed in time is remembered again afterwards and the
       // next boot finishes it instead of restoring the account from the cookie
       // the browser still holds.
-      const delivery = typeof deliverLogout === 'function' ? deliverLogout() : Promise.resolve(false);
+      const delivery = typeof deliverLogout === 'function' ? deliverLogout(endingSession) : Promise.resolve(false);
       const delivered = await Promise.race([delivery, new Promise(resolve => setTimeout(() => resolve(false), 2000))]);
       try {
         Object.keys(window.localStorage)
-          .filter(k => k.startsWith('coach-eye') || k.startsWith('_push'))
+          // The shared logout generation stays (CD-110 Loop 5): wiping it would
+          // reset it below another tab's in-memory counter, and that tab could
+          // mistake an old capture for the current generation.
+          .filter(k => (k.startsWith('coach-eye') && k !== 'coach-eye-logout-gen') || k.startsWith('_push'))
           .forEach(k => window.localStorage.removeItem(k));
       } catch {}
-      if (!delivered && typeof logoutPendingSet === 'function') logoutPendingSet(true);
+      if (!delivered && typeof logoutPendingSet === 'function') logoutPendingSet(true, endingSession);
       window.location.replace('/');
     }
 
@@ -45289,6 +45299,9 @@
       // identity's first render requests its own instead of waiting for the
       // background tick (CD-110 Loop 3).
       if (typeof _hiddenDataChatAuthSeen !== 'undefined') _hiddenDataChatAuthSeen = '';
+      // The session id is the identity's (CD-110 Loop 5); sign-out captures it
+      // before this runs, so the logout it delivers still names it.
+      if (typeof _authSessionId !== 'undefined') _authSessionId = '';
       // An unsent availability answer belongs to the account that chose it. It
       // is kept (Build 101) — stamped with that account and club, it is shown
       // to and sent by NO other account or club (availabilityPendingFor and
@@ -45447,34 +45460,73 @@
     // server's confirmation clears it.
     //
     // THE GENERATION GUARD. A new session (login, claim, club creation) clears
-    // the marker and advances _logoutGen. An attempt that left under an older
-    // generation is inert from then on: failing late it does not re-arm the
-    // marker (that would have destroyed the NEW session at the next boot), and
-    // succeeding late it does not clear a NEWER sign-out's marker.
+    // the marker and advances the generation. An attempt that left under an
+    // older generation is inert from then on: failing late it does not re-arm
+    // the marker (that would have destroyed the NEW session at the next boot),
+    // and succeeding late it does not clear a NEWER sign-out's marker.
+    //
+    // ACROSS TABS (CD-110 Loop 5). The generation was a page-local counter, so
+    // a login in tab B was invisible to an attempt still out in tab A: A's late
+    // failure re-armed the marker and the next boot ended B's session. The
+    // generation now lives in storage beside the marker and is READ at every
+    // decision, so a login anywhere on the device is seen by every tab with no
+    // message passing; the in-memory counter is only the fallback where storage
+    // is unavailable. And the marker remembers WHICH session is owed a logout —
+    // the id the login answer exposed — so a retry names it and the server
+    // ends that session only, never the newer one the cookie now belongs to.
+    // Devices with no storage fall back to page-local behaviour.
     let _logoutGen = 0;
+    let _authSessionId = '';   // the id of the session this device holds (never the token)
+    function logoutGenRead() {
+      const mem = typeof _logoutGen !== 'undefined' ? _logoutGen : 0;
+      try {
+        if (typeof localStorage === 'undefined') return mem;
+        const stored = Number(localStorage.getItem('coach-eye-logout-gen') || 0);
+        return Number.isFinite(stored) ? Math.max(stored, mem) : mem;
+      } catch { return mem; }
+    }
+    function logoutGenBump() {
+      const next = logoutGenRead() + 1;
+      if (typeof _logoutGen !== 'undefined') _logoutGen = next;
+      try { if (typeof localStorage !== 'undefined') localStorage.setItem('coach-eye-logout-gen', String(next)); } catch {}
+      return next;
+    }
     function logoutPending() {
-      try { return typeof localStorage !== 'undefined' && localStorage.getItem('coach-eye-logout-pending') === '1'; }
+      try { return typeof localStorage !== 'undefined' && !!localStorage.getItem('coach-eye-logout-pending'); }
       catch { return false; }
     }
-    function logoutPendingSet(on) {
-      if (!on && typeof _logoutGen !== 'undefined') _logoutGen++;
+    /** The session the remembered logout is for, or '' for a marker that names none (a CD-110 device). */
+    function logoutPendingAuthSessionId() {
+      try {
+        const v = typeof localStorage !== 'undefined' ? String(localStorage.getItem('coach-eye-logout-pending') || '') : '';
+        return v && v !== '1' ? v : '';
+      } catch { return ''; }
+    }
+    function logoutPendingSet(on, authSessionId = '') {
+      if (!on && typeof logoutGenBump === 'function') logoutGenBump();
       try {
         if (typeof localStorage === 'undefined') return;
-        if (on) localStorage.setItem('coach-eye-logout-pending', '1');
+        if (on) localStorage.setItem('coach-eye-logout-pending', String(authSessionId || '') || '1');
         else localStorage.removeItem('coach-eye-logout-pending');
       } catch {}
     }
-    /** Tell the server. Resolves true only when it confirmed; otherwise the logout stays owed. */
-    async function deliverLogout() {
-      const gen = typeof _logoutGen !== 'undefined' ? _logoutGen : 0;
-      const current = () => typeof _logoutGen === 'undefined' || gen === _logoutGen;
-      logoutPendingSet(true);
+    /**
+     * Tell the server, naming the session being ended. Resolves true only when
+     * it confirmed (ended, or found the cookie now belongs to a newer session);
+     * otherwise the logout stays owed.
+     */
+    async function deliverLogout(authSessionId = '') {
+      const sid = String(authSessionId || (typeof logoutPendingAuthSessionId === 'function' ? logoutPendingAuthSessionId() : '') || '');
+      const readGen = () => (typeof logoutGenRead === 'function' ? logoutGenRead() : (typeof _logoutGen !== 'undefined' ? _logoutGen : 0));
+      const gen = readGen();
+      const current = () => readGen() === gen;
+      logoutPendingSet(true, sid);
       try {
         const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'logout' }), keepalive: true });
+          body: JSON.stringify({ action: 'logout', ...(sid ? { authSessionId: sid } : {}) }), keepalive: true });
         if (res && res.ok) { if (current()) logoutPendingSet(false); return true; }
       } catch {}
-      if (current()) logoutPendingSet(true);
+      if (current()) logoutPendingSet(true, sid);
       return false;
     }
 
@@ -46150,6 +46202,9 @@
       // whose last save was under the previous club — wipes the old club's
       // state and re-hydrates from the server. Same club: a no-op.
       if (adoptClubContext(d?.teamMember?.teamId)) hydrateClubFromServer().catch(() => {});
+      // The id of the session this device now holds (CD-110 Loop 5): named when
+      // it is ended, so a stale logout can never end a newer one. Never the token.
+      if (typeof _authSessionId !== 'undefined' && d?.session?.id) _authSessionId = String(d.session.id);
       if (Array.isArray(d?.permissions)) _myPermissions = d.permissions;
       if (d?.user?.platformRole !== undefined) _myPlatformRole = String(d.user.platformRole || '');
       // D1b — the SERVER decides which groups this identity may operate in, in
@@ -48259,6 +48314,9 @@
           state.selectedChatId = 'coach';
         }
         if (typeof logoutPendingSet === 'function') logoutPendingSet(false);   // the claim created a NEW session (CD-111)
+        // …whose id this device must know: Sign out names the session it ends
+        // (CD-110 Loop 5). The claim does not adopt the payload, so learn it here.
+        if (typeof _authSessionId !== 'undefined') _authSessionId = String(data.session?.id || '');
         saveState('Invite claimed');
         document.getElementById('invite-modal')?.remove();
         window.history.replaceState({}, '', '/');

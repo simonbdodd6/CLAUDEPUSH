@@ -2060,7 +2060,9 @@ export async function createSession({ userId, teamId = DEFAULT_TEAM.id, role = '
   const sessions = await loadSessions();
   sessions.push(session);
   await saveSessions(sessions);
-  return { token, expiresAt: session.expiresAt, userId, teamId, role };
+  // The id is exposed to the client (it is not a secret and grants nothing);
+  // the client names it when it ends the session (CD-110 Loop 5).
+  return { id: session.id, token, expiresAt: session.expiresAt, userId, teamId, role };
 }
 
 export async function resolveSession(token = '') {
@@ -2248,10 +2250,22 @@ export async function switchTeam(token = '', targetTeamId = '') {
   return { session, teamId: membership.teamId };
 }
 
-export async function destroySession(token = '') {
+/**
+ * End the session the token names. With `onlyIfSessionId`, end it ONLY if it is
+ * that session (CD-110 Loop 5): a logout request that left the device before a
+ * newer login carries the newer cookie by the time it is sent again (a boot or
+ * reconnect retry, another tab acting on an old marker), and must not end the
+ * session the person is now using. Says what it did; never throws for a missing
+ * or unknown token — a logout that finds nothing to end has nothing to fail at.
+ */
+export async function destroySession(token = '', { onlyIfSessionId = null } = {}) {
   const hashed = hashToken(token);
   const sessions = await loadSessions();
+  const current = sessions.find(item => item.tokenHash === hashed) || null;
+  if (!current) return { ended: false, skipped: 'no-session' };
+  if (onlyIfSessionId && String(current.id) !== String(onlyIfSessionId)) return { ended: false, skipped: 'other-session' };
   await saveSessions(sessions.filter(item => item.tokenHash !== hashed));
+  return { ended: true };
 }
 
 // ─── Self-service club creation (Start a New Club wizard) ───────────────────
