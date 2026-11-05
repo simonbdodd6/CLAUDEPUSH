@@ -2043,9 +2043,26 @@ async function rememberLastTeam(userId, teamId) {
   await saveUsers(users);
 }
 
-export async function createSession({ userId, teamId = DEFAULT_TEAM.id, role = 'player' } = {}) {
+// CD-111 session lineage. A club switch ENDS the session the device holds and
+// starts another, so an id the device remembered from before the switch names a
+// record that no longer exists. The new session therefore carries the ids of the
+// sessions it REPLACED (newest first), written only by switchTeam from the
+// authenticated session's own record, never from anything a client sent, and
+// never by a login, a claim or a club creation: a genuinely new login starts
+// with none, which is what keeps a stale logout from an earlier login away from
+// it. The record is never edited in place, so the list lives exactly as long as
+// the session does, and it is bounded: the oldest ancestors fall off the end.
+const SESSION_LINEAGE_MAX = 32;
+function sessionLineage(session) {
+  return (Array.isArray(session?.lineage) ? session.lineage : [])
+    .filter(id => typeof id === 'string' && id.length > 0 && id.length <= 80)
+    .slice(0, SESSION_LINEAGE_MAX);
+}
+
+export async function createSession({ userId, teamId = DEFAULT_TEAM.id, role = 'player', lineage = [] } = {}) {
   if (!userId) throw new Error('userId is required');
   const token = randomBytes(32).toString('base64url');
+  const ancestors = sessionLineage({ lineage });
   const session = {
     id: makeId('sess'),
     tokenHash: hashToken(token),
@@ -2055,6 +2072,7 @@ export async function createSession({ userId, teamId = DEFAULT_TEAM.id, role = '
     createdAt: nowIso(),
     lastSeenAt: nowIso(),
     expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+    ...(ancestors.length ? { lineage: ancestors } : {}),
   };
   const sessions = await loadSessions();
   sessions.push(session);
@@ -2244,7 +2262,10 @@ export async function switchTeam(token = '', targetTeamId = '') {
   const membership = (current.memberships || []).find(m => m.teamId === String(targetTeamId));
   if (!membership) { const e = new Error('No active membership in that team'); e.status = 403; throw e; }
   await destroySession(token);
-  const session = await createSession({ userId: current.user.id, teamId: membership.teamId, role: membership.role });
+  // The new session continues the one it replaces (CD-111 lineage): same login,
+  // different club. The ancestors come from the record the cookie resolved to.
+  const lineage = [current.session.id, ...sessionLineage(current.session)].slice(0, SESSION_LINEAGE_MAX);
+  const session = await createSession({ userId: current.user.id, teamId: membership.teamId, role: membership.role, lineage });
   await rememberLastTeam(current.user.id, membership.teamId);
   return { session, teamId: membership.teamId };
 }
@@ -2256,13 +2277,24 @@ export async function switchTeam(token = '', targetTeamId = '') {
  * reconnect retry, another tab acting on an old marker), and must not end the
  * session the person is now using. Says what it did; never throws for a missing
  * or unknown token — a logout that finds nothing to end has nothing to fail at.
+ *
+ * CD-111 lineage: "that session" is the cookie's session itself OR one it
+ * REPLACED through club switches (its `lineage`), because a switch is the same
+ * login continued and an id remembered from before it still means "this login".
+ * The only record ever ended is the one whose token the request carried; a
+ * named id can only decide whether to end it, never which record is ended. An id
+ * from another login, another device or another person is in nobody's lineage
+ * but its own and ends nothing.
  */
 export async function destroySession(token = '', { onlyIfSessionId = null } = {}) {
   const hashed = hashToken(token);
   const sessions = await loadSessions();
   const current = sessions.find(item => item.tokenHash === hashed) || null;
   if (!current) return { ended: false, skipped: 'no-session' };
-  if (onlyIfSessionId && String(current.id) !== String(onlyIfSessionId)) return { ended: false, skipped: 'other-session' };
+  if (onlyIfSessionId) {
+    const named = String(onlyIfSessionId);
+    if (String(current.id) !== named && !sessionLineage(current).includes(named)) return { ended: false, skipped: 'other-session' };
+  }
   await saveSessions(sessions.filter(item => item.tokenHash !== hashed));
   return { ended: true };
 }

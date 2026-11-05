@@ -45,7 +45,8 @@ function stub(role) {
       if (u.startsWith('/api/invite?token=')) return send({ valid: true, group: true, role, status: 'pending', teamName: 'Landing RFC' });
       if (u === '/api/identity' && req.method === 'POST') {
         let b = {}; try { b = JSON.parse(body || '{}'); } catch {}
-        if (b.action === 'claim_invite') { ctl.claimed = true; return send({ ...session(), invite: { status: 'pending' } }, 201); }
+        // The real claim answer carries the new session's id (never the token) — CD-110 Loop 5.
+        if (b.action === 'claim_invite') { ctl.claimed = true; return send({ ...session(), session: { id: 'sess_landing_claim' }, invite: { status: 'pending' } }, 201); }
         if (b.action === 'session') return ctl.claimed ? send(session()) : send({ ok: false, error: 'No active session' }, 401);
         return send({ ok: true });
       }
@@ -112,6 +113,18 @@ test('browser: a player who claims a squad link lands in the player view, with t
     assert.ok(await waitFor(() => h.api.slice(h.before).some(x => x === 'GET /api/publish?type=all')), `the player's own loader ran: ${JSON.stringify(h.api.slice(h.before))}`);
     assert.equal(h.api.slice(h.before).some(x => x.startsWith('GET /api/publish?type=draft')), false, 'no coach draft read for a player');
     assert.equal(await h.page.$('#invite-modal'), null, 'the form is gone');
+    assert.deepEqual(h.errors, []);
+  } finally { await h.close(); }
+});
+
+test('browser: a claim adopts the new session\'s id — in this tab and in storage for the others — so a later sign-out names the right session', { timeout: 120000 }, async t => {
+  const h = await claimInBrowser(t, 'coach'); if (!h) return;
+  try {
+    assert.equal(await h.page.evaluate(() => _authSessionId), 'sess_landing_claim', 'the claim adopted the id its answer carried');
+    const stored = JSON.parse(await h.page.evaluate(() => localStorage.getItem('coach-eye-auth-session')));
+    assert.equal(stored.id, 'sess_landing_claim', 'and shared it through storage');
+    assert.ok(Number.isFinite(stored.seq) && stored.seq >= 1);
+    assert.equal(await h.page.evaluate(() => _authSessionSeq), stored.seq, 'this tab\'s sequence matches what it wrote');
     assert.deepEqual(h.errors, []);
   } finally { await h.close(); }
 });

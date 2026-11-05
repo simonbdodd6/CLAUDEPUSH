@@ -191,7 +191,7 @@ test('every login path and sign-out invalidates a different user\'s residue', ()
     `expected the reset wired into >=6 sites (logins, cookie adoption, sign-out); found ${adoptions.length}`);
   // CD-110 Loop 3: the purge runs BEFORE the payload is adopted (login's order),
   // so the loaders the adoption starts are not discarded by a later reset.
-  assert.match(src, /if \(_sid && _cur && _cur !== _sid && _cur !== 'coach-demo'\) resetIdentityScopedState\(\);[\s\S]{0,120}adoptIdentityPayload\(d\);/,
+  assert.match(src, /if \(_sid && _cur && _cur !== _sid && _cur !== 'coach-demo'\) resetIdentityScopedState\(\);[\s\S]{0,120}adoptIdentityPayload\(d(, \{ authSeq \})?\);/,   // CD-111: the read says which session sequence it asked under
     'the server cookie adoption purges the previous person, before adopting');
   assert.match(src, /if \(cur !== sid\) \{\s*\n(\s*\/\/[^\n]*\n)?\s*state\.currentUserId = sid;/,
     'and the adoption itself is unconditional');
