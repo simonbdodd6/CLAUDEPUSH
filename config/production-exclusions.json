@@ -147,7 +147,7 @@
     "deployment": {
       "command": "vercel deploy --prod --yes",
       "account": "simonbdodd-9233",
-      "prerequisite": "Vercel CLI must be installed and logged in. GitHub auto-deploy has been broken since 2026-06-06; every release is manual.",
+      "prerequisite": "Vercel CLI must be installed and logged in. The Vercel project has NO Git repository connected (disconnected 2026-11-07 after branch pushes built unwanted Previews); every release is manual via npm run deploy:release, never from a Git push. The personal repository's main branch is divergent and must never be deployed.",
       "neverAutomatic": "No script in this repository may deploy without an explicit human-run `npm run deploy:release`."
     }
   }

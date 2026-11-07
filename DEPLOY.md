@@ -1,7 +1,11 @@
 # Deploying Coach's Eye to Production
 
-**Status (2026-06-11): GitHub auto-deploy is BROKEN.** Pushing to `main` does
-NOT deploy. Every release is manual.
+**Status (2026-11-07): Git-triggered deployments are DISCONNECTED.** The Vercel
+project `boitsfort-coachseye-gpt` has no Git repository connected
+(`vercel git disconnect`, 2026-11-07), so pushing any branch to GitHub builds
+nothing. Every release is manual: `npm run deploy:release` from a
+`core-deploy-NN` checkout. See "Git integration and Preview deployments" below
+before ever reconnecting a repository.
 
 **Prerequisite:** the Vercel CLI must be installed and logged in as
 `simonbdodd-9233` (`vercel whoami`). Without it nothing here works.
@@ -246,16 +250,42 @@ broken — that rebuilds, takes longer, and can fail. Re-point first with
 - Production environment variables live in Vercel
   (`vercel env ls production`). `DEV_LOGIN` must never be set in production.
 
-## Fixing auto-deploy (one-time, requires dashboard access)
+## Git integration and Preview deployments
 
-`vercel git connect` fails from the CLI — the Vercel GitHub App has lost
-access to `simonbdodd6/CLAUDEPUSH`. To fix:
+**History.** GitHub auto-deploy stopped on 2026-06-06 and the manual release
+flow above replaced it. On 2026-11-07 branch pushes to `simonbdodd6/CLAUDEPUSH`
+unexpectedly built two Preview deployments: the Vercel GitHub integration was
+still connected for branch pushes. The two previews were deleted and the
+repository was disconnected from the project (`vercel git disconnect`; a
+second call answers "No Git repository connected"). Production releases were
+never affected: they are made only by `npm run deploy:release`.
 
-1. github.com → Settings → Applications → Vercel → grant access to the
-   `CLAUDEPUSH` repository.
-2. vercel.com → `boitsfort-coachseye-gpt` project → Settings → Git →
-   Connect `simonbdodd6/CLAUDEPUSH`, production branch `main`.
-3. Push a trivial commit and confirm a deployment appears in the dashboard.
+**Why the repository must stay disconnected (or be reconnected deliberately):**
 
-Auto-deploys stopped on 2026-06-06; deployments between then and 2026-06-11
-never reached users until the manual deploy on 2026-06-11.
+- The personal repository's `main` branch is **divergent from production**
+  (it last moved in July 2026 and is not the `core-deploy-NN` line). A Git
+  integration with production branch `main` would deploy the wrong code to
+  users. Never push `main` as a production release, and never connect a
+  repository with `main` as its production branch.
+- Preview deployments inherit the project's Preview environment, which carries
+  **production's** `UPSTASH_REDIS_REST_*` and `APP_KEY_PREFIX`. `api/_kv.js`
+  (Build 135) refuses storage in a Preview unless separate
+  `PREVIEW_UPSTASH_REDIS_REST_URL` / `PREVIEW_UPSTASH_REDIS_REST_TOKEN` are set
+  and differ from production, and namespaces every Preview key under
+  `preview:`. So an accidental Preview fails closed (every API answers 503) —
+  but a branch that predates Build 135 (before `core-deploy-101`) has no such
+  guard and must never be built as a Preview of this project.
+- Deployment URLs are behind Vercel Authentication, but a Preview still shares
+  `RESEND_API_KEY`, `VAPID_*` and `APP_URL` with production.
+
+**If Preview deployments are ever wanted**, do it deliberately: configure
+`PREVIEW_UPSTASH_*` pointing at a separate database (the `coacheasier-staging`
+project already has one), confirm `/api/config?health=1` on the preview reports
+`storageHealth.code == "ok"` under the `preview:` namespace, and only then
+reconnect a repository — with a production branch that is NOT `main` and an
+Ignored Build Step that limits which branches build.
+
+**Release boundaries are unaffected** by any of this: production is still
+`core-deploy-NN` = feature branch minus the exclusions in
+`config/production-exclusions.json` (the Tactics mount, club export, and the
+others listed there), verified by `npm run deploy:check`.
