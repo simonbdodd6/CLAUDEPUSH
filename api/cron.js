@@ -1,7 +1,7 @@
 // Scheduled Web Push dispatcher.
 // cron-job.org calls every 5 minutes; Vercel Cron supplies daily fallback runs.
 import webpush from 'web-push';
-import { load, save, activeMemberIdSet, subscriptionsForMembers } from './_lib.js';
+import { load, pruneSubscriptionsBestEffort, isStorageUnavailable, activeMemberIdSet, subscriptionsForMembers } from './_lib.js';
 import { respondersByIdentity } from './_availabilityStore.js';
 import { loadClubStructure } from './_structureStore.js';
 import { resolvePlayerGroup } from './_accessScope.js';
@@ -411,7 +411,14 @@ export default async function handler(req, res) {
   // under the Vercel Hobby 12-function limit. /api/reminder rewrites here
   // (vercel.json) so external schedulers keep working unchanged.
   if ((req.query?.job || req.body?.job) === 'reminder') {
-    const subscribers = await load();
+    // An unreadable subscription list is NOT an empty one: with nobody to
+    // reach, nothing is sent, nothing is logged as sent, and the scheduler
+    // retries on its next tick. (It used to run as a zero-recipient send.)
+    let subscribers;
+    try { subscribers = await load(); } catch (error) {
+      if (isStorageUnavailable(error)) return res.status(503).json({ ok: false, error: error.message, code: error.code });
+      throw error;
+    }
     // Club isolation: the weekly reminder carries no club-specific content, but
     // it must still reach ONLY active members of a club — never removed members,
     // legacy / test / demo accounts, or devices with no current membership.
@@ -478,7 +485,9 @@ export default async function handler(req, res) {
         expired.add(targets[index].subscription.endpoint);
       }
     });
-    if (expired.size) await save(subscribers.filter(item => !expired.has(item.subscription.endpoint)));
+    // Dead endpoints are pruned from a FRESH read under the subscriptions lock;
+    // a failed read or a busy lock skips the prune — the reminders went out.
+    if (expired.size) await pruneSubscriptionsBestEffort(expired, 'cron reminder');
     // Deliberately NO teamId: this weekly reminder unions the active members of
     // EVERY club into one send, so its counts belong to no single tenant and
     // attributing them to one would misreport the others. The reader treats an
@@ -499,9 +508,16 @@ export default async function handler(req, res) {
   const now = new Date();
   const fireWindow = req.headers?.['x-vercel-cron'] === '1'
     ? VERCEL_FALLBACK_WINDOW_MINUTES : EXACT_WINDOW_MINUTES;
-  const [schedules, subscribers] = await Promise.all([
-    readArray('schedules'), load(),
-  ]);
+  // The subscription list is read ONCE for every schedule due this tick. If it
+  // cannot be read, nothing can be delivered — and a run that went on would
+  // stamp every due schedule as sent (to nobody), silencing the real send.
+  let schedules, subscribers;
+  try {
+    [schedules, subscribers] = await Promise.all([readArray('schedules'), load()]);
+  } catch (error) {
+    if (isStorageUnavailable(error)) return res.status(503).json({ ok: false, error: error.message, code: error.code });
+    throw error;
+  }
   const due = schedules.filter(schedule => scheduleIsDue(schedule, now, fireWindow));
   const automationMembers = await loadTeamMembers();
   const results = [];
@@ -624,7 +640,7 @@ export default async function handler(req, res) {
     results.push({ weeklyAvailability: 'error', error: String(error?.message || error) });
   }
   if (expiredEndpoints.size) {
-    await save(subscribers.filter(item => !expiredEndpoints.has(item.subscription.endpoint)));
+    await pruneSubscriptionsBestEffort(expiredEndpoints, 'cron schedules');
   }
   const totalSent = results.reduce((count, result) => count + (result.sent || 0), 0);
   return res.status(200).json({ ok: true, fired: results.length, totalSent, results });

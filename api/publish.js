@@ -60,7 +60,7 @@ import { getCatalogue } from '../performance/services/exercise-catalogue.js';
 // path performs, so an athlete-generated assignment is shaped identically.
 import { publishProgrammeVersion, snapshotForProgrammeAssignment }
   from '../performance/domain/programme-versioning.js';
-import { load, save } from './_lib.js';
+import { load, pruneSubscriptionsBestEffort, isStorageUnavailable } from './_lib.js';
 import { createHash } from 'node:crypto';
 import { auditLog, requestIp, enforceRateLimit } from './_security.js';
 import { buildClubDataExport, ClubDataExportError } from './_clubDataExport.js';
@@ -2933,13 +2933,21 @@ async function availabilityCheckHandler(req, res) {
   } catch (error) {
     return sendAuthError(res, error);
   }
-  const [subscribers, automationMembers] = await Promise.all([load(), loadTeamMembers()]);
+  // An unreadable subscription list is not an empty one: a check that ran on
+  // "[]" would mark the session as sent (to nobody) and dedup the real send.
+  let subscribers, automationMembers;
+  try {
+    [subscribers, automationMembers] = await Promise.all([load(), loadTeamMembers()]);
+  } catch (error) {
+    if (isStorageUnavailable(error)) return res.status(503).json({ ok: false, error: error.message, code: error.code });
+    throw error;
+  }
   const report = await runWeeklyAvailabilityCheck({
     now: new Date(), source: 'coach: Run check now',
     onlyTeamId: session.teamId, subscribers, automationMembers,
   });
   if (report.expired?.length) {
-    await save(subscribers.filter(item => !report.expired.includes(item.subscription.endpoint)));
+    await pruneSubscriptionsBestEffort(report.expired, 'availability-check');
   }
   const club = (await kvGet(clubKey(session.teamId))) || null;
   return res.status(200).json({ ok: true, report, weeklyAvailability: club?.weeklyAvailability || null });

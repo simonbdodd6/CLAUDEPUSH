@@ -12,6 +12,7 @@ import { loadClubStructure, groupById, teamById, activeTeams, activeGroups } fro
 import { reconcileMissingRows } from './_rosterProjection.js';
 import { isSafeName, isSafePosition } from './_safeText.js';
 import { withIdentityLock, assertStoreLockHeld, storeLockHeld, IDENTITY_LOCK } from './_lock.js';
+import { withSubscriptionsLock } from './_lib.js';
 // Re-exported so callers that write identity data directly (tests arranging
 // fixtures, scripts) can take the same lock the store's own writers hold.
 export { withIdentityLock };
@@ -3974,18 +3975,25 @@ export async function deleteOwnAccount(userId, { currentPassword, confirm } = {}
   }
 
   // 5. Push subscriptions are the user's own devices — every one goes.
+  //    Serialised with every other subscription-list writer (the same lock
+  //    api/subscribe.js and the send paths hold) so a device registering at
+  //    this moment is not erased by this rewrite, nor this removal undone by
+  //    it. Still best-effort: a failed read or a busy lock skips the cleanup
+  //    and never writes.
   let pushRemoved = 0;
   try {
-    const subsKey = key('subscriptions');
-    const subs = await kvGet(subsKey);
-    if (Array.isArray(subs)) {
-      const kept = subs.filter(s => !(String(s?.userId || '') === userId ||
-        (s?.legacyPlayerId && legacyIds.has(String(s.legacyPlayerId))) ||
-        (s?.playerId && legacyIds.has(String(s.playerId)))));
-      pushRemoved = subs.length - kept.length;
-      if (pushRemoved) await kvSet(subsKey, kept);
-    }
-  } catch { /* push cleanup is best-effort — nothing identity-critical lives there */ }
+    await withSubscriptionsLock(async () => {
+      const subsKey = key('subscriptions');
+      const subs = await kvGet(subsKey);
+      if (Array.isArray(subs)) {
+        const kept = subs.filter(s => !(String(s?.userId || '') === userId ||
+          (s?.legacyPlayerId && legacyIds.has(String(s.legacyPlayerId))) ||
+          (s?.playerId && legacyIds.has(String(s.playerId)))));
+        pushRemoved = subs.length - kept.length;
+        if (pushRemoved) await kvSet(subsKey, kept);
+      }
+    });
+  } catch { pushRemoved = 0; /* push cleanup is best-effort — nothing identity-critical lives there */ }
 
   // 6. Chat read-cursors (tiny identity-keyed timestamps) — swept clean.
   //    Messages themselves are retained; the anonymised profile is how the

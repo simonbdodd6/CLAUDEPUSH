@@ -19,7 +19,7 @@ import { loadClubStructure } from './_structureStore.js';
 import { operationalGroupsFor, resolvePlayerGroup } from './_accessScope.js';
 import { isStaffRole } from './_permissions.js';
 import { tenantTeamId } from './_tenant.js';
-import { load as loadSubs, save as saveSubs } from './_lib.js';
+import { load as loadSubs, pruneSubscriptionsBestEffort } from './_lib.js';
 import { setCors, vapidContact, notificationUrl } from './_http.js';
 import { isSafeId, isSafeName, isSafeReaction, isSafeIcon } from './_safeText.js';
 import { withStoreLock, assertStoreLockHeld } from './_lock.js';
@@ -116,7 +116,10 @@ async function dispatchPush(allSubs, targets, payload, label) {
     )
   );
   if (expired.size) {
-    await saveSubs(allSubs.filter(s => !expired.has(s.subscription.endpoint)));
+    // From a FRESH read under the subscriptions lock (never the list this send
+    // started from); a failed read or busy lock skips the prune. The message
+    // itself was stored before any push left.
+    await pruneSubscriptionsBestEffort(expired, label);
   }
 }
 

@@ -1,6 +1,6 @@
 // Immediate Web Push delivery for coach "Send now" actions.
 import webpush from 'web-push';
-import { load, save, clubMemberSubscriptions, subscriptionsForMembers } from './_lib.js';
+import { load, pruneSubscriptionsBestEffort, isStorageUnavailable, clubMemberSubscriptions, subscriptionsForMembers } from './_lib.js';
 import { loadClubStructure, INITIAL_GROUP_ID } from './_structureStore.js';
 import { operationalGroupsFor, resolvePlayerGroup } from './_accessScope.js';
 import { respondersByIdentity } from './_availabilityStore.js';
@@ -104,7 +104,14 @@ export default async function handler(req, res) {
     // that was never registered all give the same answer, so the response
     // cannot be used to probe which endpoints exist.
     const callerUserId = String(devSession.user.id);
-    const ownRow = (await load()).find(item =>
+    // A list that cannot be read says nothing about the device: 503, not
+    // "Not your device".
+    let registered;
+    try { registered = await load(); } catch (error) {
+      if (isStorageUnavailable(error)) return res.status(503).json({ ok: false, error: error.message, code: error.code });
+      throw error;
+    }
+    const ownRow = registered.find(item =>
       item.subscription?.endpoint === requestedEndpoint &&
       item.userId && String(item.userId) === callerUserId);
     if (!ownRow) return res.status(403).json({ ok: false, error: 'Not your device' });
@@ -170,7 +177,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'audience individual requires targetUserId' });
   }
 
-  const allSubscriptions = await load();
+  // An unreadable subscription list is not an empty one: nothing is sent and
+  // nothing is logged as sent; the coach sees the fixed 503 and tries again.
+  let allSubscriptions;
+  try { allSubscriptions = await load(); } catch (error) {
+    if (isStorageUnavailable(error)) return res.status(503).json({ error: error.message, code: error.code });
+    throw error;
+  }
 
   // ── Club isolation ────────────────────────────────────────────────────────
   // Push subscriptions are stored in ONE global list with no teamId, while the
@@ -287,7 +300,9 @@ export default async function handler(req, res) {
     }
   });
   if (expired.size) {
-    await save(allSubscriptions.filter(item => !expired.has(item.subscription.endpoint)));
+    // From a FRESH read under the subscriptions lock, so a device registered
+    // during the send is kept; a failed read or busy lock skips the prune.
+    await pruneSubscriptionsBestEffort(expired, 'push');
   }
 
   await kvLpush(key('message_log'), {

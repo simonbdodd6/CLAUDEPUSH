@@ -3,10 +3,20 @@
 // GET   → returns { count }
 // DELETE { endpoint: string } → removes the caller's own device (session required)
 
-import { load, save } from './_lib.js';
+import { load, save, withSubscriptionsLock, isStorageUnavailable, isSubscriptionsBusy } from './_lib.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
 import { requireSession } from './_identityStore.js';
+
+// A list that could not be READ is never treated as empty (and never written
+// back): the caller gets the fixed 503 and tries again. A lock that stayed
+// busy is the same answer — the store is there, another device write holds it.
+function storageProblem(res, error) {
+  if (isStorageUnavailable(error) || isSubscriptionsBusy(error)) {
+    return res.status(503).json({ error: error.message, code: error.code });
+  }
+  throw error;
+}
 
 function displayNameFromSession(sessionContext = {}) {
   const user = sessionContext?.user || {};
@@ -38,7 +48,8 @@ export default async function handler(req, res) {
 
   // ── GET: subscription count (or full debug list in dev mode) ─────────────
   if (req.method === 'GET') {
-    const subs = await load();
+    let subs;
+    try { subs = await load(); } catch (error) { return storageProblem(res, error); }
     // The debug listing prints every device's endpoint, ids and label across
     // all clubs. DEV_LOGIN alone is not authorisation: it also needs a signed-in
     // caller, and an anonymous request gets the plain count like everyone else.
@@ -72,13 +83,20 @@ export default async function handler(req, res) {
     let sessionContext;
     try {
       sessionContext = await requireSession(req);
-    } catch {
+    } catch (error) {
+      // Storage that cannot answer is not a missing session (2026-10-12 class).
+      if (isStorageUnavailable(error)) return storageProblem(res, error);
       return res.status(401).json({ error: 'Authentication required' });
     }
     const { subscription } = req.body || {};
     if (!subscription?.endpoint) {
       return res.status(400).json({ error: 'Missing subscription endpoint' });
     }
+    // Read, decide and write under the subscriptions lock, so a device
+    // registering while a send prunes a dead endpoint (or two devices of one
+    // person registering together) can no longer erase each other's row.
+    try {
+    return await withSubscriptionsLock(async () => {
     const subs  = await load();
     const idx   = subs.findIndex(s => s.subscription.endpoint === subscription.endpoint);
     const sessionUserId = String(sessionContext.user.id);
@@ -115,6 +133,8 @@ export default async function handler(req, res) {
     if (idx >= 0) subs[idx] = entry; else subs.push(entry);
     await save(subs);
     return res.status(201).json({ ok: true, count: subs.length });
+    });
+    } catch (error) { return storageProblem(res, error); }
   }
 
   // ── DELETE: remove the caller's own subscription ─────────────────────────
@@ -127,7 +147,9 @@ export default async function handler(req, res) {
     let sessionContext;
     try {
       sessionContext = await requireSession(req);
-    } catch {
+    } catch (error) {
+      // Storage that cannot answer is not a missing session (2026-10-12 class).
+      if (isStorageUnavailable(error)) return storageProblem(res, error);
       return res.status(401).json({ error: 'Authentication required' });
     }
     const { endpoint, action } = req.body || {};
@@ -135,11 +157,15 @@ export default async function handler(req, res) {
     // so they can be cleanly re-registered with correct IDs. DEV_LOGIN alone is
     // not authorisation (the session check above still applies).
     if (action === 'purge_empty' && process.env.DEV_LOGIN === 'true') {
+      try {
+      return await withSubscriptionsLock(async () => {
       const subs = await load();
       const before = subs.length;
       const cleaned = subs.filter(s => s.userId || s.playerId || s.legacyPlayerId);
       await save(cleaned);
       return res.status(200).json({ ok: true, purged: before - cleaned.length, remaining: cleaned.length });
+      });
+      } catch (error) { return storageProblem(res, error); }
     }
     if (typeof endpoint !== 'string' || !endpoint) {
       return res.status(400).json({ error: 'Missing endpoint' });
@@ -150,6 +176,8 @@ export default async function handler(req, res) {
     // whether a given endpoint is registered. A legacy row with an empty
     // userId has no owner and is removed by nobody through this path.
     const sessionUserId = String(sessionContext.user.id);
+    try {
+    return await withSubscriptionsLock(async () => {
     const subs = await load();
     const kept = subs.filter(s =>
       !(s.subscription?.endpoint === endpoint && s.userId && String(s.userId) === sessionUserId)
@@ -157,6 +185,8 @@ export default async function handler(req, res) {
     const removed = subs.length - kept.length;
     if (removed > 0) await save(kept);
     return res.status(200).json({ ok: true, removed, count: kept.length });
+    });
+    } catch (error) { return storageProblem(res, error); }
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
